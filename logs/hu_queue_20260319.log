@@ -1,0 +1,413 @@
+15:13:58 [INFO] core.queue_model — hu_added hu=999933  RAU202690071 pallet=1 origin=UNK
+15:14:01 [INFO] core.queue_model — hu_added hu=C1016347647 pallet=1 origin=ATL
+15:14:54 [INFO] core.queue_model — hu_added hu=C1016347647 pallet=1 origin=ATL
+15:14:58 [INFO] core.queue_model — hu_added hu=C1015914704 pallet=1 origin=ATL
+15:15:11 [INFO] core.queue_model — hu_added hu=C1015914704 pallet=1 origin=ATL
+15:15:14 [INFO] core.queue_model — hu_added hu=C1016347647 pallet=1 origin=ATL
+15:15:28 [INFO] core.queue_model — hu_added hu=C1016347647 pallet=1 origin=ATL
+15:15:30 [INFO] core.queue_model — new_pallet id=2
+15:15:36 [INFO] core.queue_model — hu_added hu=C1015914704 pallet=2 origin=ATL
+15:15:37 [INFO] core.queue_model — new_pallet id=3
+15:15:50 [INFO] core.queue_model — hu_added hu=T10045855100 pallet=3 origin=THA
+15:16:03 [INFO] core.queue_model — new_pallet id=4
+15:16:05 [INFO] core.queue_model — hu_added hu=TH0000254022 pallet=4 origin=UNK
+15:16:30 [INFO] core.queue_model — queue_worker_started
+15:16:30 [INFO] ui.queue_window — worker_started_from_ui
+15:16:30 [INFO] core.sap_client — sap_connected system=LUP user=LOPEZHJC
+15:16:30 [INFO] core.queue_model — queue_worker_sap_connected
+15:16:30 [INFO] core.sap_client — setup_phase1_start
+15:16:35 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:16:35 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:16:38 [INFO] core.sap_client — hu_phase1_duplicate hu=C1016347647
+15:16:38 [INFO] core.sap_client — setup_phase2_start
+15:16:44 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:16:44 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:16:45 [INFO] core.sap_client — hu_phase2_ok hu=C1016347647 duration_ms=1001
+15:16:45 [INFO] core.sap_client — setup_phase1_start
+15:16:50 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:16:50 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:16:53 [INFO] core.sap_client — hu_phase1_duplicate hu=C1015914704
+15:16:53 [WARNING] core.sap_client — phase2_wrong_screen hu=C1015914704 — re-navigating
+15:16:53 [INFO] core.sap_client — setup_phase2_start
+15:16:58 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:16:58 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:16:59 [INFO] core.sap_client — hu_phase2_ok hu=C1015914704 duration_ms=5750
+15:16:59 [WARNING] core.sap_client — phase1_wrong_screen hu=T10045855100 — re-navigating
+15:16:59 [INFO] core.sap_client — setup_phase1_start
+15:17:04 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:17:04 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:17:07 [INFO] core.queue_model — hu_added hu=C1015914796 pallet=4 origin=ATL
+15:17:08 [INFO] core.sap_client — hu_phase1_ok hu=T10045855100
+15:17:08 [WARNING] core.sap_client — phase2_wrong_screen hu=T10045855100 — re-navigating
+15:17:08 [INFO] core.sap_client — setup_phase2_start
+15:17:14 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:17:14 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:17:14 [INFO] core.queue_model — hu_added hu=C1015914794 pallet=4 origin=ATL
+15:17:15 [INFO] core.sap_client — hu_phase2_ok hu=T10045855100 duration_ms=6572
+15:17:15 [WARNING] core.sap_client — phase1_wrong_screen hu=TH0000254022 — re-navigating
+15:17:15 [INFO] core.sap_client — setup_phase1_start
+15:17:17 [INFO] core.queue_model — new_pallet id=5
+15:17:20 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:17:20 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:17:21 [INFO] core.queue_model — hu_added hu=C1015914793 pallet=5 origin=ATL
+15:17:23 [INFO] core.sap_client — hu_phase1_duplicate hu=TH0000254022
+15:17:23 [WARNING] core.sap_client — phase2_wrong_screen hu=TH0000254022 — re-navigating
+15:17:23 [INFO] core.sap_client — setup_phase2_start
+15:17:29 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:17:29 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:17:29 [INFO] core.sap_client — hu_phase2_ok hu=TH0000254022 duration_ms=5909
+15:17:29 [WARNING] core.sap_client — phase1_wrong_screen hu=C1015914796 — re-navigating
+15:17:29 [INFO] core.sap_client — setup_phase1_start
+15:17:35 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:17:35 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:17:37 [INFO] core.sap_client — hu_phase1_duplicate hu=C1015914796
+15:17:37 [WARNING] core.sap_client — phase2_wrong_screen hu=C1015914796 — re-navigating
+15:17:37 [INFO] core.sap_client — setup_phase2_start
+15:17:43 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:17:43 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:17:43 [INFO] core.sap_client — hu_phase2_ok hu=C1015914796 duration_ms=5705
+15:17:43 [WARNING] core.sap_client — phase1_wrong_screen hu=C1015914794 — re-navigating
+15:17:43 [INFO] core.sap_client — setup_phase1_start
+15:17:48 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:17:48 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:17:51 [INFO] core.sap_client — hu_phase1_duplicate hu=C1015914794
+15:17:51 [WARNING] core.sap_client — phase2_wrong_screen hu=C1015914794 — re-navigating
+15:17:51 [INFO] core.sap_client — setup_phase2_start
+15:17:57 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:17:57 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:17:57 [INFO] core.sap_client — hu_phase2_ok hu=C1015914794 duration_ms=5793
+15:17:57 [WARNING] core.sap_client — phase1_wrong_screen hu=C1015914793 — re-navigating
+15:17:57 [INFO] core.sap_client — setup_phase1_start
+15:18:03 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:18:03 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:18:05 [INFO] core.sap_client — hu_phase1_duplicate hu=C1015914793
+15:18:05 [WARNING] core.sap_client — phase2_wrong_screen hu=C1015914793 — re-navigating
+15:18:05 [INFO] core.sap_client — setup_phase2_start
+15:18:11 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:18:11 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:18:11 [INFO] core.sap_client — hu_phase2_ok hu=C1015914793 duration_ms=5900
+15:18:47 [INFO] core.queue_model — queue_worker_stop_requested
+15:18:47 [INFO] core.queue_model — executing_sp01
+15:18:52 [INFO] core.sap_client — tx_opened code=/nSP01 current_tx=SP01
+15:18:55 [INFO] core.sap_client — sp01_executed
+15:18:55 [INFO] core.queue_model — queue_worker_stopped
+15:18:55 [INFO] core.queue_model — queue_worker_stop_requested
+15:21:32 [INFO] core.queue_model — hu_added hu=TH0000254022 pallet=1 origin=UNK
+15:21:35 [INFO] core.queue_model — queue_worker_started
+15:21:35 [INFO] ui.queue_window — worker_started_from_ui
+15:21:35 [INFO] core.sap_client — sap_connected system=LUP user=LOPEZHJC
+15:21:35 [INFO] core.queue_model — queue_worker_sap_connected
+15:21:35 [INFO] core.sap_client — setup_phase1_start
+15:21:40 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:21:40 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:21:43 [INFO] core.sap_client — hu_phase1_duplicate hu=TH0000254022
+15:21:43 [INFO] core.sap_client — setup_phase2_start
+15:21:48 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:21:48 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:21:49 [INFO] core.sap_client — hu_phase2_ok hu=TH0000254022 duration_ms=1001
+15:22:20 [INFO] core.queue_model — hu_added hu=T10045857571 pallet=1 origin=THA
+15:22:20 [INFO] core.sap_client — setup_phase1_start
+15:22:24 [INFO] core.queue_model — hu_added hu=T10045857569 pallet=1 origin=THA
+15:22:25 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:22:25 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:22:30 [INFO] core.sap_client — hu_phase1_ok hu=T10045857571
+15:22:30 [WARNING] core.sap_client — phase2_wrong_screen hu=T10045857571 — re-navigating
+15:22:30 [INFO] core.sap_client — setup_phase2_start
+15:22:35 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:22:35 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:22:36 [INFO] core.sap_client — hu_phase2_ok hu=T10045857571 duration_ms=6127
+15:22:36 [WARNING] core.sap_client — phase1_wrong_screen hu=T10045857569 — re-navigating
+15:22:36 [INFO] core.sap_client — setup_phase1_start
+15:22:42 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+15:22:42 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+15:22:47 [INFO] core.sap_client — hu_phase1_ok hu=T10045857569
+15:22:47 [WARNING] core.sap_client — phase2_wrong_screen hu=T10045857569 — re-navigating
+15:22:47 [INFO] core.sap_client — setup_phase2_start
+15:22:53 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+15:22:53 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+15:22:54 [INFO] core.sap_client — hu_phase2_ok hu=T10045857569 duration_ms=6245
+15:22:57 [INFO] core.queue_model — queue_worker_stop_requested
+15:22:58 [INFO] core.queue_model — executing_sp01
+15:23:03 [INFO] core.sap_client — tx_opened code=/nSP01 current_tx=SP01
+15:23:06 [INFO] core.sap_client — sp01_executed
+15:23:06 [INFO] core.queue_model — queue_worker_stop_requested
+15:23:06 [INFO] core.queue_model — queue_worker_stopped
+15:24:29 [INFO] core.queue_model — new_pallet id=1
+15:24:30 [INFO] core.queue_model — new_pallet id=2
+15:24:30 [INFO] core.queue_model — new_pallet id=3
+15:24:30 [INFO] core.queue_model — new_pallet id=4
+15:24:30 [INFO] core.queue_model — new_pallet id=5
+15:24:30 [INFO] core.queue_model — new_pallet id=6
+17:23:18 [INFO] core.queue_model — hu_added hu=2972610264 pallet=1 origin=ITA
+17:23:24 [INFO] core.queue_model — new_pallet id=2
+17:23:33 [INFO] core.queue_model — queue_worker_started
+17:23:33 [INFO] ui.queue_window — worker_started_from_ui
+17:23:33 [INFO] core.sap_client — sap_connected system=LUP user=LOPEZHJC
+17:23:33 [INFO] core.queue_model — queue_worker_sap_connected
+17:23:33 [INFO] core.sap_client — setup_phase1_start
+17:23:36 [INFO] core.queue_model — hu_added hu=2972610126 pallet=3 origin=ITA
+17:23:37 [INFO] core.queue_model — new_pallet id=4
+17:23:39 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:23:39 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:23:40 [INFO] core.queue_model — hu_added hu=2972610134 pallet=5 origin=ITA
+17:23:42 [INFO] core.queue_model — new_pallet id=6
+17:23:45 [INFO] core.sap_client — hu_phase1_ok hu=2972610264
+17:23:45 [INFO] core.sap_client — setup_phase2_start
+17:23:47 [INFO] core.queue_model — hu_added hu=2972622703 pallet=7 origin=ITA
+17:23:48 [INFO] core.queue_model — new_pallet id=8
+17:23:50 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:23:50 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:23:51 [INFO] core.sap_client — hu_phase2_ok hu=2972610264 duration_ms=1001
+17:23:51 [INFO] core.sap_client — setup_phase1_start
+17:23:53 [INFO] core.queue_model — hu_added hu=2972610147 pallet=9 origin=ITA
+17:23:55 [INFO] core.queue_model — new_pallet id=10
+17:23:56 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:23:56 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:24:06 [INFO] core.queue_model — hu_added hu=2972610252 pallet=11 origin=ITA
+17:24:06 [INFO] core.queue_model — new_pallet id=12
+17:24:06 [INFO] core.queue_model — hu_added hu=2972610132 pallet=13 origin=ITA
+17:24:08 [INFO] core.queue_model — new_pallet id=14
+17:24:09 [INFO] core.sap_client — hu_phase1_ok hu=2972610126
+17:24:09 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610126 — re-navigating
+17:24:09 [INFO] core.sap_client — setup_phase2_start
+17:24:11 [INFO] core.queue_model — hu_added hu=2972611599 pallet=15 origin=ITA
+17:24:12 [INFO] core.queue_model — new_pallet id=16
+17:24:14 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:24:14 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:24:14 [INFO] core.queue_model — hu_added hu=2972610146 pallet=17 origin=ITA
+17:24:15 [INFO] core.sap_client — hu_phase2_ok hu=2972610126 duration_ms=6091
+17:24:15 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610134 — re-navigating
+17:24:15 [INFO] core.sap_client — setup_phase1_start
+17:24:15 [INFO] core.queue_model — new_pallet id=18
+17:24:20 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:24:20 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:24:49 [INFO] core.sap_client — hu_phase1_ok hu=2972610134
+17:24:49 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610134 — re-navigating
+17:24:49 [INFO] core.sap_client — setup_phase2_start
+17:24:54 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:24:54 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:24:55 [INFO] core.sap_client — hu_phase2_ok hu=2972610134 duration_ms=6217
+17:24:55 [WARNING] core.sap_client — phase1_wrong_screen hu=2972622703 — re-navigating
+17:24:55 [INFO] core.sap_client — setup_phase1_start
+17:25:00 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:25:00 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:25:04 [INFO] core.sap_client — hu_phase1_ok hu=2972622703
+17:25:04 [WARNING] core.sap_client — phase2_wrong_screen hu=2972622703 — re-navigating
+17:25:04 [INFO] core.sap_client — setup_phase2_start
+17:25:08 [INFO] core.queue_model — hu_added hu=2972610747 pallet=19 origin=ITA
+17:25:10 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:25:10 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:25:10 [INFO] core.sap_client — hu_phase2_ok hu=2972622703 duration_ms=6094
+17:25:11 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610147 — re-navigating
+17:25:11 [INFO] core.sap_client — setup_phase1_start
+17:25:11 [INFO] core.queue_model — new_pallet id=20
+17:25:16 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:25:16 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:25:16 [INFO] core.queue_model — hu_added hu=2972610150 pallet=21 origin=ITA
+17:25:18 [INFO] core.queue_model — new_pallet id=22
+17:25:25 [INFO] core.queue_model — hu_added hu=2972610155 pallet=23 origin=ITA
+17:25:26 [INFO] core.queue_model — new_pallet id=24
+17:25:26 [INFO] core.sap_client — hu_phase1_ok hu=2972610147
+17:25:26 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610147 — re-navigating
+17:25:26 [INFO] core.sap_client — setup_phase2_start
+17:25:32 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:25:32 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:25:32 [INFO] core.sap_client — hu_phase2_ok hu=2972610147 duration_ms=6069
+17:25:33 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610252 — re-navigating
+17:25:33 [INFO] core.sap_client — setup_phase1_start
+17:25:36 [INFO] core.queue_model — hu_added hu=2972622572 pallet=25 origin=ITA
+17:25:37 [INFO] core.queue_model — new_pallet id=26
+17:25:38 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:25:38 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:27:41 [INFO] core.queue_model — hu_added hu=2972622373 pallet=27 origin=ITA
+17:27:41 [INFO] core.queue_model — new_pallet id=28
+17:27:41 [INFO] core.queue_model — hu_added hu=2972284645 pallet=29 origin=ITA
+17:27:41 [INFO] core.queue_model — new_pallet id=30
+17:27:41 [INFO] core.queue_model — hu_added hu=2972610257 pallet=31 origin=ITA
+17:27:41 [INFO] core.queue_model — new_pallet id=32
+17:27:41 [INFO] core.queue_model — hu_added hu=2972622343 pallet=33 origin=ITA
+17:27:41 [INFO] core.queue_model — new_pallet id=34
+17:27:41 [INFO] core.queue_model — hu_added hu=2972611069 pallet=35 origin=ITA
+17:27:41 [INFO] core.queue_model — new_pallet id=36
+17:27:41 [INFO] core.queue_model — hu_added hu=2972610158 pallet=37 origin=ITA
+17:27:41 [INFO] core.queue_model — new_pallet id=38
+17:27:41 [INFO] core.queue_model — hu_added hu=2972622372 pallet=39 origin=ITA
+17:27:41 [INFO] core.queue_model — new_pallet id=40
+17:27:41 [INFO] core.queue_model — hu_added hu=2972622369 pallet=41 origin=ITA
+17:27:41 [INFO] core.queue_model — new_pallet id=42
+17:27:41 [INFO] core.queue_model — hu_added hu=2972610138 pallet=43 origin=ITA
+17:27:41 [INFO] core.queue_model — new_pallet id=44
+17:27:41 [WARNING] core.queue_model — hu_duplicate_scan hu=2972610252
+17:27:41 [INFO] core.queue_model — new_pallet id=45
+17:27:43 [INFO] core.sap_client — hu_phase1_ok hu=2972610252
+17:27:43 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610252 — re-navigating
+17:27:43 [INFO] core.sap_client — setup_phase2_start
+17:27:49 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:27:49 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:27:50 [INFO] core.sap_client — hu_phase2_ok hu=2972610252 duration_ms=6601
+17:27:50 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610132 — re-navigating
+17:27:50 [INFO] core.sap_client — setup_phase1_start
+17:27:55 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:27:55 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:28:05 [INFO] core.sap_client — hu_phase1_ok hu=2972610132
+17:28:05 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610132 — re-navigating
+17:28:05 [INFO] core.sap_client — setup_phase2_start
+17:28:11 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:28:11 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:28:11 [INFO] core.sap_client — hu_phase2_ok hu=2972610132 duration_ms=6122
+17:28:11 [WARNING] core.sap_client — phase1_wrong_screen hu=2972611599 — re-navigating
+17:28:11 [INFO] core.sap_client — setup_phase1_start
+17:28:17 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:28:17 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:28:23 [INFO] core.sap_client — hu_phase1_ok hu=2972611599
+17:28:23 [WARNING] core.sap_client — phase2_wrong_screen hu=2972611599 — re-navigating
+17:28:23 [INFO] core.sap_client — setup_phase2_start
+17:28:28 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:28:28 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:28:29 [INFO] core.sap_client — hu_phase2_ok hu=2972611599 duration_ms=6050
+17:28:29 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610146 — re-navigating
+17:28:29 [INFO] core.sap_client — setup_phase1_start
+17:28:34 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:28:34 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:29:33 [INFO] core.sap_client — hu_phase1_ok hu=2972610146
+17:29:33 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610146 — re-navigating
+17:29:33 [INFO] core.sap_client — setup_phase2_start
+17:29:38 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:29:38 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:29:39 [INFO] core.sap_client — hu_phase2_ok hu=2972610146 duration_ms=6118
+17:29:39 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610747 — re-navigating
+17:29:39 [INFO] core.sap_client — setup_phase1_start
+17:29:45 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:29:45 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:30:09 [INFO] core.sap_client — hu_phase1_ok hu=2972610747
+17:30:09 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610747 — re-navigating
+17:30:09 [INFO] core.sap_client — setup_phase2_start
+17:30:14 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:30:14 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:30:15 [INFO] core.sap_client — hu_phase2_ok hu=2972610747 duration_ms=6297
+17:30:15 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610150 — re-navigating
+17:30:15 [INFO] core.sap_client — setup_phase1_start
+17:30:20 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:30:20 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:30:56 [INFO] core.sap_client — hu_phase1_ok hu=2972610150
+17:30:56 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610150 — re-navigating
+17:30:56 [INFO] core.sap_client — setup_phase2_start
+17:31:02 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:31:02 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:31:02 [INFO] core.sap_client — hu_phase2_ok hu=2972610150 duration_ms=6218
+17:31:02 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610155 — re-navigating
+17:31:02 [INFO] core.sap_client — setup_phase1_start
+17:31:08 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:31:08 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:31:41 [INFO] core.sap_client — hu_phase1_ok hu=2972610155
+17:31:41 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610155 — re-navigating
+17:31:41 [INFO] core.sap_client — setup_phase2_start
+17:31:46 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:31:46 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:31:47 [INFO] core.sap_client — hu_phase2_ok hu=2972610155 duration_ms=6115
+17:31:47 [WARNING] core.sap_client — phase1_wrong_screen hu=2972622572 — re-navigating
+17:31:47 [INFO] core.sap_client — setup_phase1_start
+17:31:52 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:31:52 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:31:56 [INFO] core.sap_client — hu_phase1_ok hu=2972622572
+17:31:56 [WARNING] core.sap_client — phase2_wrong_screen hu=2972622572 — re-navigating
+17:31:56 [INFO] core.sap_client — setup_phase2_start
+17:32:02 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:32:02 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:32:02 [INFO] core.sap_client — hu_phase2_ok hu=2972622572 duration_ms=6080
+17:32:02 [WARNING] core.sap_client — phase1_wrong_screen hu=2972622373 — re-navigating
+17:32:02 [INFO] core.sap_client — setup_phase1_start
+17:32:08 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:32:08 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:32:14 [INFO] core.sap_client — hu_phase1_ok hu=2972622373
+17:32:14 [WARNING] core.sap_client — phase2_wrong_screen hu=2972622373 — re-navigating
+17:32:14 [INFO] core.sap_client — setup_phase2_start
+17:32:19 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:32:19 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:32:20 [INFO] core.sap_client — hu_phase2_ok hu=2972622373 duration_ms=5959
+17:32:20 [WARNING] core.sap_client — phase1_wrong_screen hu=2972284645 — re-navigating
+17:32:20 [INFO] core.sap_client — setup_phase1_start
+17:32:25 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:32:25 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:32:29 [INFO] core.sap_client — hu_phase1_ok hu=2972284645
+17:32:29 [WARNING] core.sap_client — phase2_wrong_screen hu=2972284645 — re-navigating
+17:32:29 [INFO] core.sap_client — setup_phase2_start
+17:32:35 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:32:35 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:32:35 [INFO] core.sap_client — hu_phase2_ok hu=2972284645 duration_ms=6089
+17:32:35 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610257 — re-navigating
+17:32:35 [INFO] core.sap_client — setup_phase1_start
+17:32:41 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:32:41 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:33:28 [INFO] core.sap_client — hu_phase1_ok hu=2972610257
+17:33:28 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610257 — re-navigating
+17:33:28 [INFO] core.sap_client — setup_phase2_start
+17:33:33 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:33:33 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:33:34 [INFO] core.sap_client — hu_phase2_ok hu=2972610257 duration_ms=6103
+17:33:34 [WARNING] core.sap_client — phase1_wrong_screen hu=2972622343 — re-navigating
+17:33:34 [INFO] core.sap_client — setup_phase1_start
+17:33:39 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:33:39 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:33:44 [INFO] core.sap_client — hu_phase1_ok hu=2972622343
+17:33:44 [WARNING] core.sap_client — phase2_wrong_screen hu=2972622343 — re-navigating
+17:33:44 [INFO] core.sap_client — setup_phase2_start
+17:33:49 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:33:49 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:33:50 [INFO] core.sap_client — hu_phase2_ok hu=2972622343 duration_ms=5994
+17:33:50 [WARNING] core.sap_client — phase1_wrong_screen hu=2972611069 — re-navigating
+17:33:50 [INFO] core.sap_client — setup_phase1_start
+17:33:55 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:33:55 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:34:44 [INFO] core.sap_client — hu_phase1_ok hu=2972611069
+17:34:44 [WARNING] core.sap_client — phase2_wrong_screen hu=2972611069 — re-navigating
+17:34:44 [INFO] core.sap_client — setup_phase2_start
+17:34:49 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:34:49 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:34:50 [INFO] core.sap_client — hu_phase2_ok hu=2972611069 duration_ms=6193
+17:34:50 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610158 — re-navigating
+17:34:50 [INFO] core.sap_client — setup_phase1_start
+17:34:56 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:34:56 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:36:02 [INFO] core.sap_client — hu_phase1_ok hu=2972610158
+17:36:02 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610158 — re-navigating
+17:36:02 [INFO] core.sap_client — setup_phase2_start
+17:36:07 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:36:07 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:36:09 [INFO] core.sap_client — hu_phase2_ok hu=2972610158 duration_ms=6512
+17:36:09 [WARNING] core.sap_client — phase1_wrong_screen hu=2972622372 — re-navigating
+17:36:09 [INFO] core.sap_client — setup_phase1_start
+17:36:14 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:36:14 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:36:19 [INFO] core.sap_client — hu_phase1_ok hu=2972622372
+17:36:19 [WARNING] core.sap_client — phase2_wrong_screen hu=2972622372 — re-navigating
+17:36:19 [INFO] core.sap_client — setup_phase2_start
+17:36:24 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:36:24 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:36:25 [INFO] core.sap_client — hu_phase2_ok hu=2972622372 duration_ms=6223
+17:36:25 [WARNING] core.sap_client — phase1_wrong_screen hu=2972622369 — re-navigating
+17:36:25 [INFO] core.sap_client — setup_phase1_start
+17:36:30 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:36:30 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:36:35 [INFO] core.sap_client — hu_phase1_ok hu=2972622369
+17:36:35 [WARNING] core.sap_client — phase2_wrong_screen hu=2972622369 — re-navigating
+17:36:35 [INFO] core.sap_client — setup_phase2_start
+17:36:40 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:36:40 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:36:41 [INFO] core.sap_client — hu_phase2_ok hu=2972622369 duration_ms=6009
+17:36:41 [WARNING] core.sap_client — phase1_wrong_screen hu=2972610138 — re-navigating
+17:36:41 [INFO] core.sap_client — setup_phase1_start
+17:36:46 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:36:46 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:39:01 [INFO] core.sap_client — hu_phase1_ok hu=2972610138
+17:39:01 [WARNING] core.sap_client — phase2_wrong_screen hu=2972610138 — re-navigating
+17:39:01 [INFO] core.sap_client — setup_phase2_start
+17:39:06 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:39:06 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:39:08 [INFO] core.sap_client — hu_phase2_ok hu=2972610138 duration_ms=6584
+17:39:35 [INFO] core.queue_model — queue_worker_stop_requested
+17:39:36 [INFO] core.queue_model — executing_sp01
+17:39:41 [INFO] core.sap_client — tx_opened code=/nSP01 current_tx=SP01
+17:39:44 [INFO] core.sap_client — sp01_executed
+17:39:44 [INFO] core.queue_model — queue_worker_stopped
+17:39:44 [INFO] core.queue_model — queue_worker_stop_requested

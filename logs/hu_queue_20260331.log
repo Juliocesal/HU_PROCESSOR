@@ -1,0 +1,37 @@
+08:15:02 [INFO] core.queue_model — new_pallet id=1
+08:59:52 [INFO] core.queue_model — new_pallet id=1
+09:01:28 [INFO] core.queue_model — hu_added hu=2972563882 pallet=2 origin=ITA
+09:02:03 [INFO] core.queue_model — queue_worker_started dynamic_print_mode
+09:02:03 [INFO] core.sap_client — sap_connected system=LUP user=LOPEZHJC
+09:02:03 [INFO] core.queue_model — queue_worker_sap_connected
+09:02:03 [INFO] core.sap_client — setup_phase1_start
+09:02:09 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+09:02:09 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+09:02:12 [INFO] core.sap_client — hu_phase1_duplicate hu=2972563882
+09:02:12 [INFO] core.sap_client — setup_phase2_start
+09:02:17 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+09:02:17 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+09:02:18 [INFO] core.sap_client — hu_phase2_ok hu=2972563882 duration_ms=1002
+09:02:18 [INFO] core.queue_model — pallet_boundary single_hu pallet=2 accumulated=[2]
+09:02:18 [INFO] core.queue_model — flush_single_hu_pallets pallets=[2] hu_codes=['2972563882']
+09:02:24 [INFO] core.sap_client — tx_opened code=/nSP01 current_tx=SP01
+09:02:28 [INFO] core.sap_client — sp01_row_marked row=4 title=CN-CON-003_00000000002972563882_20260225184555
+09:02:30 [INFO] core.sap_client — sp01_print_confirmed via=btn[13] marked=1
+09:02:32 [INFO] core.sap_client — sp01_global_done result={'status': 'ok', 'message': 'SP01 OK — 1 spool(s) impreso(s)', 'marked': 1}
+09:02:32 [INFO] core.queue_model — queue_worker_stopped
+09:02:32 [INFO] core.queue_model — queue_worker_stop_requested
+09:04:39 [INFO] core.queue_model — new_pallet id=1
+09:07:57 [INFO] core.queue_model — new_pallet id=1
+09:08:33 [INFO] core.queue_model — new_pallet id=1
+09:09:34 [INFO] core.queue_model — new_pallet id=1
+15:49:33 [INFO] core.queue_model — new_pallet id=1
+15:55:08 [INFO] core.queue_model — new_pallet id=1
+15:59:49 [INFO] core.queue_model — new_pallet id=1
+16:01:33 [INFO] core.queue_model — new_pallet id=1
+16:01:57 [INFO] core.queue_model — new_pallet id=1
+16:02:25 [INFO] core.queue_model — new_pallet id=1
+16:02:58 [INFO] core.queue_model — new_pallet id=1
+16:09:50 [INFO] core.queue_model — new_pallet id=1
+16:11:09 [INFO] core.queue_model — new_pallet id=1
+16:12:35 [INFO] core.queue_model — new_pallet id=1
+16:13:00 [INFO] core.queue_model — new_pallet id=1
