@@ -11391,3 +11391,143 @@ AttributeError: 'QueueWorker' object has no attribute '_pallet_start_times'
 16:23:35 [INFO] core.queue_model — sp01_pallet_result={'status': 'ok', 'message': 'SP01 OK — 14 spool(s) impreso(s)', 'marked': 14} print_dialogs_confirmed=14
 16:23:35 [INFO] core.queue_model — queue_worker_stopped
 16:23:35 [INFO] core.queue_model — queue_worker_stop_requested
+17:44:05 [INFO] core.queue_model — new_pallet id=1
+17:45:16 [INFO] core.queue_model — hu_added hu=T10045855929 pallet=1 origin=CNA
+17:45:17 [INFO] core.queue_model — hu_added hu=T10045865009 pallet=1 origin=CNA
+17:46:11 [INFO] core.queue_model — hu_added hu=2972642050 pallet=2 origin=ITA
+17:46:47 [INFO] core.queue_model — hu_added hu=T10045855249 pallet=3 origin=CNA
+17:46:55 [INFO] core.queue_model — hu_added hu=TH0000268111 pallet=4 origin=THA
+17:46:58 [INFO] core.queue_model — hu_added hu=TH0000267997 pallet=4 origin=THA
+17:47:04 [INFO] core.queue_model — hu_added hu=TH0000268054 pallet=4 origin=THA
+17:48:07 [INFO] core.queue_model — new_pallet id=5
+17:48:09 [INFO] core.queue_model — queue_worker_started dynamic_print_mode
+17:48:09 [INFO] core.sap_client — sap_connected system=LUP user=LOPEZHJC
+17:48:09 [INFO] core.queue_model — queue_worker_sap_connected
+17:48:09 [INFO] core.sap_client — setup_phase1_start
+17:48:14 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:48:14 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:48:17 [INFO] core.sap_client — hu_phase1_duplicate hu=T10045855929
+17:48:17 [INFO] core.sap_client — setup_phase2_start
+17:48:21 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:48:21 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:48:23 [INFO] core.sap_client — hu_phase2_ok hu=T10045855929 duration_ms=1465 phase2_wait=1.0
+17:48:23 [INFO] core.sap_client — setup_phase1_start
+17:48:27 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:48:27 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:48:30 [INFO] core.sap_client — hu_phase1_duplicate hu=T10045865009
+17:48:30 [WARNING] core.sap_client — phase2_wrong_screen hu=T10045865009 — re-navigating
+17:48:30 [INFO] core.sap_client — setup_phase2_start
+17:48:35 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:48:35 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:48:36 [INFO] core.sap_client — hu_phase2_ok hu=T10045865009 duration_ms=5862 phase2_wait=1.0
+17:48:36 [INFO] core.queue_model — pallet_boundary multi_hu pallet=1 count=2 hu_codes=['T10045855929', 'T10045865009']
+17:48:41 [INFO] core.sap_client — tx_opened code=/nSP01 current_tx=SP01
+17:48:44 [INFO] core.sap_client — sp01_row_marked row=4 title=CN-CON-003_T10045865009_20260402224103
+17:48:44 [INFO] core.sap_client — sp01_row_marked row=6 title=CN-CON-003_T10045855929_20260402224048
+17:48:46 [INFO] core.print_watcher — print_watcher_started idle_timeout=12.0s
+17:48:46 [INFO] core.sap_client — sp01_print_confirmed via=btn[25] marked=2
+17:48:47 [INFO] core.sap_client — sp01_pallet_done result={'status': 'ok', 'message': 'SP01 OK — 2 spool(s) impreso(s)', 'marked': 2} hu_codes=['T10045855929', 'T10045865009']
+17:48:47 [INFO] core.queue_model — waiting_for_print_watcher...
+17:48:49 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=1839650
+17:48:49 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=1967574
+17:48:49 [INFO] core.print_watcher — print_dialog_confirmed count=1
+17:48:51 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=4526966
+17:48:51 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=1575086
+17:48:51 [INFO] core.print_watcher — print_dialog_confirmed count=2
+17:49:03 [INFO] core.print_watcher — print_watcher_idle_timeout confirmed=2
+17:49:03 [INFO] core.print_watcher — print_watcher_stopped confirmed=2
+17:49:03 [INFO] core.queue_model — print_watcher_finished confirmed=2
+17:49:03 [INFO] core.queue_model — sp01_pallet_result={'status': 'ok', 'message': 'SP01 OK — 2 spool(s) impreso(s)', 'marked': 2} print_dialogs_confirmed=2
+17:49:05 [INFO] core.queue_model — queue_worker_resumed_by_ui
+17:49:05 [INFO] core.queue_model — queue_worker_resumed_processing
+17:49:05 [INFO] core.sap_client — setup_phase1_start
+17:49:09 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:49:09 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:49:13 [INFO] core.sap_client — hu_phase1_duplicate hu=2972642050
+17:49:13 [INFO] core.sap_client — setup_phase2_start
+17:49:17 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:49:17 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:49:20 [INFO] core.sap_client — hu_phase2_ok hu=2972642050 duration_ms=3007 phase2_wait=2.5
+17:49:20 [INFO] core.queue_model — pallet_boundary single_hu pallet=2 accumulated=[2]
+17:49:20 [INFO] core.sap_client — setup_phase1_start
+17:49:25 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:49:25 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:49:28 [INFO] core.sap_client — hu_phase1_duplicate hu=T10045855249
+17:49:28 [WARNING] core.sap_client — phase2_wrong_screen hu=T10045855249 — re-navigating
+17:49:28 [INFO] core.sap_client — setup_phase2_start
+17:49:32 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:49:32 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:49:34 [INFO] core.sap_client — hu_phase2_ok hu=T10045855249 duration_ms=5984 phase2_wait=1.0
+17:49:34 [INFO] core.queue_model — pallet_boundary single_hu pallet=3 accumulated=[2, 3]
+17:49:34 [WARNING] core.sap_client — phase1_wrong_screen hu=TH0000268111 — re-navigating
+17:49:34 [INFO] core.sap_client — setup_phase1_start
+17:49:38 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:49:38 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:49:41 [INFO] core.sap_client — hu_phase1_duplicate hu=TH0000268111
+17:49:41 [WARNING] core.sap_client — phase2_wrong_screen hu=TH0000268111 — re-navigating
+17:49:41 [INFO] core.sap_client — setup_phase2_start
+17:49:46 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:49:46 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:49:47 [INFO] core.sap_client — hu_phase2_ok hu=TH0000268111 duration_ms=6011 phase2_wait=1.0
+17:49:47 [WARNING] core.sap_client — phase1_wrong_screen hu=TH0000267997 — re-navigating
+17:49:47 [INFO] core.sap_client — setup_phase1_start
+17:49:52 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:49:52 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:49:55 [INFO] core.sap_client — hu_phase1_duplicate hu=TH0000267997
+17:49:55 [WARNING] core.sap_client — phase2_wrong_screen hu=TH0000267997 — re-navigating
+17:49:55 [INFO] core.sap_client — setup_phase2_start
+17:49:59 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:49:59 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:50:01 [INFO] core.sap_client — hu_phase2_ok hu=TH0000267997 duration_ms=5863 phase2_wait=1.0
+17:50:01 [WARNING] core.sap_client — phase1_wrong_screen hu=TH0000268054 — re-navigating
+17:50:01 [INFO] core.sap_client — setup_phase1_start
+17:50:05 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:50:05 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:50:08 [INFO] core.sap_client — hu_phase1_duplicate hu=TH0000268054
+17:50:08 [WARNING] core.sap_client — phase2_wrong_screen hu=TH0000268054 — re-navigating
+17:50:08 [INFO] core.sap_client — setup_phase2_start
+17:50:13 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:50:13 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:50:14 [INFO] core.sap_client — hu_phase2_ok hu=TH0000268054 duration_ms=5887 phase2_wait=1.0
+17:50:14 [INFO] core.queue_model — pallet_boundary multi_hu pallet=4 count=3 hu_codes=['TH0000268111', 'TH0000267997', 'TH0000268054']
+17:50:18 [INFO] core.sap_client — tx_opened code=/nSP01 current_tx=SP01
+17:50:22 [INFO] core.sap_client — sp01_row_marked row=4 title=CN-CON-003_TH0000268054_20260306001525
+17:50:22 [INFO] core.sap_client — sp01_row_marked row=6 title=CN-CON-003_TH0000267997_20260306001510
+17:50:22 [INFO] core.sap_client — sp01_row_marked row=8 title=CN-CON-003_TH0000268111_20260306001456
+17:50:23 [INFO] core.print_watcher — print_watcher_started idle_timeout=12.0s
+17:50:24 [INFO] core.sap_client — sp01_print_confirmed via=btn[25] marked=3
+17:50:25 [INFO] core.sap_client — sp01_pallet_done result={'status': 'ok', 'message': 'SP01 OK — 3 spool(s) impreso(s)', 'marked': 3} hu_codes=['TH0000268111', 'TH0000267997', 'TH0000268054']
+17:50:25 [INFO] core.queue_model — waiting_for_print_watcher...
+17:50:25 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=1970722
+17:50:25 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=2428158
+17:50:25 [INFO] core.print_watcher — print_dialog_confirmed count=1
+17:50:27 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=7148198
+17:50:27 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=1577112
+17:50:27 [INFO] core.print_watcher — print_dialog_confirmed count=2
+17:50:29 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=4394668
+17:50:29 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=1182642
+17:50:29 [INFO] core.print_watcher — print_dialog_confirmed count=3
+17:50:41 [INFO] core.print_watcher — print_watcher_idle_timeout confirmed=3
+17:50:41 [INFO] core.print_watcher — print_watcher_stopped confirmed=3
+17:50:41 [INFO] core.queue_model — print_watcher_finished confirmed=3
+17:50:41 [INFO] core.queue_model — sp01_pallet_result={'status': 'ok', 'message': 'SP01 OK — 3 spool(s) impreso(s)', 'marked': 3} print_dialogs_confirmed=3
+17:50:41 [INFO] core.queue_model — flush_single_hu_pallets pallets=[2, 3] hu_codes=['2972642050', 'T10045855249']
+17:50:46 [INFO] core.sap_client — tx_opened code=/nSP01 current_tx=SP01
+17:50:49 [INFO] core.sap_client — sp01_row_marked row=10 title=CN-CON-003_T10045855249_20260311195713
+17:50:49 [INFO] core.sap_client — sp01_row_marked row=12 title=CN-CON-003_00000000002972642050_20260402220840
+17:50:50 [INFO] core.print_watcher — print_watcher_started idle_timeout=12.0s
+17:50:51 [INFO] core.sap_client — sp01_print_confirmed via=btn[25] marked=2
+17:50:52 [INFO] core.sap_client — sp01_global_done result={'status': 'ok', 'message': 'SP01 OK — 2 spool(s) impreso(s)', 'marked': 2}
+17:50:52 [INFO] core.queue_model — waiting_for_print_watcher...
+17:50:52 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=6033082
+17:50:53 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=1510352
+17:50:53 [INFO] core.print_watcher — print_dialog_confirmed count=1
+17:50:54 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=1249356
+17:50:54 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=3343820
+17:50:54 [INFO] core.print_watcher — print_dialog_confirmed count=2
+17:51:06 [INFO] core.print_watcher — print_watcher_idle_timeout confirmed=2
+17:51:06 [INFO] core.print_watcher — print_watcher_stopped confirmed=2
+17:51:06 [INFO] core.queue_model — print_watcher_finished confirmed=2
+17:51:06 [INFO] core.queue_model — sp01_flush_result={'status': 'ok', 'message': 'SP01 OK — 2 spool(s) impreso(s)', 'marked': 2} print_dialogs_confirmed=2
+17:51:06 [INFO] core.queue_model — queue_worker_stopped
+17:51:06 [INFO] core.queue_model — queue_worker_stop_requested
