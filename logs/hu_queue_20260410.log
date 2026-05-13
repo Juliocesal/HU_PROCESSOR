@@ -3518,3 +3518,148 @@
 17:16:26 [INFO] core.queue_model — sp01_pallet_result={'status': 'ok', 'message': 'SP01 OK — 4 spool(s) impreso(s)', 'marked': 4} print_dialogs_confirmed=4
 17:16:26 [INFO] core.queue_model — queue_worker_stopped
 17:16:26 [INFO] core.queue_model — queue_worker_stop_requested
+17:50:56 [INFO] core.queue_model — new_pallet id=1
+17:51:07 [INFO] core.queue_model — hu_added hu=2972626795 pallet=1 origin=ITA
+17:51:08 [INFO] core.queue_model — queue_worker_started dynamic_print_mode
+17:51:08 [INFO] core.sap_client — sap_connected system=LUP user=LOPEZHJC
+17:51:08 [INFO] core.queue_model — queue_worker_sap_connected
+17:51:08 [INFO] core.sap_client — setup_phase1_start
+17:51:15 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:51:15 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:51:23 [INFO] core.queue_model — hu_added hu=2972651549 pallet=2 origin=ITA
+17:51:23 [INFO] core.sap_client — hu_phase1_ok hu=2972626795 msg='Packaging data was saved. Material document 7578253617 was created'
+17:51:23 [INFO] core.sap_client — setup_phase2_start
+17:51:26 [INFO] core.queue_model — hu_added hu=2972626799 pallet=3 origin=ITA
+17:51:28 [INFO] core.queue_model — hu_added hu=2972626906 pallet=4 origin=ITA
+17:51:30 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:51:30 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:51:33 [INFO] core.sap_client — hu_phase2_ok hu=2972626795 duration_ms=2890 phase2_wait=1.5
+17:51:33 [INFO] core.queue_model — pallet_boundary single_hu pallet=1 accumulated=[1]
+17:51:33 [INFO] core.sap_client — setup_phase1_start
+17:51:39 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:51:39 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:51:45 [INFO] core.sap_client — hu_phase1_ok hu=2972651549 msg='Packaging data was saved. Material document 7578253985 was created'
+17:51:45 [WARNING] core.sap_client — phase2_wrong_screen hu=2972651549 — re-navigating
+17:51:45 [INFO] core.sap_client — setup_phase2_start
+17:51:51 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:51:51 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:51:54 [INFO] core.sap_client — hu_phase2_ok hu=2972651549 duration_ms=8980 phase2_wait=1.5
+17:51:54 [INFO] core.queue_model — pallet_boundary single_hu pallet=2 accumulated=[1, 2]
+17:51:54 [WARNING] core.sap_client — phase1_wrong_screen hu=2972626799 — re-navigating
+17:51:54 [INFO] core.sap_client — setup_phase1_start
+17:52:00 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:52:00 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:52:09 [INFO] core.sap_client — hu_phase1_ok hu=2972626799 msg='Packaging data was saved. Material document 7578254352 was created'
+17:52:09 [WARNING] core.sap_client — phase2_wrong_screen hu=2972626799 — re-navigating
+17:52:09 [INFO] core.sap_client — setup_phase2_start
+17:52:16 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:52:16 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:52:18 [INFO] core.queue_model — hu_added hu=2972626800 pallet=5 origin=ITA
+17:52:18 [INFO] core.sap_client — hu_phase2_ok hu=2972626799 duration_ms=9036 phase2_wait=1.5
+17:52:18 [INFO] core.queue_model — pallet_boundary single_hu pallet=3 accumulated=[1, 2, 3]
+17:52:18 [WARNING] core.sap_client — phase1_wrong_screen hu=2972626906 — re-navigating
+17:52:18 [INFO] core.sap_client — setup_phase1_start
+17:52:22 [INFO] core.queue_model — hu_added hu=2972626835 pallet=6 origin=ITA
+17:52:25 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:52:25 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:52:30 [INFO] core.sap_client — hu_phase1_ok hu=2972626906 msg='Packaging data was saved. Material document 7578254417 was created'
+17:52:30 [WARNING] core.sap_client — phase2_wrong_screen hu=2972626906 — re-navigating
+17:52:30 [INFO] core.sap_client — setup_phase2_start
+17:52:33 [INFO] core.queue_model — hu_added hu=2972650330 pallet=7 origin=ITA
+17:52:37 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:52:37 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:52:38 [INFO] core.queue_model — hu_added hu=2972650529 pallet=8 origin=ITA
+17:52:39 [INFO] core.sap_client — hu_phase2_ok hu=2972626906 duration_ms=8720 phase2_wait=1.5
+17:52:39 [INFO] core.queue_model — pallet_boundary single_hu pallet=4 accumulated=[1, 2, 3, 4]
+17:52:39 [WARNING] core.sap_client — phase1_wrong_screen hu=2972626800 — re-navigating
+17:52:39 [INFO] core.sap_client — setup_phase1_start
+17:52:45 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:52:45 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:52:54 [INFO] core.sap_client — hu_phase1_ok hu=2972626800 msg='Packaging data was saved. Material document 7578254771 was created'
+17:52:54 [WARNING] core.sap_client — phase2_wrong_screen hu=2972626800 — re-navigating
+17:52:54 [INFO] core.sap_client — setup_phase2_start
+17:53:00 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:53:00 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:53:03 [INFO] core.sap_client — hu_phase2_ok hu=2972626800 duration_ms=8904 phase2_wait=1.5
+17:53:03 [INFO] core.queue_model — pallet_boundary single_hu pallet=5 accumulated=[1, 2, 3, 4, 5]
+17:53:03 [WARNING] core.sap_client — phase1_wrong_screen hu=2972626835 — re-navigating
+17:53:03 [INFO] core.sap_client — setup_phase1_start
+17:53:09 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:53:09 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:53:16 [INFO] core.sap_client — hu_phase1_ok hu=2972626835 msg='Packaging data was saved. Material document 7578254821 was created'
+17:53:16 [WARNING] core.sap_client — phase2_wrong_screen hu=2972626835 — re-navigating
+17:53:16 [INFO] core.sap_client — setup_phase2_start
+17:53:23 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:53:23 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:53:26 [INFO] core.sap_client — hu_phase2_ok hu=2972626835 duration_ms=9004 phase2_wait=1.5
+17:53:26 [INFO] core.queue_model — pallet_boundary single_hu pallet=6 accumulated=[1, 2, 3, 4, 5, 6]
+17:53:26 [WARNING] core.sap_client — phase1_wrong_screen hu=2972650330 — re-navigating
+17:53:26 [INFO] core.sap_client — setup_phase1_start
+17:53:32 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:53:32 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:53:37 [INFO] core.sap_client — hu_phase1_ok hu=2972650330 msg='Packaging data was saved. Material document 7578255374 was created'
+17:53:37 [WARNING] core.sap_client — phase2_wrong_screen hu=2972650330 — re-navigating
+17:53:37 [INFO] core.sap_client — setup_phase2_start
+17:53:44 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:53:44 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:53:46 [INFO] core.sap_client — hu_phase2_ok hu=2972650330 duration_ms=8778 phase2_wait=1.5
+17:53:46 [INFO] core.queue_model — pallet_boundary single_hu pallet=7 accumulated=[1, 2, 3, 4, 5, 6, 7]
+17:53:46 [WARNING] core.sap_client — phase1_wrong_screen hu=2972650529 — re-navigating
+17:53:46 [INFO] core.sap_client — setup_phase1_start
+17:53:53 [INFO] core.sap_client — tx_opened code=/nZMOVEINBHU current_tx=ZMOVEINBHU
+17:53:53 [INFO] core.sap_client — phase1_ready — ctxtP_HU confirmed
+17:53:58 [INFO] core.sap_client — hu_phase1_ok hu=2972650529 msg='Packaging data was saved. Material document 7578255731 was created'
+17:53:58 [WARNING] core.sap_client — phase2_wrong_screen hu=2972650529 — re-navigating
+17:53:58 [INFO] core.sap_client — setup_phase2_start
+17:54:04 [INFO] core.sap_client — tx_opened code=/nZMMTIJSEP current_tx=ZMMTIJSEP
+17:54:04 [INFO] core.sap_client — phase2_ready — txtGV_HU confirmed
+17:54:07 [INFO] core.sap_client — hu_phase2_ok hu=2972650529 duration_ms=8913 phase2_wait=1.5
+17:54:07 [INFO] core.queue_model — pallet_boundary single_hu pallet=8 accumulated=[1, 2, 3, 4, 5, 6, 7, 8]
+17:54:07 [INFO] core.queue_model — flush_single_hu_pallets pallets=[1, 2, 3, 4, 5, 6, 7, 8] hu_codes=['2972626795', '2972651549', '2972626799', '2972626906', '2972626800', '2972626835', '2972650330', '2972650529']
+17:54:13 [INFO] core.sap_client — tx_opened code=/nSP01 current_tx=SP01
+17:54:17 [INFO] core.sap_client — sp01_scan start scroll_max=276
+17:54:18 [INFO] core.sap_client — sp01_scan_done pending=8 completed=0 hu_filter=['2972626795', '2972651549', '2972626799', '2972626906', '2972626800', '2972626835', '2972650330', '2972650529']
+17:54:18 [INFO] core.sap_client — sp01_attempt=0 pending=8 completed=0 expected=8
+17:54:19 [INFO] core.sap_client — sp01_marked scroll=0 row=4 title=CN-CON-003_00000000002972650529_20260411005405
+17:54:19 [INFO] core.sap_client — sp01_marked scroll=0 row=6 title=CN-CON-003_00000000002972650330_20260411005344
+17:54:20 [INFO] core.sap_client — sp01_marked scroll=0 row=8 title=CN-CON-003_00000000002972626835_20260411005324
+17:54:20 [INFO] core.sap_client — sp01_marked scroll=0 row=10 title=CN-CON-003_00000000002972626800_20260411005301
+17:54:21 [INFO] core.sap_client — sp01_marked scroll=0 row=12 title=CN-CON-003_00000000002972626799_20260411005216
+17:54:21 [INFO] core.sap_client — sp01_marked scroll=0 row=14 title=CN-CON-003_00000000002972626906_20260411005237
+17:54:22 [INFO] core.sap_client — sp01_marked scroll=0 row=16 title=CN-CON-003_00000000002972651549_20260411005152
+17:54:23 [INFO] core.sap_client — sp01_marked scroll=0 row=18 title=CN-CON-003_00000000002972626795_20260411005131
+17:54:23 [INFO] core.sap_client — sp01_mark_done total_marked=8
+17:54:26 [INFO] core.print_watcher — print_watcher_started idle_timeout=12.0s expected=8
+17:54:26 [INFO] core.sap_client — sp01_print_confirmed via=btn[25] marked=8
+17:54:28 [INFO] core.sap_client — sp01_global_done result={'status': 'ok', 'message': 'SP01 OK — 8 spool(s) impreso(s)', 'marked': 8}
+17:54:28 [INFO] core.queue_model — waiting_for_print_watcher...
+17:54:30 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=18025486
+17:54:30 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=16059562
+17:54:30 [INFO] core.print_watcher — print_dialog_confirmed count=1
+17:54:32 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=24775914
+17:54:32 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=13893822
+17:54:32 [INFO] core.print_watcher — print_dialog_confirmed count=2
+17:54:34 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=12455762
+17:54:34 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=19796414
+17:54:34 [INFO] core.print_watcher — print_dialog_confirmed count=3
+17:54:36 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=24318084
+17:54:36 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=10553732
+17:54:36 [INFO] core.print_watcher — print_dialog_confirmed count=4
+17:54:37 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=8720708
+17:54:37 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=10291996
+17:54:37 [INFO] core.print_watcher — print_dialog_confirmed count=5
+17:54:39 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=56298952
+17:54:39 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=22612094
+17:54:39 [INFO] core.print_watcher — print_dialog_confirmed count=6
+17:54:41 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=6952396
+17:54:41 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=5706578
+17:54:41 [INFO] core.print_watcher — print_dialog_confirmed count=7
+17:54:43 [INFO] core.print_watcher — method1_BM_CLICK ok_hwnd=11669218
+17:54:43 [INFO] core.print_watcher — confirm_success method=BM_CLICK hwnd=7017932
+17:54:43 [INFO] core.print_watcher — print_dialog_confirmed count=8
+17:54:43 [INFO] core.print_watcher — print_watcher_all_confirmed expected=8 confirmed=8
+17:54:43 [INFO] core.print_watcher — print_watcher_stopped confirmed=8
+17:54:43 [INFO] core.queue_model — print_watcher_finished confirmed=8
+17:54:43 [INFO] core.queue_model — sp01_flush_result={'status': 'ok', 'message': 'SP01 OK — 8 spool(s) impreso(s)', 'marked': 8} print_dialogs_confirmed=8
+17:54:43 [INFO] core.queue_model — queue_worker_stopped
+17:54:44 [INFO] core.queue_model — queue_worker_stop_requested

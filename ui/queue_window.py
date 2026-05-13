@@ -422,7 +422,7 @@ class PipelineRow(QWidget):
 
         defs = [
             ("F1",   "ZMOVEINBHU", "Acknowledge"),
-            ("F2",   "ZMMTJI.SEP", "Spool"),
+            ("F2",   "ZMMTIJSEP", "Spool"),
             ("SP01", "SP01",       "Imprimir"),
         ]
         self._cards = [PhaseCard(*d) for d in defs]
@@ -727,11 +727,8 @@ class FooterBar(QWidget):
         h.setContentsMargins(20, 0, 20, 0)
         h.setSpacing(10)
 
-        self.btn_start    = _foot_btn("▶  INICIAR PROCESO", "primary")
-        self.btn_continue = _foot_btn("▶  CONTINUAR",       "success")
-        self.btn_continue.setVisible(False)
+        self.btn_start = _foot_btn("▶  INICIAR PROCESO", "primary")
         h.addWidget(self.btn_start)
-        h.addWidget(self.btn_continue)
 
         self._lbl = QLabel("■  Proceso detenido.")
         self._lbl.setStyleSheet(f"font-size:9pt; color:{C.MUTED}; background:transparent;")
@@ -950,7 +947,6 @@ class QueueWindow(QMainWindow):
         # Footer
         self._footer = FooterBar()
         self._footer.btn_start.clicked.connect(self._start)
-        self._footer.btn_continue.clicked.connect(self._cont)
         self._footer.btn_stop.clicked.connect(self._stop)
         self._footer.btn_reprocess.clicked.connect(self._reprocess)
         self._footer.btn_clear.clicked.connect(self._clear)
@@ -1006,10 +1002,10 @@ class QueueWindow(QMainWindow):
         self._scan_card = self._make_scan_card()
         r2.addWidget(self._scan_card, stretch=3)
 
-        self._kpi_total   = KPICard("Total",      "Unidades",   "0", C.BLUE_HOVER)
+        self._kpi_total   = KPICard("Total",      "HUs",   "0", C.BLUE_HOVER)
         self._kpi_ok      = KPICard("Procesadas", "Completadas","0", C.GREEN_TEXT)
         self._kpi_err     = KPICard("Errores",    "Fallos",     "0", C.MUTED)
-        self._kpi_pend    = KPICard("Pendientes", "En cola",    "0", C.MUTED)
+        self._kpi_pend    = KPICard("Pendientes", "En fila",    "0", C.MUTED)
 
         for k in [self._kpi_total, self._kpi_ok, self._kpi_err, self._kpi_pend]:
             r2.addWidget(k, stretch=1)
@@ -1241,7 +1237,7 @@ class QueueWindow(QMainWindow):
 
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels([
-            "Pallet", "Origen", "Código HU", "F1 — ZMOVEINBHU", "F2 — ZMMTJI.SEP"
+            "Pallet", "Origen", "Código HU", "F1 — ZMOVEINBHU", "F2 — ZMMTIJSEP"
         ])
 
         self.table.setStyleSheet(f"""
@@ -1911,8 +1907,11 @@ class QueueWindow(QMainWindow):
                 ProgressCard.MODE_RUNNING
             )
         elif item.status == "error":
-            # Error capturado - no mostrar en progreso
-            pass
+            # 🔴 Error capturado — actualizar barra de progreso para mostrar que se detuvo
+            self._set_mode(
+                f"❌ ERROR en HU {item.hu_code}: {(item.phase1_msg or item.phase2_msg or 'Sin detalles')[:60]}",
+                ProgressCard.MODE_STOPPED
+            )
 
     # ── KPIs + progreso ───────────────────────────────────────────────────────
 
@@ -1970,25 +1969,16 @@ class QueueWindow(QMainWindow):
     def _stop(self, update_footer=True):
         self._worker.stop()
         self._set_running(False)
-        self._set_paused(False)
         self._prog.set_mode(ProgressCard.MODE_STOPPED, "Proceso detenido.")
         if update_footer:
             self._footer.set_status("■  Proceso detenido.", C.MUTED)
 
-    def _cont(self):
-        self._set_paused(False)
-        self._worker.resume()
-        self._set_mode("Reanudando proceso...", ProgressCard.MODE_RUNNING)
-
     def _on_pallet_done(self, pid: int):
-        self._set_paused(True)
         codes = self._queue.get_hu_codes_for_pallet(pid)
-        lst = ", ".join(codes[:3]) + (f" +{len(codes)-3} más" if len(codes) > 3 else "")
-        # Actualizar el separador del pallet para mostrar tiempo de procesamiento
         self._update_pallet_separator(pid)
         self._set_mode(
-            f"Pallet {pid} impreso ({len(codes)} HUs) — Presiona ▶ CONTINUAR.",
-            ProgressCard.MODE_PAUSED
+            f"Pallet {pid} impreso ({len(codes)} HUs).",
+            ProgressCard.MODE_RUNNING
         )
 
     def _on_sp01(self, result: dict):
@@ -2045,11 +2035,6 @@ class QueueWindow(QMainWindow):
         Se mantiene por compatibilidad.
         """
         self._update_action_buttons()
-
-    def _set_paused(self, p: bool):
-        self._footer.btn_continue.setVisible(p)
-        self._footer.btn_start.setVisible(not p)
-        self._footer.btn_stop.setEnabled(not p)
 
     # ── Exportar ──────────────────────────────────────────────────────────────
 

@@ -1,12 +1,4 @@
-"""
-main_queue.py — Sistema de cola de HUs en tiempo real
 
-Uso:
-    python main_queue.py
-
-Requisitos:
-    pip install PyQt6 pywin32
-"""
 
 import sys
 import logging
@@ -46,6 +38,12 @@ def main():
         pass
 
     setup_logging()
+
+    from core.pdf_receipt import verify_sumatra_on_startup
+
+    if not verify_sumatra_on_startup():
+        # Decide si quieres continuar o salir
+        pass
 
     missing = []
     try:

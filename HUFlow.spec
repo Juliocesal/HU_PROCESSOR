@@ -5,7 +5,7 @@ a = Analysis(
     ['main_queue.py'],
     pathex=[],
     binaries=[],
-    datas=[('ui', 'ui'), ('core', 'core')],
+    datas=[('ui', 'ui'), ('core', 'core'), ('vendors', 'vendors')],
     hiddenimports=['ui.utils'],
     hookspath=[],
     hooksconfig={},

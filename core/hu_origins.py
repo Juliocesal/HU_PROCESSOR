@@ -3,7 +3,7 @@ core/hu_origins.py
 Detecta el origen y comportamiento de pallet de una HU
 basado en su prefijo.
 
-Reglas de negocio:
+Reglas:
   T100...  → China (THA/CNA)  — multi-HU por pallet, separador manual
   C10...   → Atlanta (ATL)    — híbrido 1-10+ HUs, separador manual
   29...    → Italia (ITA)     — siempre 1 HU por pallet (auto-pallet)
@@ -35,11 +35,11 @@ ORIGIN_RULES: list[tuple[str, Origin]] = [
     ("T", Origin("CNA", "China (CNA)", auto_pallet=False, color="#BDD7EE", 
                     phase2_wait=1.0, wait_long=0.5, wait_short=0.5, wait_tree=1.0, wait_sp01_refresh=1.5)),
     ("C10",  Origin("BRA/ATL", "ATL, (BRA/ATL)", auto_pallet=False, color="#C6EFCE", 
-                    phase2_wait=1.5, wait_long=1.4, wait_short=1.4, wait_tree=4.5, wait_sp01_refresh=4.5)),
+                    phase2_wait=0.8, wait_long=0.5, wait_short=1.3, wait_tree=2.0, wait_sp01_refresh=3.0)),
     ("29",   Origin("ITA", "Italia (ITA)", auto_pallet=True, color="#FFEB9C", 
-                    phase2_wait=1.5, wait_long=1.6, wait_short=1.6, wait_tree=4.5, wait_sp01_refresh=4.0)),
+                    phase2_wait=1.0, wait_long=0.5, wait_short=1.0, wait_tree=2.5, wait_sp01_refresh=3.0)),
     ("ELPS", Origin("FHR", "Foothill Ranch (ELPS)", auto_pallet=True, color="#F4B084", 
-                    phase2_wait=1.5, wait_long=1.6, wait_short=1.6, wait_tree=4.5, wait_sp01_refresh=4.0)),
+                    phase2_wait=1.0, wait_long=0.5, wait_short=1.0, wait_tree=2.5, wait_sp01_refresh=3.0)),
 ]
 UNKNOWN_ORIGIN = Origin("UNK", "Desconocido", auto_pallet=False, color="#E2EFDA", 
                         phase2_wait=2.0, wait_long=1.0, wait_short=1.0, wait_tree=3.0, wait_sp01_refresh=3.0)
@@ -75,3 +75,25 @@ def needs_auto_pallet(hu_code: str) -> bool:
     Aplica a Italia (prefijo 29).
     """
     return detect_origin(hu_code).auto_pallet
+
+
+ATL_FAST_CODES = {"BRA/ATL"}  # Orígenes que usan tiempos rápidos cuando pallet_size > 1
+
+
+def resolve_effective_origin(origin: Origin, pallet_size: int) -> Origin:
+    """
+    Devuelve el Origin efectivo considerando el tamaño del pallet.
+
+    Regla de negocio:
+      ATL con pallet_size > 1  → usar tiempos de THA (rápido),
+                                  porque los HUs son de 1 pieza y cargan rápido.
+      Cualquier otro caso       → devolver el origin sin cambios.
+    """
+    if origin.code in ATL_FAST_CODES and pallet_size > 1:
+        # Buscar THA en las reglas para no hardcodear los valores
+        for _, o in ORIGIN_RULES:
+            if o.code == "THA":
+                return o
+        # Fallback por si THA no existe en las reglas (no debería ocurrir)
+        return origin
+    return origin

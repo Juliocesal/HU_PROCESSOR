@@ -1,0 +1,13 @@
+# Configuración local (no versionada)
+user_config.ini
+.vscode/
+*.pyc
+__pycache__/
+*.egg-info/
+dist/
+build/
+*.pdf
+.pytest_cache/
+logs/*.log
+*.tmp
+.env

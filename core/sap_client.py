@@ -1,42 +1,9 @@
-"""
-core/sap_client.py — flujo idéntico al VBA original, con tiempos de espera mayores.
-
-CORRECCIONES APLICADAS vs versión anterior:
-────────────────────────────────────────────
-1. _sp01_scan_all_rows → retorna ScanResult con "pending" y "completed_count".
-
-2. Early exit en el scan cuando ya se encontraron todos los HU del filtro.
-
-3. _sp01_mark_and_print detecta "todos ya Completed" y retorna already_done.
-
-4. El bucle de reintentos considera pending + completed >= expected_count.
-
-5. _sp01_open_spool_list: eliminada doble espera redundante.
-
-6. _abrir_transaccion: acepta origin opcional y usa sus tiempos específicos.
-   setup_phase1 / setup_phase2 / _sp01_open_spool_list propagan el origin.
-
-7. process_hu_phase1 / process_hu_phase2: findById defensivo, variable wnd
-   renombrada a wnd_back para evitar reutilización ambigua del mismo nombre.
-
-8. _close_all_popups: límite 5 intentos, sleep 0.2s.
-
-9. check_session: try/finally con CoUninitialize para no acumular referencias COM.
-
-10. TypedDicts: Phase1Result, Phase2Result, SP01Result para retornos tipados
-    coherentes entre las tres fases. ScanResult ya existía.
-
-11. _sp01_scan_all_rows: match de HU por palabra completa (token boundary) para
-    evitar falsos positivos cuando un HU es prefijo de otro código más largo.
-
-12. _get_origin_timings: si ya se recibe un Origin resuelto, se evita llamar
-    detect_origin() de nuevo (innecesario en el hot path).
-"""
-
 import time
 import logging
 import pythoncom
 import win32com.client
+from datetime import datetime
+from datetime import timedelta
 from typing import Callable, TypedDict
 from .hu_origins import Origin, detect_origin, UNKNOWN_ORIGIN
 
@@ -63,6 +30,12 @@ FIELD_F1_HU      = "wnd[0]/usr/ctxtP_HU"
 FIELD_F2_HU      = "wnd[0]/usr/txtGV_HU"
 SP01_REFRESH_BTN = "wnd[0]/tbar[1]/btn[45]"
 
+# Campo de filtro de hora en SP01
+FIELD_RQCRTS = (
+    "wnd[0]/usr/tabsTABSTRIP_BL1/tabpSCR1"
+    "/ssub%_SUBSCREEN_BL1:RSPOSP01NR:0100/ctxtP_RQCRTS"
+)
+
 # ALV grid de ZMOVEINBHU
 ALV_GRID_PATH   = "wnd[0]/usr/cntlCC_ALV/shellcont/shell"
 ALV_MSG_COLUMNS = ["MESSAGE", "MSG_TEXT", "TEXT", "MSGTEXT", "DESCRIPTION", "MAKTX"]
@@ -74,22 +47,21 @@ ALV_ERROR_KEYWORDS = [
     "deficit", "error", "not found", "no existe", "bloqueado",
     "locked", "incorrect", "invalid", "no se encontró",
     "quantity", "cantidad", "warehouse", "stock",
-    "wrong",       # "Wrong HU"
-    "not allowed", # acceso denegado
+    "wrong",
+    "not allowed",
     "no permitido",
-    "exceeded",    # cantidad excedida
-    "missing",     # campo faltante
+    "exceeded",
+    "missing",
 ]
 
 
 # ── TypedDicts para retornos estructurados ────────────────────────────────────
 
 class ScanResult(TypedDict):
-    pending:         list[tuple[int, int, str]]  # (scroll_pos, screen_row, title)
-    completed_count: int                          # spools del filtro ya en Completed
+    pending:         list[tuple[int, int, str]]
+    completed_count: int
 
 
-# MEJORA 10: TypedDicts específicos por fase para retornos coherentes
 class Phase1Result(TypedDict):
     status:  str   # "ok" | "duplicate" | "hu_not_found" | "error"
     message: str
@@ -97,9 +69,11 @@ class Phase1Result(TypedDict):
 
 
 class Phase2Result(TypedDict):
-    status:      str   # "ok" | "error"
+    status:      str       # "ok" | "error"
     message:     str
     duration_ms: int
+    phase2_ts:   datetime  # timestamp del inicio de F2 ajustado para SP01.
+                           # datetime.min si status == "error" — no usar en ese caso.
 
 
 class SP01Result(TypedDict):
@@ -112,11 +86,29 @@ class SAPConnectionError(Exception):
     pass
 
 
+# ── Centinela de timestamp inválido ───────────────────────────────────────────
+# Usar datetime.min como valor explícito en Phase2Result cuando F2 falla.
+# Si alguien intenta usarlo en SP01, el filtro de hora será "00:00:00" del año 1,
+# lo que fallará ruidosamente en SAP en lugar de filtrar spools incorrectos.
+_INVALID_TS = datetime.min
+
+
+def _make_phase2_ts() -> datetime:
+    """
+    Retorna el timestamp de inicio de F2 ajustado para el filtro SP01.
+    Se resta 1 minuto para asegurar que el spool ya generado quede
+    dentro del rango de búsqueda de SP01.
+    """
+    return datetime.now() - timedelta(minutes=1)
+
+
 class SAPClient:
 
     def __init__(self):
-        self._session = None
-        self._usuario = ""
+        self._session  = None
+        self._usuario  = ""
+        # NOTA: _phase2_ts eliminado — el timestamp ahora fluye
+        # explícitamente como parámetro en Phase2Result → execute_sp01*.
 
     # ── Conexión ──────────────────────────────────────────────────────────────
 
@@ -158,13 +150,6 @@ class SAPClient:
     def _get_origin_timings(
         self, origin: Origin | None = None, hu_code: str = ""
     ) -> tuple[float, float, float, float]:
-        """
-        Obtiene los tiempos de espera específicos del origen.
-        Retorna: (wait_long, wait_short, wait_tree, wait_sp01_refresh)
-
-        MEJORA 12: si ya se recibe un Origin resuelto, no llama detect_origin()
-        de nuevo — evita re-detección redundante en el hot path.
-        """
         if origin is None:
             origin = detect_origin(hu_code) if hu_code else UNKNOWN_ORIGIN
         return (origin.wait_long, origin.wait_short, origin.wait_tree, origin.wait_sp01_refresh)
@@ -172,7 +157,6 @@ class SAPClient:
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _find(self, element_id: str):
-        """findById seguro — devuelve None en lugar de lanzar excepción."""
         try:
             return self.session.findById(element_id)
         except Exception:
@@ -201,7 +185,6 @@ class SAPClient:
         return self._find("wnd[1]")
 
     def _close_all_popups(self) -> None:
-        """Límite de 5 intentos, sleep 0.2s para no bloquear sin popups."""
         for _ in range(5):
             popup = self._get_popup()
             if popup is None:
@@ -213,7 +196,7 @@ class SAPClient:
             except Exception:
                 break
 
-    # ── Lectura del ALV grid de ZMOVEINBHU ───────────────────────────────────
+    # ── ALV grid de ZMOVEINBHU ────────────────────────────────────────────────
 
     def _get_alv_message(self) -> str:
         try:
@@ -232,6 +215,20 @@ class SAPClient:
                 icon_val = str(shell.getCellValue(0, "ICON")).strip()
             except Exception:
                 pass
+
+            if icon_val == SAP_ICON_ERROR:
+                msg_text = ""
+                for col in ALV_MSG_COLUMNS:
+                    try:
+                        val = shell.getCellValue(0, col)
+                        if val and str(val).strip():
+                            msg_text = str(val).strip()
+                            break
+                    except Exception:
+                        continue
+                error_msg = f"{SAP_ICON_ERROR} {msg_text}" if msg_text else f"{SAP_ICON_ERROR} Error en SAP (hexágono rojo)"
+                log.warning(f"alv_error_detected icon={SAP_ICON_ERROR} msg='{error_msg}'")
+                return error_msg
 
             msg_text = ""
             for col in ALV_MSG_COLUMNS:
@@ -261,14 +258,14 @@ class SAPClient:
         msg_lower = alv_message.lower()
         return any(kw in msg_lower for kw in ALV_ERROR_KEYWORDS)
 
-    # ── Navegación — replica EXACTA del VBA ──────────────────────────────────
+    # ── Navegación ────────────────────────────────────────────────────────────
 
     def _abrir_transaccion(self, tx_code: str, origin: Origin | None = None) -> None:
-        """
-        MEJORA 6: acepta origin opcional para usar sus tiempos específicos.
-        Si no se pasa origin, usa las constantes globales como antes.
-        """
-        wait_long, _, wait_tree, _ = self._get_origin_timings(origin) if origin else (WAIT_LONG, WAIT_SHORT, WAIT_TREE, WAIT_SP01_REFRESH)
+        wait_long, _, wait_tree, _ = (
+            self._get_origin_timings(origin)
+            if origin
+            else (WAIT_LONG, WAIT_SHORT, WAIT_TREE, WAIT_SP01_REFRESH)
+        )
 
         okcd = self._find("wnd[0]/tbar[0]/okcd")
         if okcd:
@@ -283,10 +280,6 @@ class SAPClient:
         log.info(f"tx_opened code={tx_code} current_tx={self._session.Info.Transaction}")
 
     def _navegar_nodo(self, node_id: str, origin: Origin | None = None) -> bool:
-        """
-        MEJORA 6: acepta origin opcional para usar wait_long específico al
-        esperar que el nodo cargue después del doble click.
-        """
         wait_long = origin.wait_long if origin else WAIT_LONG
 
         tree = self._find(TREE_PATH)
@@ -308,10 +301,6 @@ class SAPClient:
     # ── Setup de fases ────────────────────────────────────────────────────────
 
     def setup_phase1(self, origin: Origin | None = None) -> None:
-        """
-        MEJORA 6: propaga origin a _abrir_transaccion y _navegar_nodo para que
-        ITA/ATL usen sus tiempos de navegación correctos (wait_tree=5-6s).
-        """
         log.info("setup_phase1_start")
         self._close_all_popups()
         try:
@@ -332,9 +321,6 @@ class SAPClient:
             log.warning(f"phase1_field_not_visible sbar='{self._get_sbar_text()}'")
 
     def setup_phase2(self, origin: Origin | None = None) -> None:
-        """
-        MEJORA 6: propaga origin a _abrir_transaccion y _navegar_nodo.
-        """
         log.info("setup_phase2_start")
         self._close_all_popups()
 
@@ -351,11 +337,6 @@ class SAPClient:
     # ── Fase 1: ZMOVEINBHU ────────────────────────────────────────────────────
 
     def process_hu_phase1(self, hu_code: str, origin: Origin | None = None) -> Phase1Result:
-        """
-        MEJORA 10: retorna Phase1Result (TypedDict) en lugar de dict libre.
-        MEJORA 7:  variable wnd_back para el sendVKey de navegación de retorno,
-                   evitando reutilizar 'wnd' del envío inicial.
-        """
         wait_long, wait_short, _, _ = self._get_origin_timings(origin, hu_code)
 
         try:
@@ -375,7 +356,6 @@ class SAPClient:
             campo_hu.Text = hu_code
             campo_hu.caretPosition = len(hu_code)
 
-            # MEJORA 7: wnd_submit para el envío inicial — nombre explícito
             wnd_submit = self._find("wnd[0]")
             if wnd_submit is None:
                 return Phase1Result(status="error", message="wnd[0] no disponible", sbar="")
@@ -394,7 +374,6 @@ class SAPClient:
                 except Exception:
                     pass
 
-                # Leer el texto del mensaje dentro del popup (lbl[1,2] es el texto estándar)
                 msg_lbl = self._find("wnd[1]/usr/txtMESSTXT1")
                 if msg_lbl is None:
                     msg_lbl = self._find("wnd[1]/usr/lbl[1,2]")
@@ -404,23 +383,16 @@ class SAPClient:
                     except Exception:
                         pass
 
-                # Cerrar el popup (igual en ambos casos)
                 wnd1 = self._find("wnd[1]")
                 if wnd1:
                     wnd1.sendVKey(0)
                     self._wait_idle()
                     time.sleep(wait_short)
 
-                # Distinguir el tipo de popup por su contenido
                 combined = (popup_text + " " + popup_title).lower()
-
                 HU_NOT_EXIST_KEYWORDS = [
-                    "does not exist",
-                    "no existe",
-                    "not found",
-                    "no encontrado",
+                    "does not exist", "no existe", "not found", "no encontrado",
                 ]
-
                 is_not_found = any(kw in combined for kw in HU_NOT_EXIST_KEYWORDS)
 
                 if is_not_found:
@@ -434,7 +406,6 @@ class SAPClient:
                         sbar=sbar,
                     )
                 else:
-                    # Todo lo demás (incluye "does not contain positions") → duplicate
                     log.info(
                         f"hu_phase1_duplicate hu={hu_code} "
                         f"popup_title='{popup_title}' popup_text='{popup_text}'"
@@ -448,16 +419,15 @@ class SAPClient:
             else:
                 alv_message = self._get_alv_message()
 
-                # MEJORA 7: wnd_back para el sendVKey de retorno — nombre distinto
                 if alv_message and self._is_alv_error(alv_message):
-                    log.warning(f"hu_phase1_error_alv hu={hu_code} msg='{alv_message}'")
+                    error_type = "SAP_AUTHORIZATION_DENIED" if SAP_ICON_ERROR in alv_message else "ALV_ERROR"
+                    log.warning(f"hu_phase1_error_alv hu={hu_code} type={error_type} msg='{alv_message}'")
                     wnd_back = self._find("wnd[0]")
                     if wnd_back:
                         wnd_back.sendVKey(3)
                     self._wait_idle()
                     time.sleep(wait_short)
                     return Phase1Result(status="error", message=alv_message, sbar=sbar)
-
                 else:
                     ok_msg = alv_message if alv_message else "OK"
                     wnd_back = self._find("wnd[0]")
@@ -472,7 +442,13 @@ class SAPClient:
             log.error(f"hu_phase1_error hu={hu_code} error={e}")
             return Phase1Result(status="error", message=f"ERROR: {e}", sbar="")
 
-    # ── Fase 2: ZMMTIJSEP ────────────────────────────────────────────────────
+    # ── Fase 2: ZMMTIJSEP ─────────────────────────────────────────────────────
+    #
+    # CAMBIO CLAVE: el timestamp de F2 ya no se guarda en self._phase2_ts.
+    # Se captura localmente y se retorna en Phase2Result["phase2_ts"].
+    # Si F2 falla, phase2_ts = datetime.min (centinela explícito).
+    # El worker lo almacena por pallet_id y lo pasa a execute_sp01*.
+    # ──────────────────────────────────────────────────────────────────────────
 
     def process_hu_phase2(
         self,
@@ -480,14 +456,14 @@ class SAPClient:
         phase2_wait: float | None = None,
         origin: Origin | None = None,
     ) -> Phase2Result:
-        """
-        MEJORA 10: retorna Phase2Result (TypedDict).
-        MEJORA 7:  wnd_submit nombre explícito para el sendVKey de envío.
-        """
         _, wait_short, _, _ = self._get_origin_timings(origin, hu_code)
 
         if phase2_wait is None:
             phase2_wait = origin.phase2_wait if origin else WAIT_SHORT
+
+        # Capturar timestamp localmente — no se almacena en self
+        phase2_ts = _make_phase2_ts()
+        log.info("phase2_timestamp_captured ts=%s", phase2_ts.strftime("%d.%m.%Y %H:%M:%S"))
 
         t_start = time.time()
         try:
@@ -502,18 +478,19 @@ class SAPClient:
                         status="error",
                         message=f"No se encontró campo HU. SAP: '{sbar}'",
                         duration_ms=int((time.time() - t_start) * 1000),
+                        phase2_ts=_INVALID_TS,
                     )
 
             campo_hu.Text = hu_code
             campo_hu.caretPosition = len(hu_code)
 
-            # MEJORA 7: nombre explícito para el wnd de envío
             wnd_submit = self._find("wnd[0]")
             if wnd_submit is None:
                 return Phase2Result(
                     status="error",
                     message="wnd[0] no disponible",
                     duration_ms=int((time.time() - t_start) * 1000),
+                    phase2_ts=_INVALID_TS,
                 )
             wnd_submit.sendVKey(0)
 
@@ -525,6 +502,7 @@ class SAPClient:
                     status="error",
                     message="TIMEOUT: SAP no respondió en 15s",
                     duration_ms=int((time.time() - t_start) * 1000),
+                    phase2_ts=_INVALID_TS,
                 )
 
             elapsed = time.time() - t_start
@@ -535,26 +513,55 @@ class SAPClient:
 
             duration = int((time.time() - t_start) * 1000)
             log.info(f"hu_phase2_ok hu={hu_code} duration_ms={duration} phase2_wait={phase2_wait}")
-            return Phase2Result(status="ok", message="OK", duration_ms=duration)
+            return Phase2Result(
+                status="ok",
+                message="OK",
+                duration_ms=duration,
+                phase2_ts=phase2_ts,   # timestamp válido solo en éxito
+            )
 
         except Exception as e:
             duration = int((time.time() - t_start) * 1000)
             log.error(f"hu_phase2_error hu={hu_code} error={e}")
-            return Phase2Result(status="error", message=f"ERROR: {e}", duration_ms=duration)
+            return Phase2Result(
+                status="error",
+                message=f"ERROR: {e}",
+                duration_ms=duration,
+                phase2_ts=_INVALID_TS,
+            )
 
     # ── Fase 3: SP01 ─────────────────────────────────────────────────────────
+    #
+    # CAMBIO CLAVE: phase2_ts es parámetro obligatorio en todos los métodos
+    # de SP01. _sp01_open_spool_list ya no lee self._phase2_ts.
+    # ──────────────────────────────────────────────────────────────────────────
 
-    def _sp01_open_spool_list(self, origin: Origin | None = None) -> None:
+    def _sp01_open_spool_list(
+        self,
+        phase2_ts: datetime,
+        origin: Origin | None = None,
+    ) -> None:
         """
-        Abre SP01 y navega hasta la lista de spools.
+        Abre SP01, escribe la hora de Fase 2 directamente en P_RQCRTS y
+        ejecuta la búsqueda con F8.
 
-        MEJORA 6: acepta origin para usar wait_long específico del origen al
-        esperar que cargue la lista (ITA/ATL tardan más que THA/CNA).
-        Eliminada la doble espera redundante de la versión anterior.
+        Args:
+            phase2_ts: timestamp capturado en process_hu_phase2 para el
+                       pallet que se está imprimiendo. Nunca debe ser
+                       datetime.min — el caller es responsable de validarlo.
         """
         wait_long = origin.wait_long if origin else WAIT_LONG
 
+        # Guardia defensiva: loguear si recibimos el centinela inválido
+        if phase2_ts == _INVALID_TS:
+            log.error(
+                "sp01_open_spool_list recibió datetime.min (centinela inválido). "
+                "Usando datetime.now() como fallback de emergencia."
+            )
+            phase2_ts = datetime.now() - timedelta(minutes=1)
+
         self._abrir_transaccion(TX_SP01, origin=origin)
+
         wnd = self._find("wnd[0]")
         if wnd:
             try:
@@ -564,6 +571,25 @@ class SAPClient:
         self._wait_idle()
         time.sleep(wait_long)
 
+        # Formato de hora para el campo SP01
+        hh = str(phase2_ts.hour).zfill(2)
+        mm = str(phase2_ts.minute).zfill(2)
+        ss = str(phase2_ts.second).zfill(2)
+        time_str = f"{hh}:{mm}:{ss}"
+        log.info("sp01_time_filter ts=%s", time_str)
+
+        field_rqcrts = self._find(FIELD_RQCRTS)
+        if field_rqcrts is not None:
+            try:
+                field_rqcrts.text = time_str
+                field_rqcrts.setFocus()
+                field_rqcrts.caretPosition = 8
+                log.info("sp01_rqcrts_set time='%s'", time_str)
+            except Exception as e:
+                log.warning("sp01_rqcrts_set_failed error=%s", e)
+        else:
+            log.warning("sp01_rqcrts_field_not_found — time filter skipped")
+
         wnd = self._find("wnd[0]")
         if wnd:
             wnd.sendVKey(8)
@@ -571,7 +597,6 @@ class SAPClient:
         time.sleep(wait_long)
 
     def _sp01_refresh(self) -> None:
-        """Recarga la lista de spools (equivalente al btn[45] del VBA)."""
         btn = self._find(SP01_REFRESH_BTN)
         if btn:
             btn.press()
@@ -581,41 +606,14 @@ class SAPClient:
             log.warning("sp01_refresh_btn_not_found")
 
     def _hu_matches_title(self, hu: str, title_upper: str) -> bool:
-        """
-        Comprueba que 'hu' coincide con 'title_upper' de dos formas:
-        
-        1. MEJORA 11 (Token boundary): HU como token completo separado
-           (evita false positives como T100123 vs T1001234-EXTRA).
-        
-        2. Zero-padded: el título puede contener el HU con ceros a la izquierda
-           (ej: título tiene 00000000002972642139, HU es 2972642139).
-           
-        Esto resuelve el problema donde SAP exporta números con padding
-        pero el HU escaneado no tiene ese padding.
-        """
         import re
-        
-        # Match exacto por token boundary
         pattern = r'(?<![A-Z0-9])' + re.escape(hu) + r'(?![A-Z0-9])'
         if re.search(pattern, title_upper):
             return True
-        
-        # Match zero-padded: el título puede contener 00000000002972642139
-        # cuando el HU es 2972642139
         zero_pattern = r'0+' + re.escape(hu) + r'(?![A-Z0-9])'
         return bool(re.search(zero_pattern, title_upper))
 
     def _sp01_scan_all_rows(self, hu_upper: list[str] | None) -> ScanResult:
-        """
-        Recorre TODA la tabla de spools haciendo scroll posición a posición.
-
-        Retorna ScanResult con:
-          "pending"         → spools a marcar (no completados, coinciden con filtro)
-          "completed_count" → spools del filtro que ya están en estado Completed
-
-        Aplica early exit cuando ya se encontraron todos los HU del filtro.
-        MEJORA 11: usa _hu_matches_title() para match por token completo.
-        """
         usr_area = self._find("wnd[0]/usr")
         if usr_area is None:
             log.warning("sp01_scan — no usr area")
@@ -626,15 +624,14 @@ class SAPClient:
             vscroll = usr_area.verticalScrollbar
             scroll_max = int(vscroll.maximum) if vscroll else 0
         except Exception:
-            scroll_max = 30  # fallback conservador
+            scroll_max = 30
 
         log.info(f"sp01_scan start scroll_max={scroll_max}")
 
         seen_titles: set[str] = set()
         pending: list[tuple[int, int, str]] = []
-        completed_count = 0
-
-        total_expected = len(hu_upper) if hu_upper else None
+        completed_count  = 0
+        total_expected   = len(hu_upper) if hu_upper else None
 
         for pos in range(0, scroll_max + 1):
             try:
@@ -655,7 +652,7 @@ class SAPClient:
                 found_any_checkbox = True
 
                 title_text = ""
-                title_obj = self._find(f"wnd[0]/usr/lbl[49,{row}]")
+                title_obj  = self._find(f"wnd[0]/usr/lbl[49,{row}]")
                 if title_obj:
                     try:
                         title_text = str(title_obj.Text).strip()
@@ -667,10 +664,8 @@ class SAPClient:
                 if title_upper in seen_titles:
                     row += 2
                     continue
-
                 seen_titles.add(title_upper)
 
-                # MEJORA 11: token boundary match en lugar de substring
                 match = (hu_upper is None) or any(
                     self._hu_matches_title(hu, title_upper) for hu in hu_upper
                 )
@@ -679,7 +674,7 @@ class SAPClient:
                     continue
 
                 status_text = ""
-                status_obj = self._find(f"wnd[0]/usr/lbl[36,{row}]")
+                status_obj  = self._find(f"wnd[0]/usr/lbl[36,{row}]")
                 if status_obj:
                     try:
                         status_text = str(status_obj.Text).strip().lower()
@@ -688,14 +683,10 @@ class SAPClient:
 
                 if "compl" in status_text:
                     completed_count += 1
-                    log.debug(
-                        f"sp01_scan_completed scroll={pos} row={row} title={title_text[:60]}"
-                    )
+                    log.debug(f"sp01_scan_completed scroll={pos} row={row} title={title_text[:60]}")
                 else:
                     pending.append((pos, row, title_text))
-                    log.debug(
-                        f"sp01_scan_hit scroll={pos} row={row} title={title_text[:60]}"
-                    )
+                    log.debug(f"sp01_scan_hit scroll={pos} row={row} title={title_text[:60]}")
 
                 row += 2
 
@@ -727,11 +718,7 @@ class SAPClient:
         return ScanResult(pending=pending, completed_count=completed_count)
 
     def _sp01_mark_rows(self, rows: list[tuple[int, int, str]]) -> int:
-        """
-        Vuelve a cada (scroll_pos, screen_row), hace scroll y marca el checkbox.
-        Retorna el número de checkboxes marcados con éxito.
-        """
-        marked  = 0
+        marked   = 0
         last_chk = None
 
         for (scroll_pos, screen_row, title_text) in rows:
@@ -757,7 +744,7 @@ class SAPClient:
                     f"got='{current_title[:40]}' — scanning visible rows"
                 )
                 found = False
-                row = 4
+                row   = 4
                 while True:
                     t_obj = self._find(f"wnd[0]/usr/lbl[49,{row}]")
                     if t_obj is None:
@@ -781,7 +768,7 @@ class SAPClient:
                 try:
                     chk_obj.selected = True
                     last_chk = chk_obj
-                    marked += 1
+                    marked  += 1
                     log.info(
                         f"sp01_marked scroll={scroll_pos} row={screen_row} "
                         f"title={title_text[:60]}"
@@ -813,24 +800,16 @@ class SAPClient:
         print_watcher_start: Callable | None = None,
         origin: Origin | None = None,
     ) -> SP01Result:
-        """
-        Recorre la tabla de spools con scroll completo, espera hasta tener
-        expected_count spools pendientes (o detecta que ya están todos Completed),
-        los marca y los imprime.
-
-        MEJORA 10: retorna SP01Result (TypedDict).
-        """
         _, _, _, wait_sp01_refresh = self._get_origin_timings(
             origin, hu_filter[0] if hu_filter else ""
         )
 
         hu_upper = [h.strip().upper() for h in hu_filter] if hu_filter else None
-
-        attempt = 0
+        attempt  = 0
         scan: ScanResult = ScanResult(pending=[], completed_count=0)
 
         while True:
-            scan = self._sp01_scan_all_rows(hu_upper)
+            scan            = self._sp01_scan_all_rows(hu_upper)
             pending_count   = len(scan["pending"])
             completed_count = scan["completed_count"]
             total_found     = pending_count + completed_count
@@ -840,7 +819,6 @@ class SAPClient:
                 f"completed={completed_count} expected={expected_count}"
             )
 
-            # Todos ya están Completed — salir inmediatamente sin gastar reintentos
             if expected_count > 0 and completed_count >= expected_count and pending_count == 0:
                 log.info(
                     f"sp01_all_already_completed completed={completed_count} "
@@ -852,15 +830,12 @@ class SAPClient:
                     marked=0,
                 )
 
-            # Hay suficientes spools en total (algunos pendientes, otros completados)
             if expected_count > 0 and total_found >= expected_count:
                 break
 
-            # Sin mínimo requerido: proceder con lo que hay
             if expected_count == 0:
                 break
 
-            # Faltan spools — esperar y reintentar
             if attempt < max_retries:
                 attempt += 1
                 log.warning(
@@ -881,7 +856,6 @@ class SAPClient:
 
         rows = scan["pending"]
 
-        # ── Diagnóstico si no hay nada pendiente ─────────────────────────────
         if not rows:
             diag: list[str] = []
             for diag_row in range(4, 4 + 20, 2):
@@ -899,20 +873,14 @@ class SAPClient:
                 f"sp01_no_rows_found filter={hu_upper} "
                 f"filas=[{' | '.join(diag) or 'ninguna'}]"
             )
-            return SP01Result(
-                status="error",
-                message="No se encontraron spools pendientes",
-                marked=0,
-            )
+            return SP01Result(status="error", message="No se encontraron spools pendientes", marked=0)
 
-        # ── Marcar todos los checkboxes encontrados ───────────────────────────
         marked = self._sp01_mark_rows(rows)
 
         if marked == 0:
             log.error("sp01_mark_rows returned 0 — nothing was marked")
             return SP01Result(status="error", message="No se pudo marcar ningún spool", marked=0)
 
-        # ── Menú → rango páginas → imprimir ──────────────────────────────────
         menu = self._find("wnd[0]/mbar/menu[0]/menu[0]/menu[1]")
         if menu:
             menu.select()
@@ -968,13 +936,22 @@ class SAPClient:
     def execute_sp01(
         self,
         active_hu_codes: list[str],
+        phase2_ts: datetime,
         expected_count: int = 0,
         print_watcher_start: Callable | None = None,
         origin: Origin | None = None,
     ) -> SP01Result:
-        """SP01 global — imprime todos los spools de los HU activos."""
+        """
+        SP01 global — imprime todos los spools de los HU activos.
+
+        Args:
+            active_hu_codes: lista de HU codes del lote actual.
+            phase2_ts:       timestamp del último F2 exitoso del lote.
+                             Usar el valor de Phase2Result["phase2_ts"].
+                             NUNCA pasar datetime.min.
+        """
         try:
-            self._sp01_open_spool_list(origin=origin)
+            self._sp01_open_spool_list(phase2_ts=phase2_ts, origin=origin)
             result = self._sp01_mark_and_print(
                 hu_filter=active_hu_codes,
                 expected_count=expected_count,
@@ -990,16 +967,22 @@ class SAPClient:
     def execute_sp01_for_pallet(
         self,
         hu_codes: list[str],
+        phase2_ts: datetime,
         expected_count: int = 0,
         print_watcher_start: Callable | None = None,
         origin: Origin | None = None,
     ) -> SP01Result:
         """
         SP01 filtrado por pallet — imprime solo los spools de este pallet.
-        MEJORA 6: propaga origin a _sp01_open_spool_list para tiempos correctos.
+
+        Args:
+            hu_codes:  lista de HU codes del pallet.
+            phase2_ts: timestamp del último F2 exitoso del pallet.
+                       Usar el valor de Phase2Result["phase2_ts"].
+                       NUNCA pasar datetime.min.
         """
         try:
-            self._sp01_open_spool_list(origin=origin)
+            self._sp01_open_spool_list(phase2_ts=phase2_ts, origin=origin)
             result = self._sp01_mark_and_print(
                 hu_filter=hu_codes,
                 expected_count=expected_count,
@@ -1016,15 +999,11 @@ class SAPClient:
 
     @staticmethod
     def check_session(sistema: str = SISTEMA_SAP) -> tuple[bool, str]:
-        """
-        MEJORA 9: try/finally con CoUninitialize para no acumular referencias
-        COM cuando el timer de la UI llama esto cada 4 segundos.
-        """
         try:
             pythoncom.CoInitialize()
             try:
                 sap_gui = win32com.client.GetObject("SAPGUI")
-                app = sap_gui.GetScriptingEngine
+                app     = sap_gui.GetScriptingEngine
                 for i_conn in range(int(app.Children.Count)):
                     conn = app.Children(i_conn)
                     for i_sess in range(int(conn.Children.Count)):
