@@ -1,0 +1,1738 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HUFlow Engine — Cola de Procesamiento</title>
+<style>
+/* ══════════════════════════════════════════════════════
+   DESIGN TOKENS — mismos valores que class C en queue_window.py
+   ══════════════════════════════════════════════════════ */
+:root {
+  --shell:        #1B2537;
+  --shell-border: #253448;
+  --shell-muted:  #8C9BAB;
+  --sap-green:    #1B9E40;
+
+  --page:         #F5F6F7;
+  --card:         #FFFFFF;
+  --card-border:  #E0E0E0;
+  --border:       #E8E8E8;
+  --surface:      #FAFBFC;
+  --row-alt:      #FAFBFC;
+
+  --blue:         #0d2038;
+  --blue-hover:   #0070F5;
+  --blue-light:   #EBF4FF;
+  --blue-border:  #BDD9F5;
+  --blue-line:    #C0D8F5;
+
+  --green:        #107E3E;
+  --green-text:   #188918;
+  --green-bg:     #F1FAF1;
+  --green-mut:    #CFEACF;
+
+  --red:          #BB0000;
+  --red-bg:       #FFF0F0;
+  --red-mut:      #FAD0D0;
+
+  --orange:       #E76500;
+  --orange-bg:    #FEF3E6;
+
+  --proc-bg:      #EBF4FF;
+  --proc-mut:     #BDD9F5;
+
+  --text:         #32363A;
+  --text-sec:     #6F7A83;
+  --muted:        #6A7279;
+  --light:        #89919A;
+  --sep-text:     #AABBCC;
+
+  --tbl-border:   #E8E8E8;
+  --footer:       #FFFFFF;
+  --footer-brd:   #E5E5E5;
+
+  --font:         '72', Arial, Helvetica, sans-serif;
+  --mono:         'Lucida Console', 'Courier New', monospace;
+  --radius:       6px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font);
+  font-size: 9pt;
+  color: var(--text);
+  background: var(--page);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════
+   SHELL BAR
+   ══════════════════════════════════════════════════════ */
+.shell-bar {
+  height: 44px;
+  background: var(--shell);
+  border-bottom: 1px solid var(--shell-border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 12px;
+  flex-shrink: 0;
+  user-select: none;
+}
+.shell-bar .ham { font-size: 14pt; color: var(--shell-muted); cursor: pointer; padding: 4px; }
+.shell-bar .sap-logo { font-size: 11pt; font-weight: 900; color: var(--sap-green); letter-spacing: -0.5px; }
+.shell-bar .sep { width: 1px; height: 20px; background: var(--shell-border); }
+.shell-bar .breadcrumb { font-size: 9pt; color: var(--shell-muted); }
+.shell-bar .breadcrumb span { color: #fff; font-weight: bold; }
+.shell-bar .spacer { flex: 1; }
+.shell-bar .sap-conn { display: flex; align-items: center; gap: 6px; font-size: 8pt; color: var(--shell-muted); }
+.shell-bar .conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+.shell-bar .conn-dot.ok { background: var(--sap-green); }
+.shell-bar .conn-label { font-size: 8pt; }
+.shell-bar .clock { font-size: 8pt; color: var(--shell-muted); min-width: 60px; text-align: right; font-family: var(--mono); }
+.shell-bar .user { font-size: 8pt; color: #fff; font-weight: bold; }
+
+/* ══════════════════════════════════════════════════════
+   LAYOUT PRINCIPAL
+   ══════════════════════════════════════════════════════ */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px;
+  overflow: hidden;
+}
+
+/* ══════════════════════════════════════════════════════
+   ROW SUPERIOR — KPIs + Scan + Pipeline
+   ══════════════════════════════════════════════════════ */
+.top-row { display: flex; gap: 10px; flex-shrink: 0; }
+
+/* KPI Cards */
+.kpi-strip { display: flex; gap: 8px; flex-shrink: 0; }
+.kpi-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 12px 18px;
+  text-align: center;
+  min-width: 88px;
+}
+.kpi-card .kpi-label { font-size: 8pt; color: var(--muted); }
+.kpi-card .kpi-value { font-size: 26pt; font-weight: bold; line-height: 1.1; color: var(--text); }
+.kpi-card .kpi-sub { font-size: 7pt; color: var(--muted); }
+.kpi-card.kpi-ok    .kpi-value { color: var(--green-text); }
+.kpi-card.kpi-err   .kpi-value { color: var(--muted); }
+.kpi-card.kpi-err.has-errors .kpi-value { color: var(--red); }
+
+/* Scan Card */
+.scan-card {
+  background: var(--card);
+  border: 0.5px solid var(--blue-hover);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.scan-row { display: flex; align-items: center; gap: 12px; }
+.scan-icon {
+  width: 34px; height: 34px;
+  background: var(--blue-light);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16pt; flex-shrink: 0;
+}
+.scan-col { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+#scan-input {
+  background: transparent;
+  color: var(--blue-hover);
+  font-size: 13pt; font-weight: bold;
+  border: none;
+  border-bottom: 2px solid var(--blue-line);
+  border-radius: 0;
+  padding: 2px 4px;
+  outline: none;
+  width: 100%;
+  font-family: var(--font);
+  transition: border-color 0.2s;
+}
+#scan-input:focus { border-bottom-color: var(--blue-hover); }
+#scan-input::placeholder { color: #aac4e8; font-weight: bold; }
+.scan-hint {
+  font-size: 8pt;
+  transition: color 0.2s;
+}
+.scan-hint.idle   { color: var(--muted); }
+.scan-hint.ok     { color: var(--green-text); font-weight: 600; }
+.scan-hint.warn   { color: var(--orange);     font-weight: 600; }
+.scan-hint.error  { color: var(--red);        font-weight: 600; }
+.scan-divider { border: none; border-top: 1px solid var(--border); }
+.scan-status-row { display: flex; align-items: center; gap: 8px; }
+.scan-pal-lbl { font-size: 8pt; color: var(--blue); font-weight: bold; flex: 1; }
+.btn-new-pallet {
+  background: transparent; color: var(--blue);
+  border: 0.5px solid var(--blue);
+  border-radius: 6px; padding: 3px 12px;
+  font-size: 8pt; font-weight: bold;
+  cursor: pointer; font-family: var(--font);
+}
+.btn-new-pallet:hover { background: var(--blue-light); }
+.scan-auto-row {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.scan-auto-row label { font-size: 8pt; color: var(--text-sec); cursor: pointer; }
+
+/* Pipeline Card */
+.pipeline-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.phase-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 7px 8px;
+  width: 108px;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+}
+.phase-card.active {
+  border-color: var(--blue-hover);
+  background: var(--blue-light);
+}
+.phase-card.inactive {
+  opacity: 0.45;
+}
+.phase-top { display: flex; align-items: center; justify-content: center; gap: 5px; }
+.phase-code { font-size: 9.5pt; font-weight: bold; }
+.phase-tcode { font-size: 7.5pt; font-weight: bold; }
+.phase-desc { font-size: 7pt; color: var(--muted); }
+.phase-arrow { color: var(--muted); font-size: 11pt; }
+.phase-chk { accent-color: var(--blue-hover); width: 14px; height: 14px; cursor: pointer; }
+
+/* ══════════════════════════════════════════════════════
+   PROGRESS CARD
+   ══════════════════════════════════════════════════════ */
+.progress-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 10px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.progress-row { display: flex; align-items: center; gap: 12px; }
+.prog-badge {
+  font-size: 7.5pt; font-weight: bold;
+  border-radius: 12px; padding: 3px 10px;
+  letter-spacing: 0.4px; white-space: nowrap;
+  border: 1px solid var(--card-border);
+  background: var(--page); color: var(--muted);
+  transition: all 0.3s;
+}
+.prog-badge.running  { background: var(--proc-bg);  color: var(--blue);      border-color: var(--blue-border); }
+.prog-badge.error    { background: var(--red-bg);   color: var(--red);       border-color: var(--red-mut); }
+.prog-badge.done     { background: var(--green-bg); color: var(--green);     border-color: var(--green-mut); }
+.prog-badge.stopped  { background: var(--red-bg);   color: var(--muted);     border-color: var(--red-mut); }
+.prog-bar-wrap { flex: 1; background: #E2E6EA; border-radius: 9px; height: 18px; overflow: hidden; }
+.prog-bar-fill {
+  height: 100%; border-radius: 9px; width: 0%;
+  background: repeating-linear-gradient(90deg, #1255B0 0px, #1976D2 16px, #1255B0 32px);
+  background-size: 32px 100%;
+  transition: width 0.4s ease;
+}
+.prog-bar-fill.animated {
+  animation: progress-stripe 0.8s linear infinite;
+}
+@keyframes progress-stripe {
+  0%   { background-position: 0 0; }
+  100% { background-position: 32px 0; }
+}
+.prog-bar-fill.done   { background: var(--green-text); animation: none; }
+.prog-bar-fill.error  { background: var(--red); animation: none; }
+.prog-pct { font-size: 11pt; font-weight: bold; min-width: 46px; text-align: right; }
+.prog-status { font-size: 8pt; color: var(--muted); transition: color 0.2s; }
+
+/* ══════════════════════════════════════════════════════
+   TABLA
+   ══════════════════════════════════════════════════════ */
+.table-card {
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+}
+.table-hdr {
+  height: 50px;
+  padding: 0 18px;
+  display: flex; align-items: center;
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+.table-hdr-title { font-size: 10.5pt; font-weight: bold; }
+.table-hdr .spacer { flex: 1; }
+
+/* Sticky pallet header — aparece cuando el separador sale del viewport (igual que PyQt) */
+#sticky-pallet {
+  display: none;
+  position: absolute;
+  top: 50px; /* debajo del header de la tabla */
+  left: 0; right: 0;
+  z-index: 10;
+  text-align: center;
+  font-size: 9pt; font-weight: bold;
+  color: var(--sep-text);
+  background: rgba(255,255,255,0.95);
+  border-bottom: 1px solid var(--border);
+  padding: 5px;
+  letter-spacing: 0.5px;
+  backdrop-filter: blur(4px);
+}
+#sticky-pallet.visible { display: block; }
+
+.table-wrap { flex: 1; overflow-y: auto; position: relative; }
+
+table#queue-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9pt;
+}
+table#queue-table thead th {
+  background: var(--card);
+  color: var(--text);
+  font-weight: bold;
+  padding: 7px 10px;
+  border-bottom: 2px solid var(--tbl-border);
+  border-right: 1px solid var(--tbl-border);
+  text-align: left;
+  position: sticky; top: 0; z-index: 2;
+}
+table#queue-table thead th:last-child { border-right: none; }
+table#queue-table tbody tr { border-bottom: 1px solid var(--tbl-border); }
+table#queue-table tbody tr:nth-child(even) { background: var(--row-alt); }
+table#queue-table tbody tr:hover:not(.pallet-sep) { background: var(--blue-light); }
+table#queue-table td { padding: 5px 10px; }
+
+/* Separador de pallet — igual que PyQt */
+tr.pallet-sep td {
+  text-align: center;
+  color: var(--sep-text);
+  font-size: 9pt; font-weight: bold;
+  background: var(--card) !important;
+  padding: 5px;
+  letter-spacing: 0.5px;
+}
+tr.pallet-sep:hover td { background: var(--card) !important; }
+
+/* Fila vacía */
+tr.empty-row td {
+  text-align: center;
+  color: var(--muted);
+  padding: 40px;
+}
+
+/* Celdas de estado */
+.cell-status {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-size: 8.5pt;
+  font-weight: bold;
+}
+.status-ok         { background: var(--green-mut);  color: var(--green); }
+.status-duplicate  { background: #FADDAD;            color: var(--orange); }
+.status-error,
+.status-hu_not_found { background: var(--red-mut);  color: var(--red); }
+.status-processing { background: var(--proc-mut);   color: var(--blue); }
+.status-pending    { background: #F5F5F5;            color: var(--muted); }
+
+/* Celda OK con check — igual que PyQt _ok_cell */
+.ok-cell {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--green-text); font-weight: bold;
+}
+.ok-cell::before { content: '✓'; font-size: 10pt; }
+
+/* Badge de origen — colores por prefijo igual que hu_origins.py */
+.origin-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 8pt; font-weight: bold;
+  border: 1px solid;
+}
+/* THA/CNA */
+.origin-THA, .origin-CNA {
+  background: #EBF4FF; border-color: #BDD9F5; color: #0d2038;
+}
+/* BRA/ATL */
+.origin-BRA_ATL {
+  background: #E8F5E9; border-color: #A5D6A7; color: #1B5E20;
+}
+/* ITA */
+.origin-ITA {
+  background: #FFFDE7; border-color: #FDD835; color: #6D4C00;
+}
+/* FHR */
+.origin-FHR {
+  background: #FBE9E7; border-color: #FFAB91; color: #7B3100;
+}
+/* UNK / default */
+.origin-UNK, .origin-default {
+  background: var(--blue-light); border-color: var(--blue-border); color: var(--blue);
+}
+
+/* Botón eliminar fila */
+.btn-del {
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 10pt; padding: 2px 6px;
+  border-radius: 4px; opacity: 0; transition: opacity 0.15s;
+}
+tr:hover .btn-del { opacity: 1; }
+.btn-del:hover { color: var(--red); background: var(--red-bg); }
+
+/* ══════════════════════════════════════════════════════
+   FLASH / HINT — equivalente a _flash()
+   ══════════════════════════════════════════════════════ */
+#flash-bar {
+  position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%);
+  padding: 8px 20px; border-radius: 6px;
+  font-size: 9pt; font-weight: bold;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  z-index: 1000;
+  opacity: 0; transition: opacity 0.2s;
+  pointer-events: none; white-space: nowrap;
+}
+#flash-bar.show { opacity: 1; }
+#flash-bar.green  { background: var(--green-bg); color: var(--green-text); border: 1px solid var(--green-mut); }
+#flash-bar.orange { background: var(--orange-bg); color: var(--orange); border: 1px solid #F5C98A; }
+#flash-bar.red    { background: var(--red-bg); color: var(--red); border: 1px solid var(--red-mut); }
+
+/* ══════════════════════════════════════════════════════
+   FOOTER BAR
+   ══════════════════════════════════════════════════════ */
+.footer-bar {
+  height: 54px;
+  background: var(--footer);
+  border-top: 1px solid var(--footer-brd);
+  display: flex; align-items: center;
+  padding: 0 20px; gap: 10px;
+  flex-shrink: 0;
+}
+.btn-primary {
+  background: var(--blue); color: #fff;
+  border: none; border-radius: 4px;
+  padding: 7px 18px; font-size: 9pt; font-weight: bold;
+  cursor: pointer; font-family: var(--font);
+  transition: background 0.15s;
+}
+.btn-primary:hover:not(:disabled) { background: #0a1a2e; }
+.btn-primary:disabled { opacity: 0.45; cursor: default; }
+.btn-danger {
+  background: transparent; color: var(--red);
+  border: 1px solid var(--red);
+  border-radius: 4px; padding: 6px 16px;
+  font-size: 9pt; font-weight: bold;
+  cursor: pointer; font-family: var(--font);
+  transition: background 0.15s;
+}
+.btn-danger:hover:not(:disabled) { background: var(--red-bg); }
+.btn-danger:disabled { opacity: 0.35; cursor: default; }
+.btn-ghost {
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--card-border);
+  border-radius: 4px; padding: 6px 14px;
+  font-size: 9pt; cursor: pointer; font-family: var(--font);
+  transition: background 0.15s;
+}
+.btn-ghost:hover:not(:disabled) { background: var(--surface); }
+.btn-ghost:disabled { opacity: 0.35; cursor: default; }
+.footer-status { font-size: 9pt; color: var(--muted); transition: color 0.3s; }
+.footer-status.running { color: var(--blue); font-weight: bold; }
+.footer-status.error   { color: var(--red); font-weight: bold; }
+.footer-status.done    { color: var(--green-text); font-weight: bold; }
+
+/* ══════════════════════════════════════════════════════
+   SCROLLBAR
+   ══════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #C5CAD0; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #A0A8B2; }
+
+/* ── Menú hamburguesa ─────────────────────────────────────── */
+.ham-item {
+  padding: 9px 16px;
+  font-size: 8.5pt;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ham-item:hover { background: rgba(255,255,255,0.08); }
+.ham-sep {
+  height: 1px;
+  background: #253448;
+  margin: 2px 0;
+}
+ 
+/* ── Pipeline cards — estado activo/inactivo ─────────────── */
+.phase-card.active {
+  border-color: var(--blue-hover);
+  background: var(--blue-light);
+}
+.phase-card.inactive {
+  opacity: 0.40;
+  background: var(--card);
+  border-color: var(--card-border);
+}
+ 
+/* ── Botón eliminar fila — visible solo en hover ─────────── */
+.btn-del {
+  background: none; border: none; cursor: pointer;
+  color: var(--muted); font-size: 10pt; padding: 2px 6px;
+  border-radius: 4px; opacity: 0; transition: opacity 0.15s;
+}
+tr:hover .btn-del { opacity: 1; }
+.btn-del:hover { color: var(--red); background: var(--red-bg); }
+ 
+/* ── Columna acciones en tabla ───────────────────────────── */
+table#queue-table th.col-actions,
+table#queue-table td.col-actions {
+  width: 36px;
+  text-align: center;
+  border-right: none;
+}
+ 
+/* ── Hint de scan — estados de color ────────────────────── */
+.scan-hint.idle   { color: var(--muted); }
+.scan-hint.ok     { color: var(--green-text); font-weight: 600; }
+.scan-hint.warn   { color: var(--orange);     font-weight: 600; }
+.scan-hint.error  { color: var(--red);        font-weight: 600; }
+ 
+/* ── Fila vacía en tabla ─────────────────────────────────── */
+tr.empty-row td {
+  text-align: center;
+  color: var(--muted);
+  padding: 48px;
+  font-size: 9pt;
+}
+ 
+/* ── Context menu nativo ─────────────────────────────────── */
+#ctx-menu {
+  display: none;
+  position: fixed;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  z-index: 500;
+  min-width: 170px;
+  padding: 4px 0;
+}
+.ctx-item {
+  padding: 8px 16px;
+  font-size: 8.5pt;
+  cursor: pointer;
+  color: var(--text);
+}
+.ctx-item:hover { background: var(--blue-light); color: var(--blue-hover); }
+.ctx-item.danger { color: var(--red); }
+.ctx-item.danger:hover { background: var(--red-bg); }
+.ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+ 
+/* ── Badge de origen — variantes faltantes ───────────────── */
+.origin-BRA_ATL, .origin-BRA\/ATL {
+  background: #E8F5E9; border-color: #A5D6A7; color: #1B5E20;
+}
+.origin-ITA {
+  background: #FFFDE7; border-color: #FDD835; color: #6D4C00;
+}
+.origin-FHR {
+  background: #FBE9E7; border-color: #FFAB91; color: #7B3100;
+}
+
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════
+     SHELL BAR
+     ══════════════════════════════════════════════════ -->
+<!-- Botón hamburguesa — abre el dropdown-menu -->
+ <div class="shell-bar">
+  <div style="position:relative;">
+    <span class="ham" id="ham-btn" onclick="toggleHamMenu()" title="Menú">☰</span>
+    <div id="ham-menu" style="
+      display:none; position:absolute; top:38px; left:0;
+      background:#1e2d42; border:1px solid #253448;
+      border-radius:6px; min-width:180px; z-index:999;
+      box-shadow:0 4px 16px rgba(0,0,0,0.4);
+    ">
+      <div class="ham-item" onclick="window.location.href='/exportar/'">
+        ↓&nbsp; Exportar CSV
+      </div>
+      <div class="ham-sep"></div>
+      <div class="ham-item" onclick="window.print()">
+        ⎙&nbsp; Imprimir
+      </div>
+      <div class="ham-sep"></div>
+      <div class="ham-item" style="color:var(--shell-muted);cursor:default;font-size:7.5pt;">
+        Made for Essilor Luxottica by <a href="https://github.com/Juliocesal" target="_blank" style="color:var(--shell-muted);text-decoration:underline;">Nexhus</a><br>
+        {{ now|date:"Y-m-d H:i:s" }}  
+      </div>
+    </div>
+  </div>
+ 
+  <span class="sap-logo">SAP</span>
+  <div class="sep"></div>
+  <span class="breadcrumb">Logistics › <span>HUFlow Engine</span></span>
+  <div class="spacer"></div>
+ 
+  <div class="sap-conn">
+    <span class="conn-dot" id="conn-dot"></span>
+    <span class="conn-label" id="conn-label">Verificando SAP...</span>
+  </div>
+  <div class="sep"></div>
+  <span class="clock" id="clock">--:--:--</span>
+  <div class="sep"></div>
+  <span class="user">{{ request.user.username|upper|default:"NEXHUS" }}</span>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     MAIN
+     ══════════════════════════════════════════════════ -->
+<div class="main">
+
+  <!-- ROW SUPERIOR: KPIs + Scan + Pipeline -->
+  <div class="top-row">
+
+    <!-- KPIs -->
+    <div class="kpi-strip">
+      <div class="kpi-card">
+        <div class="kpi-label">Total HUs</div>
+        <div class="kpi-value" id="kpi-total">{{ stats.total }}</div>
+        <div class="kpi-sub">escaneadas</div>
+      </div>
+      <div class="kpi-card kpi-ok">
+        <div class="kpi-label">Procesadas</div>
+        <div class="kpi-value" id="kpi-ok">{{ stats.ok }}</div>
+        <div class="kpi-sub">OK</div>
+      </div>
+      <div class="kpi-card kpi-err {% if stats.errors %}has-errors{% endif %}">
+        <div class="kpi-label">Errores</div>
+        <div class="kpi-value" id="kpi-err">{{ stats.errors }}</div>
+        <div class="kpi-sub">fallos</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Pendientes</div>
+        <div class="kpi-value" id="kpi-pend">{{ stats.pending }}</div>
+        <div class="kpi-sub">en cola</div>
+      </div>
+    </div>
+
+    <!-- Scan Card -->
+    <div class="scan-card">
+      <div class="scan-row">
+        <div class="scan-icon"></div>
+        <div class="scan-col">
+          <input type="text" id="scan-input"
+                 placeholder="Escanear código HU..."
+                 autocomplete="off" autofocus spellcheck="false">
+          <span class="scan-hint idle" id="scan-hint">
+            Presiona Enter para confirmar · Escribe PALLET para separar
+          </span>
+        </div>
+      </div>
+      <hr class="scan-divider">
+      <div class="scan-status-row">
+        <span class="scan-pal-lbl" id="pal-lbl">
+          ● Pallets activos: {{ stats.pallets }}
+        </span>
+        <button class="btn-new-pallet" onclick="newPallet()">+ Nuevo pallet</button>
+      </div>
+      <div class="scan-auto-row">
+        <input type="checkbox" id="chk-auto" style="accent-color:var(--blue-hover);width:14px;height:14px;">
+        <label for="chk-auto">Iniciar proceso automáticamente al escanear primer HU</label>
+      </div>
+    </div>
+
+    <!-- Pipeline Card -->
+    <div class="pipeline-card">
+      <div class="phase-card active" id="phase-f1">
+        <div class="phase-top">
+          <input type="checkbox" class="phase-chk" id="chk-f1" checked onchange="updatePhaseCards()">
+          <span class="phase-code">F1</span>
+        </div>
+        <div class="phase-tcode">ZMOVEINBHU</div>
+        <div class="phase-desc">Acknowledge</div>
+      </div>
+      <span class="phase-arrow">→</span>
+      <div class="phase-card active" id="phase-f2">
+        <div class="phase-top">
+          <input type="checkbox" class="phase-chk" id="chk-f2" checked onchange="updatePhaseCards()">
+          <span class="phase-code">F2</span>
+        </div>
+        <div class="phase-tcode">ZMMTIJSEP</div>
+        <div class="phase-desc">Spool</div>
+      </div>
+      <span class="phase-arrow">→</span>
+      <div class="phase-card active" id="phase-sp01">
+        <div class="phase-top">
+          <input type="checkbox" class="phase-chk" id="chk-sp01" checked onchange="updatePhaseCards()">
+          <span class="phase-code">SP01</span>
+        </div>
+        <div class="phase-tcode">SP01</div>
+        <div class="phase-desc">Imprimir</div>
+      </div>
+    </div>
+
+  </div><!-- /top-row -->
+
+  <!-- PROGRESS CARD -->
+  <div class="progress-card">
+    <div class="progress-row">
+      <span class="prog-badge" id="prog-badge">● EN ESPERA</span>
+      <div class="prog-bar-wrap">
+        <div class="prog-bar-fill" id="prog-bar"></div>
+      </div>
+      <span class="prog-pct" id="prog-pct">0%</span>
+    </div>
+    <div class="prog-status" id="prog-status">Listo. Escanea HUs para comenzar.</div>
+  </div>
+
+  <!-- TABLE CARD -->
+  <div class="table-card">
+    <div class="table-hdr">
+      <span class="table-hdr-title">Listado de Pallets Procesados</span>
+      <div class="spacer"></div>
+    </div>
+
+    <!-- Sticky pallet — aparece cuando scroll oculta el separador, igual que PyQt -->
+    <div id="sticky-pallet"></div>
+
+    <div class="table-wrap" id="table-wrap">
+      <table id="queue-table">
+        <thead>
+        <tr>
+        <th style="width:82px">Pallet</th>
+        <th style="width:120px">Origen</th>
+        <th style="width:180px">Código HU</th>
+        <th>F1 — ZMOVEINBHU</th>
+        <th style="width:260px">F2 — ZMMTIJSEP</th>
+        <th class="col-actions"></th>
+        </tr>
+        </thead>
+        <tbody id="queue-tbody">
+          {% for pallet in pallets %}
+            <tr class="pallet-sep" data-pallet-id="{{ pallet.id }}">
+              <td colspan="6" id="sep-{{ pallet.id }}">
+                ─── Pallet P{{ pallet.id|stringformat:"02d" }}
+                {% if pallet.origin_code %}· {{ pallet.origin_code }}{% endif %}
+                · {{ pallet.items.count }} HU{% if pallet.items.count != 1 %}s{% endif %}
+                {% if pallet.processing_time_display %} · ⏱ {{ pallet.processing_time_display }}{% endif %}
+                ───
+              </td>
+            </tr>
+            {% for item in pallet.items.all %}
+            <tr id="row-{{ item.hu_code }}" data-hu="{{ item.hu_code }}" data-pallet="{{ pallet.id }}">
+              <td>P{{ pallet.id|stringformat:"02d" }}</td>
+              <td>
+                <span class="origin-badge origin-{{ item.origin_code|default:'UNK'|slugify }}">
+                  {{ item.origin_code|default:"?" }}
+                </span>
+              </td>
+              <td style="font-family:var(--mono);font-size:8.5pt;">{{ item.hu_code }}</td>
+              <td>
+                {% if item.status == 'ok' or item.status == 'duplicate' %}
+                  <span class="ok-cell">{{ item.f1_display }}</span>
+                {% elif item.status == 'error' or item.status == 'hu_not_found' %}
+                  <span style="color:var(--red)">{{ item.f1_display }}</span>
+                {% else %}
+                  <span class="cell-status status-{{ item.status }}">{{ item.status_display }}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if item.status == 'ok' %}
+                  <span class="ok-cell">{{ item.f2_display }}</span>
+                {% elif item.status == 'error' and not item.phase2_msg %}
+                  <span style="color:var(--muted)">— omitido</span>
+                {% elif item.status == 'error' %}
+                  <span style="color:var(--red)">{{ item.f2_display }}</span>
+                {% else %}
+                  {{ item.f2_display }}
+                {% endif %}
+              </td>
+              <td>
+                {% if item.status == 'pending' or item.status == 'error' %}
+                  <button class="btn-del" onclick="deleteHU('{{ item.hu_code }}')" title="Eliminar">✕</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          {% empty %}
+            <tr class="empty-row" id="empty-row">
+              <td colspan="6">Sin HUs en cola — escanea el primer código</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- Flash bar -->
+<div id="flash-bar"></div>
+
+<!-- ══════════════════════════════════════════════════
+     FOOTER BAR
+     ══════════════════════════════════════════════════ -->
+<div class="footer-bar">
+  <button class="btn-primary" id="btn-start" onclick="startProcess()">▶  INICIAR PROCESO</button>
+  <span class="footer-status" id="footer-status">■  En espera.</span>
+  <div style="flex:1"></div>
+  <button class="btn-ghost" onclick="exportCSV()">↓ EXPORTAR</button>
+  <button class="btn-danger" id="btn-stop" onclick="stopProcess()" disabled>■  DETENER</button>
+  <button class="btn-ghost" id="btn-reprocess" onclick="reprocess()" disabled>⟲  REPROCESAR</button>
+  <button class="btn-ghost" id="btn-clear" onclick="clearQueue()">✂  LIMPIAR HUs</button>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     JAVASCRIPT
+     ══════════════════════════════════════════════════ -->
+<script>
+// ── Mapa de orígenes (igual que hu_origins.py) ───────────────────────────────
+const ORIGIN_MAP = {
+  'TH':   { code: 'THA',     label: 'Tailandia (THA)',   cls: 'origin-THA'     },
+  'T':    { code: 'CNA',     label: 'China (CNA)',        cls: 'origin-CNA'     },
+  'C10':  { code: 'BRA/ATL', label: 'ATL (BRA/ATL)',     cls: 'origin-BRA_ATL' },
+  '29':   { code: 'ITA',     label: 'Italia (ITA)',       cls: 'origin-ITA',  auto_pallet: true },
+  'ELPS': { code: 'FHR',     label: 'Foothill Ranch (ELPS)', cls: 'origin-FHR', auto_pallet: true },
+};
+
+function detectOrigin(hu_code) {
+  const code = hu_code.trim().toUpperCase();
+  const prefixes = ['ELPS', 'C10', 'TH', 'T', '29']; // más específico primero
+  for (const prefix of prefixes) {
+    if (code.startsWith(prefix)) return ORIGIN_MAP[prefix];
+  }
+  return { code: 'UNK', label: 'Desconocido', cls: 'origin-UNK', auto_pallet: false };
+}
+
+function isPalletSeparator(val) {
+  return val.trim().toUpperCase() === 'PALLET';
+}
+
+// ── Estado local ─────────────────────────────────────────────────────────────
+let isRunning   = false;
+let flashTimer  = null;
+let palletSepRows = {}; // pallet_id → tr element
+
+let stats = {
+  total:   {{ stats.total|default:"0" }},
+  ok:      {{ stats.ok|default:"0" }},
+  errors:  {{ stats.errors|default:"0" }},
+  pending: {{ stats.pending|default:"0" }},
+  pallets: {{ stats.pallets|default:"0" }}
+};
+
+// ── Reloj ─────────────────────────────────────────────────────────────────────
+function tickClock() {
+  document.getElementById('clock').textContent =
+    new Date().toTimeString().slice(0, 8);
+}
+setInterval(tickClock, 1000);
+tickClock();
+
+// ── WebSocket con reconexión automática ───────────────────────────────────────
+let ws;
+let wsRetry = 0;
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws/queue/`);
+
+  ws.onopen = () => {
+    console.log('WS conectado');
+    wsRetry = 0;
+  };
+
+  ws.onclose = () => {
+    const delay = Math.min(1000 * 2 ** wsRetry, 30000); // max 30s
+    wsRetry++;
+    console.warn(`WS cerrado. Reintentando en ${delay/1000}s...`);
+    setTimeout(connectWS, delay);
+  };
+
+  ws.onerror = e => console.error('WS error', e);
+
+  ws.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    switch (msg.type) {
+      case 'initial_state': handleInitialState(msg); break;
+      case 'item_update':   handleItemUpdate(msg);   break;
+      case 'stats_update':  handleStatsUpdate(msg);  break;
+      case 'sp01_done':     handleSP01Done(msg);     break;
+      case 'pallet_done':   handlePalletDone(msg);   break;
+      case 'error':         handleError(msg);         break;
+    }
+  };
+}
+
+connectWS();
+
+// ── Handlers WebSocket ────────────────────────────────────────────────────────
+
+function handleInitialState(msg) {
+  if (msg.items && msg.items.length > 0) {
+    msg.items.forEach(item => updateOrCreateRow(item));
+  }
+  if (msg.stats) handleStatsUpdate(msg.stats);
+}
+
+function handleItemUpdate(msg) {
+  updateOrCreateRow(msg);
+  updateProgress();
+
+  if (msg.status === 'processing') {
+    setProgStatus(`Procesando → Pallet ${msg.pallet_id}  |  HU: ${msg.hu_code}`, 'running');
+    setFooterStatus(`▶  Procesando HU ${msg.hu_code}…`, 'running');
+  } else if (msg.status === 'error' || msg.status === 'hu_not_found') {
+    const detail = (msg.phase1_msg || msg.phase2_msg || 'Sin detalles').slice(0, 60);
+    setProgStatus(`❌ ERROR en HU ${msg.hu_code}: ${detail}`, 'error');
+    setFooterStatus(`⚠  Error en ${msg.hu_code}`, 'error');
+  }
+}
+
+function handleStatsUpdate(msg) {
+  stats = msg;
+  document.getElementById('kpi-total').textContent = msg.total;
+  document.getElementById('kpi-ok').textContent    = msg.ok;
+  document.getElementById('kpi-err').textContent   = msg.errors;
+  document.getElementById('kpi-pend').textContent  = msg.pending;
+  document.getElementById('pal-lbl').textContent   = `● Pallets activos: ${msg.pallets}`;
+  document.querySelector('.kpi-card.kpi-err').classList.toggle('has-errors', msg.errors > 0);
+  updateProgress();
+  updateButtons();
+}
+
+function handleSP01Done(msg) {
+  isRunning = false;
+  setProgStatus(`SP01: ${msg.message}`, 'done');
+  setProgBadge('✓ COMPLETADO', 'done');
+  document.getElementById('prog-bar').classList.remove('animated');
+  document.getElementById('prog-bar').classList.add('done');
+  setFooterStatus(`✓  ${msg.message}`, 'done');
+  updateButtons();
+  flash(`✓ ${msg.message}`, 'green');
+  if (msg.status === 'ok') {
+    setTimeout(() => alert(`Proceso completado exitosamente.\n\nSP01: ${msg.message}`), 200);
+  }
+}
+
+function handlePalletDone(msg) {
+  setProgStatus(`Pallet ${msg.pallet_id} impreso (${msg.hu_count} HUs).`, 'running');
+  updatePalletSep(msg.pallet_id);
+}
+
+function handleError(msg) {
+  isRunning = false;
+  setProgBadge('⚠ ERROR', 'error');
+  document.getElementById('prog-bar').classList.remove('animated');
+  document.getElementById('prog-bar').classList.add('error');
+  setFooterStatus('⚠  Error en el proceso.', 'error');
+  updateButtons();
+  setTimeout(() => alert(`Error SAP:\n\n${msg.message}`), 200);
+}
+
+// ── Tabla ─────────────────────────────────────────────────────────────────────
+
+function originBadgeHTML(origin_code) {
+  const safe = (origin_code || 'UNK').replace('/', '_');
+  const cls  = `origin-${safe}`;
+  return `<span class="origin-badge ${cls}">${origin_code || '?'}</span>`;
+}
+
+function statusCellHTML(status, f1_display, f2_display, phase2_msg, col) {
+  const display = col === 'f1' ? f1_display : f2_display;
+
+  if (col === 'f1') {
+    if (status === 'ok' || status === 'duplicate')
+      return `<span class="ok-cell">${display || 'OK'}</span>`;
+    if (status === 'error' || status === 'hu_not_found')
+      return `<span style="color:var(--red)">${display || 'Error'}</span>`;
+    const labels = { pending:'Pendiente', processing:'Procesando...' };
+    return `<span class="cell-status status-${status}">${display || labels[status] || status}</span>`;
+  }
+
+  // F2
+  if (status === 'ok')
+    return `<span class="ok-cell">${display || 'OK'}</span>`;
+  if (status === 'error' && !phase2_msg)
+    return `<span style="color:var(--muted)">— omitido</span>`;
+  if (status === 'error')
+    return `<span style="color:var(--red)">${display || 'Error'}</span>`;
+  return display || '';
+}
+
+function updateOrCreateRow(item) {
+  const existing = document.getElementById(`row-${item.hu_code}`);
+
+  if (!existing) {
+    // Quitar fila vacía
+    const empty = document.getElementById('empty-row');
+    if (empty) empty.remove();
+
+    // Asegurar separador de pallet
+    ensurePalletSep(item.pallet_id, item.origin_code);
+
+    const tr = document.createElement('tr');
+    tr.id = `row-${item.hu_code}`;
+    tr.dataset.hu     = item.hu_code;
+    tr.dataset.pallet = item.pallet_id;
+    tr.innerHTML = buildRowHTML(item);
+    document.getElementById('queue-tbody').appendChild(tr);
+    tr.scrollIntoView({ block: 'nearest' });
+  } else {
+  // Actualizar celdas existentes
+  existing.dataset.status = item.status;   // ← AGREGAR ESTA LÍNEA
+  existing.cells[3].innerHTML = statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f1');
+  existing.cells[4].innerHTML = statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f2');
+  const canDel = item.status === 'pending' || item.status === 'error';
+  existing.cells[5].innerHTML = canDel ? `...` : '';
+  }
+
+  updatePalletSep(item.pallet_id);
+}
+
+function buildRowHTML(item) {
+  const canDel = item.status === 'pending' || item.status === 'error';
+  const pid = String(item.pallet_id).padStart(2, '0');
+  return `
+    <td>P${pid}</td>
+    <td>${originBadgeHTML(item.origin_code)}</td>
+    <td style="font-family:var(--mono);font-size:8.5pt;">${item.hu_code}</td>
+    <td>${statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f1')}</td>
+    <td>${statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f2')}</td>
+    <td>${canDel ? `<button class="btn-del" onclick="deleteHU('${item.hu_code}')" title="Eliminar">✕</button>` : ''}</td>
+  `;
+}
+
+function ensurePalletSep(palletId, originCode) {
+  if (palletSepRows[palletId]) return;
+  const tbody = document.getElementById('queue-tbody');
+  const sep = document.createElement('tr');
+  sep.className = 'pallet-sep';
+  sep.dataset.palletId = palletId;
+  const pid = String(palletId).padStart(2, '0');
+  sep.innerHTML = `<td colspan="6" id="sep-${palletId}">─── Pallet P${pid} · ${originCode || '?'} · 0 HUs ───</td>`;
+  palletSepRows[palletId] = sep;
+  tbody.appendChild(sep);
+  _observeSep(sep);   // ← AGREGAR ESTA LÍNEA
+}
+
+function updatePalletSep(palletId) {
+  const sep = palletSepRows[palletId] ||
+    document.querySelector(`tr.pallet-sep[data-pallet-id="${palletId}"]`);
+  if (!sep) return;
+  if (!palletSepRows[palletId]) palletSepRows[palletId] = sep;
+
+  const rows = document.querySelectorAll(`tr[data-pallet="${palletId}"]`);
+  const count = rows.length;
+  const td = document.getElementById(`sep-${palletId}`) || sep.querySelector('td');
+  if (!td) return;
+
+  // Recoger info de origin del primer row
+  let originCode = sep.dataset.origin || '?';
+  if (rows.length > 0) {
+    const firstBadge = rows[0].querySelector('.origin-badge');
+    if (firstBadge) originCode = firstBadge.textContent.trim();
+    sep.dataset.origin = originCode;
+  }
+
+  const pid = String(palletId).padStart(2, '0');
+  td.innerHTML = `─── Pallet P${pid} · ${originCode} · <strong style="color:var(--text)">${count} HU${count !== 1 ? 's' : ''}</strong> ───`;
+}
+
+// ── Sticky pallet header (igual que PyQt _update_sticky_pallet) ───────────────
+const tableWrap   = document.getElementById('table-wrap');
+const stickyPallet = document.getElementById('sticky-pallet');
+
+tableWrap.addEventListener('scroll', updateStickyPallet);
+
+function updateStickyPallet() {
+  const wrapTop = tableWrap.getBoundingClientRect().top;
+  let lastHiddenSep = null;
+
+  for (const [pid, sep] of Object.entries(palletSepRows)) {
+    const rect = sep.getBoundingClientRect();
+    if (rect.top < wrapTop) {
+      lastHiddenSep = { pid: parseInt(pid), sep };
+    }
+  }
+
+  // También verificar separadores renderizados en Django
+  document.querySelectorAll('tr.pallet-sep').forEach(sep => {
+    const pid = parseInt(sep.dataset.palletId);
+    const rect = sep.getBoundingClientRect();
+    if (rect.top < wrapTop) {
+      if (!lastHiddenSep || pid > lastHiddenSep.pid) {
+        lastHiddenSep = { pid, sep };
+      }
+    }
+    if (!palletSepRows[pid]) palletSepRows[pid] = sep;
+  });
+
+  if (lastHiddenSep) {
+    const rows = document.querySelectorAll(`tr[data-pallet="${lastHiddenSep.pid}"]`);
+    const count = rows.length;
+    const pid = String(lastHiddenSep.pid).padStart(2, '0');
+    stickyPallet.textContent = `─── Pallet P${pid} · ${count} HU${count !== 1 ? 's' : ''} ───`;
+    stickyPallet.classList.add('visible');
+  } else {
+    stickyPallet.classList.remove('visible');
+  }
+}
+
+// ── Progress ──────────────────────────────────────────────────────────────────
+function updateProgress() {
+  const done  = stats.ok + stats.errors;
+  const total = stats.total;
+  const pct   = total > 0 ? Math.round(done / total * 100) : 0;
+  const bar   = document.getElementById('prog-bar');
+  bar.style.width = `${pct}%`;
+  document.getElementById('prog-pct').textContent = `${pct}%`;
+}
+
+function setProgBadge(text, mode) {
+  const b = document.getElementById('prog-badge');
+  b.textContent = text;
+  b.className = 'prog-badge ' + (mode || '');
+}
+
+function setProgStatus(text, mode) {
+  const s = document.getElementById('prog-status');
+  s.textContent = text;
+  const colors = { running: 'var(--blue)', error: 'var(--red)', done: 'var(--green-text)' };
+  s.style.color      = colors[mode] || 'var(--muted)';
+  s.style.fontWeight = mode ? 'bold' : 'normal';
+}
+
+function setFooterStatus(text, mode) {
+  const el = document.getElementById('footer-status');
+  el.textContent = text;
+  el.className = 'footer-status ' + (mode || '');
+}
+
+// ── Pipeline phase cards ───────────────────────────────────────────────────────
+function updatePhaseCards() {
+  ['f1','f2','sp01'].forEach(id => {
+    const chk   = document.getElementById(`chk-${id}`);
+    const card  = document.getElementById(`phase-${id}`);
+    card.classList.toggle('active',   chk.checked);
+    card.classList.toggle('inactive', !chk.checked);
+  });
+}
+
+// ── Botones ───────────────────────────────────────────────────────────────────
+function updateButtons() {
+  const hasPending   = stats.pending > 0;
+  const hasProcessed = stats.ok > 0 || stats.errors > 0;
+  document.getElementById('btn-start').disabled     = isRunning || !hasPending;
+  document.getElementById('btn-stop').disabled      = !isRunning;
+  document.getElementById('btn-clear').disabled     = isRunning;
+  document.getElementById('btn-reprocess').disabled = isRunning || hasPending || !hasProcessed;
+
+  // Deshabilitar checkboxes durante ejecución
+  ['chk-f1','chk-f2','chk-sp01','chk-auto'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = isRunning;
+  });
+}
+
+// ── Scan ──────────────────────────────────────────────────────────────────────
+document.getElementById('scan-input').addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter') return;
+  const raw = e.target.value.trim();
+  e.target.value = '';
+  if (!raw) return;
+
+  // Separador de pallet
+  if (isPalletSeparator(raw)) {
+    newPallet();
+    return;
+  }
+
+  // Validar longitud (igual que PyQt: 10–15 chars)
+  if (raw.length < 10 || raw.length > 15) {
+    setHint(`⚠ Código inválido: '${raw}' tiene ${raw.length} chars. Rango: 10–15`, 'warn');
+    flash(`⚠ Código HU inválido: ${raw.length} caracteres`, 'orange');
+    return;
+  }
+
+  const res = await fetch('/scan/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify({
+      code:   raw,
+      run_f1: document.getElementById('chk-f1').checked,
+      run_f2: document.getElementById('chk-f2').checked,
+    }),
+  });
+
+  const data = await res.json();
+  if (data.ok) {
+    setHint(`✓  ${raw}  →  Pallet ${data.pallet_id}  [${data.origin}]`, 'ok');
+    flash(`✓  ${raw}  →  Pallet ${data.pallet_id}  [${data.origin}]`, 'green');
+    // Auto-start si es la primera HU
+    if (stats.total === 1 && document.getElementById('chk-auto').checked && !isRunning) {
+      setTimeout(startProcess, 500);
+    }
+  } else {
+    const color = data.type === 'duplicate' ? 'warn' : 'error';
+    setHint(`⚠ ${data.error}`, color);
+    flash(`⚠ ${data.error}`, data.type === 'duplicate' ? 'orange' : 'red');
+  }
+});
+
+function setHint(msg, type) {
+  const el = document.getElementById('scan-hint');
+  el.textContent = msg;
+  el.className = `scan-hint ${type}`;
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => {
+    el.textContent = 'Presiona Enter para confirmar · Escribe PALLET para separar';
+    el.className = 'scan-hint idle';
+  }, 2500);
+}
+
+// ── Nuevo pallet ──────────────────────────────────────────────────────────────
+async function newPallet() {
+  const res  = await fetch('/pallet/nuevo/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') }
+  });
+  const data = await res.json();
+  if (data.ok) {
+    setHint(`✓ ${data.message}`, 'ok');
+    flash(`✓ ${data.message}`, 'green');
+  } else {
+    setHint(`⚠ ${data.error}`, 'warn');
+    flash(`⚠ ${data.error}`, 'orange');
+  }
+}
+
+// ── Iniciar proceso ───────────────────────────────────────────────────────────
+async function startProcess() {
+  if (stats.pending === 0) {
+    flash('⚠ No hay HUs pendientes.', 'orange');
+    return;
+  }
+
+  isRunning = true;
+  setProgBadge('▶ PROCESANDO', 'running');
+  setProgStatus('Enviando HUs a procesar...', 'running');
+  setFooterStatus('▶  Procesando…', 'running');
+  document.getElementById('prog-bar').classList.add('animated');
+  document.getElementById('prog-bar').classList.remove('done', 'error');
+  updateButtons();
+
+  try {
+    const res = await fetch('/api/procesar/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': getCookie('csrftoken')
+      },
+      body: JSON.stringify({
+        run_f1: document.getElementById('chk-f1').checked,
+        run_f2: document.getElementById('chk-f2').checked,
+      }),
+    });
+    const data = await res.json();
+
+    if (!data.ok) {
+      flash(`⚠ ${data.error}`, 'red');
+      isRunning = false;
+      setProgBadge('● EN ESPERA', '');
+      setProgStatus('Error al iniciar.', '');
+      updateButtons();
+      return;
+    }
+
+    flash(`▶ ${data.count} HUs enviadas a Celery`, 'green');
+
+  } catch (e) {
+    flash(`⚠ Error: ${e.message}`, 'red');
+    isRunning = false;
+    updateButtons();
+  }
+}
+
+// ── Detener proceso ───────────────────────────────────────────────────────────
+async function stopProcess() {
+  try {
+    await fetch('/cola/detener/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCookie('csrftoken') }
+    });
+  } catch {}
+  isRunning = false;
+  setProgBadge('● DETENIDO', 'stopped');
+  setProgStatus('Proceso detenido.', '');
+  setFooterStatus('■  Proceso detenido.', '');
+  document.getElementById('prog-bar').classList.remove('animated');
+  updateButtons();
+}
+
+// ── Exportar ──────────────────────────────────────────────────────────────────
+function exportCSV() {
+  window.location.href = '/exportar/';
+}
+
+// ── Limpiar ───────────────────────────────────────────────────────────────────
+async function clearQueue() {
+  if (!confirm('Esto eliminará todas las HUs.\n¿Continuar?')) return;
+  const res  = await fetch('/cola/limpiar/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') }
+  });
+  const data = await res.json();
+  if (data.ok) {
+    document.getElementById('queue-tbody').innerHTML =
+      `<tr class="empty-row" id="empty-row"><td colspan="6">Sin HUs en cola — escanea el primer código</td></tr>`;
+    Object.keys(palletSepRows).forEach(k => delete palletSepRows[k]);
+    stickyPallet.classList.remove('visible');
+    stats = { total:0, ok:0, errors:0, pending:0, pallets:0 };
+    handleStatsUpdate(stats);
+    setProgBadge('● EN ESPERA', '');
+    setProgStatus('Cola limpiada. Listo para escanear.', '');
+    setFooterStatus('■  En espera.', '');
+    document.getElementById('prog-bar').classList.remove('animated','done','error');
+    flash('✓ Cola limpiada.', 'green');
+    document.getElementById('scan-input').focus();
+  } else {
+    flash(`⚠ ${data.error}`, 'red');
+  }
+}
+
+// ── Reprocesar ────────────────────────────────────────────────────────────────
+async function reprocess() {
+  if (!confirm('Marcará todos los HUs procesados como Pendientes para reprocesar.\n¿Continuar?')) return;
+  const res  = await fetch('/cola/reprocesar/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') }
+  });
+  const data = await res.json();
+  if (data.ok) {
+    flash(`✓ ${data.count} HUs marcados como pendientes.`, 'green');
+    // Actualizar celdas en tabla a estado pending
+    document.querySelectorAll('#queue-tbody tr[data-hu]').forEach(tr => {
+      if (tr.cells[3]) tr.cells[3].innerHTML = `<span class="cell-status status-pending">Pendiente</span>`;
+      if (tr.cells[4]) tr.cells[4].innerHTML = '';
+      if (tr.cells[5]) tr.cells[5].innerHTML =
+        `<button class="btn-del" onclick="deleteHU('${tr.dataset.hu}')" title="Eliminar">✕</button>`;
+    });
+    isRunning = true;
+    setProgBadge('▶ PROCESANDO', 'running');
+    document.getElementById('prog-bar').classList.add('animated');
+    document.getElementById('prog-bar').classList.remove('done','error');
+    updateButtons();
+  } else {
+    flash(`⚠ ${data.error}`, 'red');
+  }
+}
+
+// ── Eliminar HU ───────────────────────────────────────────────────────────────
+async function deleteHU(huCode) {
+  const res  = await fetch(`/hu/${huCode}/borrar/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') }
+  });
+  const data = await res.json();
+  if (data.ok) {
+    const row = document.getElementById(`row-${huCode}`);
+    if (row) {
+      const palletId = parseInt(row.dataset.pallet);
+      row.remove();
+      updatePalletSep(palletId);
+    }
+    flash(`✓ HU ${huCode} eliminada.`, 'green');
+  } else {
+    flash(`⚠ ${data.error}`, 'orange');
+  }
+}
+
+// ── Flash ─────────────────────────────────────────────────────────────────────
+function flash(msg, color) {
+  const bar = document.getElementById('flash-bar');
+  bar.textContent = msg;
+  bar.className = `show ${color}`;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { bar.className = ''; }, 3000);
+}
+
+// ── CSRF helper ───────────────────────────────────────────────────────────────
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    for (const cookie of document.cookie.split(';')) {
+      const c = cookie.trim();
+      if (c.startsWith(name + '=')) {
+        cookieValue = decodeURIComponent(c.slice(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
+// ── SAP Status polling (equivale al QTimer de _check_sap) ────────────────────
+async function checkSAP() {
+  try {
+    const res  = await fetch('/api/sap-status/');
+    const data = await res.json();
+    document.getElementById('conn-dot').className   = `conn-dot ${data.connected ? 'ok' : ''}`;
+    document.getElementById('conn-label').textContent = data.connected
+      ? `● CONECTADO${data.user ? ' · ' + data.user : ''}`
+      : '○ Sin sesión SAP';
+  } catch { /* silencioso */ }
+}
+setInterval(checkSAP, 5000);
+checkSAP();
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+// Registrar separadores renderizados por Django
+document.querySelectorAll('tr.pallet-sep').forEach(sep => {
+  const pid = parseInt(sep.dataset.palletId);
+  if (pid) palletSepRows[pid] = sep;
+});
+
+updateButtons();
+updatePhaseCards();
+updateStickyPallet();
+
+// ════════════════════════════════════════════════════════════
+//  5-A  MENÚ HAMBURGUESA
+// ════════════════════════════════════════════════════════════
+function toggleHamMenu() {
+  const m = document.getElementById('ham-menu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+// Cierra el menú al hacer click fuera
+document.addEventListener('click', (e) => {
+  const menu  = document.getElementById('ham-menu');
+  const btn   = document.getElementById('ham-btn');
+  if (menu && btn && !btn.contains(e.target) && !menu.contains(e.target)) {
+    menu.style.display = 'none';
+  }
+});
+ 
+ 
+// ════════════════════════════════════════════════════════════
+//  5-B  SCAN HINT — versión corregida con auto-reset
+//       Reemplaza la función setHint() existente
+// ════════════════════════════════════════════════════════════
+let _hintTimer = null;
+function setHint(msg, type) {
+  const el = document.getElementById('scan-hint');
+  el.textContent = msg;
+  el.className = `scan-hint ${type}`;
+  clearTimeout(_hintTimer);
+  _hintTimer = setTimeout(() => {
+    el.textContent = 'Presiona Enter para confirmar · Escribe PALLET para separar';
+    el.className = 'scan-hint idle';
+  }, 2500);
+}
+ 
+ 
+// ════════════════════════════════════════════════════════════
+//  5-C  PIPELINE PHASE CARDS — inicialización correcta
+//       Reemplaza la función updatePhaseCards() existente
+// ════════════════════════════════════════════════════════════
+function updatePhaseCards() {
+  [
+    ['f1',   document.getElementById('chk-f1')],
+    ['f2',   document.getElementById('chk-f2')],
+    ['sp01', document.getElementById('chk-sp01')],
+  ].forEach(([id, chk]) => {
+    if (!chk) return;
+    const card = document.getElementById(`phase-${id}`);
+    if (!card) return;
+    const active = chk.checked;
+    card.classList.toggle('active',   active);
+    card.classList.toggle('inactive', !active);
+  });
+}
+
+ 
+ 
+// ════════════════════════════════════════════════════════════
+//  5-D  CONTEXT MENU en tabla (clic derecho)
+//       Equivalente al customContextMenuRequested de PyQt
+// ════════════════════════════════════════════════════════════
+let _ctxTargetHU      = null;
+let _ctxTargetPallet  = null;
+ 
+document.getElementById('queue-table').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const row = e.target.closest('tr');
+  if (!row) return;
+ 
+  _ctxTargetHU     = null;
+  _ctxTargetPallet = null;
+ 
+  const menu       = document.getElementById('ctx-menu');
+  const itemHU     = document.getElementById('ctx-delete-hu');
+  const itemPallet = document.getElementById('ctx-delete-pal');
+ 
+  if (row.classList.contains('pallet-sep')) {
+    // Click en separador de pallet
+    _ctxTargetPallet = row.dataset.palletId;
+    itemHU.style.display     = 'none';
+    itemPallet.style.display = 'block';
+  } else if (row.dataset.hu) {
+    // Click en fila de HU
+    _ctxTargetHU = row.dataset.hu;
+    const status = row.dataset.status || '';
+    const canDel = !['processing','ok','duplicate'].includes(status);
+    itemHU.style.display     = canDel ? 'block' : 'none';
+    itemPallet.style.display = 'none';
+  } else {
+    return;
+  }
+ 
+  menu.style.display = 'block';
+  menu.style.left    = `${Math.min(e.clientX, window.innerWidth  - 190)}px`;
+  menu.style.top     = `${Math.min(e.clientY, window.innerHeight - 80)}px`;
+});
+ 
+document.addEventListener('click', () => {
+  const m = document.getElementById('ctx-menu');
+  if (m) m.style.display = 'none';
+});
+ 
+function ctxDeleteHU() {
+  if (_ctxTargetHU) deleteHU(_ctxTargetHU);
+}
+ 
+async function ctxDeletePallet() {
+  if (!_ctxTargetPallet) return;
+  if (!confirm(`¿Borrar el pallet P${String(_ctxTargetPallet).padStart(2,'0')} completo?`)) return;
+ 
+  const res  = await fetch(`/pallet/${_ctxTargetPallet}/borrar/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+  });
+  const data = await res.json();
+  if (data.ok) {
+    // Quitar separador y filas asociadas del DOM
+    const sep = document.querySelector(`tr.pallet-sep[data-pallet-id="${_ctxTargetPallet}"]`);
+    document.querySelectorAll(`tr[data-pallet="${_ctxTargetPallet}"]`).forEach(r => r.remove());
+    if (sep) sep.remove();
+    delete palletSepRows[_ctxTargetPallet];
+    updateStickyPallet();
+    flash(`✓ Pallet borrado.`, 'green');
+  } else {
+    flash(`⚠ ${data.error}`, 'red');
+  }
+}
+ 
+ 
+// ════════════════════════════════════════════════════════════
+//  5-E  BOTÓN ELIMINAR en filas — data-status para ctx menu
+//       buildRowHTML actualizado — reemplaza el tuyo
+// ════════════════════════════════════════════════════════════
+function buildRowHTML(item) {
+  const canDel = item.status === 'pending' || item.status === 'error';
+  const pid    = String(item.pallet_id).padStart(2, '0');
+  const safe   = (item.origin_code || 'UNK').replace('/', '_');
+  return `
+    <td>P${pid}</td>
+    <td><span class="origin-badge origin-${safe}">${item.origin_code || '?'}</span></td>
+    <td style="font-family:var(--mono);font-size:8.5pt;">${item.hu_code}</td>
+    <td>${statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f1')}</td>
+    <td>${statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f2')}</td>
+    <td class="col-actions">${canDel
+      ? `<button class="btn-del" onclick="deleteHU('${item.hu_code}')" title="Eliminar">✕</button>`
+      : ''}</td>
+  `;
+}
+ 
+// Actualizar data-status en filas existentes cuando llega item_update
+// Añade esto dentro de tu función updateOrCreateRow(), en el bloque "else":
+//
+//   existing.dataset.status = item.status;
+//   existing.cells[5].innerHTML = (item.status === 'pending' || item.status === 'error')
+//     ? `<button class="btn-del" onclick="deleteHU('${item.hu_code}')" title="Eliminar">✕</button>`
+//     : '';
+ 
+ 
+// ════════════════════════════════════════════════════════════
+//  5-F  STICKY PALLET — versión corregida con IntersectionObserver
+//       Reemplaza la lógica del scroll listener existente
+// ════════════════════════════════════════════════════════════
+const _visibleSeps = new Set();
+let   _stickyObserver = null;
+ 
+function initStickyObserver() {
+  const wrap = document.getElementById('table-wrap');
+  if (!wrap) return;
+ 
+  _stickyObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const pid = parseInt(entry.target.dataset.palletId || '0');
+      if (!pid) return;
+      if (entry.isIntersecting) {
+        _visibleSeps.add(pid);
+      } else {
+        _visibleSeps.delete(pid);
+      }
+    });
+    _renderStickyPallet();
+  }, { root: wrap, threshold: 0 });
+ 
+  // Observar separadores existentes
+  document.querySelectorAll('tr.pallet-sep').forEach(sep => {
+    _stickyObserver.observe(sep);
+  });
+}
+ 
+function _observeSep(sepRow) {
+  if (_stickyObserver) _stickyObserver.observe(sepRow);
+}
+ 
+function _renderStickyPallet() {
+  const sticky = document.getElementById('sticky-pallet');
+  if (!sticky) return;
+ 
+  // Encontrar el pallet más alto cuyo sep NO está visible (ya quedó arriba del scroll)
+  const allPids    = Object.keys(palletSepRows).map(Number).sort((a,b) => a-b);
+  const hiddenAbove = allPids.filter(pid => !_visibleSeps.has(pid));
+ 
+  if (hiddenAbove.length === 0) {
+    sticky.classList.remove('visible');
+    return;
+  }
+  const pid   = hiddenAbove[hiddenAbove.length - 1];
+  const rows  = document.querySelectorAll(`tr[data-pallet="${pid}"]`);
+  const count = rows.length;
+  sticky.textContent = `─── Pallet P${String(pid).padStart(2,'0')} · ${count} HU${count !== 1 ? 's' : ''} ───`;
+  sticky.classList.add('visible');
+}
+ 
+
+ 
+// Al insertar un nuevo separador de pallet, observarlo:
+// (añade esta línea al final de ensurePalletSep(), luego de "tbody.appendChild(sep)")
+//   _observeSep(sep);
+ 
+ 
+// ════════════════════════════════════════════════════════════
+//  5-G  EXPORTAR — con feedback de flash y descarga directa
+//       Reemplaza la función exportCSV() existente
+// ════════════════════════════════════════════════════════════
+function exportCSV() {
+  flash('↓ Preparando exportación...', 'green');
+  const link = document.createElement('a');
+  link.href  = '/exportar/';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+ 
+ 
+// ════════════════════════════════════════════════════════════
+//  5-H  REPROCESAR — falta en el HTML original
+//       Reemplaza la función reprocess() existente
+// ════════════════════════════════════════════════════════════
+async function reprocess() {
+  if (!confirm('Marcará todos los HUs procesados como Pendientes.\n¿Continuar?')) return;
+ 
+  const btn = document.getElementById('btn-reprocess');
+  if (btn) btn.disabled = true;
+ 
+  const res  = await fetch('/cola/reprocesar/', {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+  });
+  const data = await res.json();
+ 
+  if (data.ok) {
+    flash(`✓ ${data.count} HUs marcados como pendientes.`, 'green');
+ 
+    // Resetear celdas F1 / F2 de toda fila de HU
+    document.querySelectorAll('#queue-tbody tr[data-hu]').forEach(tr => {
+      if (tr.cells[3]) {
+        tr.cells[3].innerHTML =
+          `<span class="cell-status status-pending">Pendiente</span>`;
+      }
+      if (tr.cells[4]) tr.cells[4].innerHTML = '';
+      if (tr.cells[5]) {
+        tr.cells[5].innerHTML =
+          `<button class="btn-del" onclick="deleteHU('${tr.dataset.hu}')"
+           title="Eliminar">✕</button>`;
+      }
+      tr.dataset.status = 'pending';
+    });
+ 
+    isRunning = true;
+    setProgBadge('▶ PROCESANDO', 'running');
+    document.getElementById('prog-bar').classList.add('animated');
+    document.getElementById('prog-bar').classList.remove('done', 'error');
+    updateButtons();
+  } else {
+    flash(`⚠ ${data.error}`, 'red');
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Inicialización única ──────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Registrar separadores que Django renderizó en el HTML inicial
+  document.querySelectorAll('tr.pallet-sep').forEach(sep => {
+    const pid = parseInt(sep.dataset.palletId);
+    if (pid) palletSepRows[pid] = sep;
+  });
+
+  updatePhaseCards();
+  updateButtons();
+  initStickyObserver();  // inicia el IntersectionObserver del sticky pallet
+  checkSAP();
+});
+</script>
+
+<div id="ctx-menu">
+  <div class="ctx-item" id="ctx-delete-hu"   onclick="ctxDeleteHU()">🗑 Borrar HU</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" id="ctx-delete-pal" onclick="ctxDeletePallet()">✕ Borrar pallet completo</div>
+</div>
+
+</body>
+</html>

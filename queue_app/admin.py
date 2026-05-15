@@ -1,0 +1,17 @@
+from django.contrib import admin
+from .models import Pallet, HUItem, ScanLog
+
+@admin.register(HUItem)
+class HUItemAdmin(admin.ModelAdmin):
+    list_display  = ['hu_code', 'pallet', 'origin_code', 'status', 'added_at', 'phase2_ms']
+    list_filter   = ['status', 'origin_code']
+    search_fields = ['hu_code']
+
+@admin.register(Pallet)
+class PalletAdmin(admin.ModelAdmin):
+    list_display = ['id', 'origin_code', 'status', 'created_at', 'hu_count']
+
+@admin.register(ScanLog)
+class ScanLogAdmin(admin.ModelAdmin):
+    list_display  = ['hu_code', 'result', 'scanned_at', 'message']
+    list_filter   = ['result']

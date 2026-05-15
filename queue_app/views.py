@@ -1,0 +1,506 @@
+import csv
+import logging
+import os
+import time
+from datetime import datetime
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.http import require_POST, require_GET
+from django.views.decorators.csrf import csrf_exempt
+from django.shortcuts import render
+from django.utils import timezone
+
+from core.hu_origins import detect_origin, is_pallet_separator
+
+from queue_app.models import HUItem, Pallet, ScanLog
+from queue_app.tasks import process_hu_task
+from queue_app.utils import emit_item_update, emit_stats_update
+
+try:
+    import win32com.client
+except ImportError:
+    win32com = None
+
+log = logging.getLogger(__name__)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PÁGINA PRINCIPAL
+# ══════════════════════════════════════════════════════════════════════════════
+
+def queue_view(request):
+    """
+    Renderiza la UI principal.
+    Equivale a run_queue_app() — muestra la ventana con la cola actual.
+    """
+    pallets = Pallet.objects.prefetch_related('items').order_by('id')
+    stats   = _get_stats()
+
+    return render(request, 'queue_app/queue.html', {
+        'pallets': pallets,
+        'stats':   stats,
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  SCAN — escanear HU o separador de pallet
+# ══════════════════════════════════════════════════════════════════════════════
+
+@csrf_exempt
+@require_POST
+def scan_hu(request):
+    """
+    Equivale a _on_scan() en queue_window.py.
+    Recibe el código escaneado y decide si es HU o separador de pallet.
+    """
+    import json
+    try:
+        body    = json.loads(request.body)
+        raw     = body.get('code', '').strip()
+        run_f1  = body.get('run_f1', True)
+        run_f2  = body.get('run_f2', True)
+    except Exception:
+        return JsonResponse({'ok': False, 'error': 'JSON inválido'}, status=400)
+
+    if not raw:
+        return JsonResponse({'ok': False, 'error': 'Código vacío'}, status=400)
+
+    # ── Separador de pallet ───────────────────────────────────────────────────
+    if is_pallet_separator(raw):
+        result = _new_pallet_logic()
+        return JsonResponse(result)
+
+    # ── Validar longitud — misma regla que _on_scan() ────────────────────────
+    if not (10 <= len(raw) <= 15):
+        return JsonResponse({
+            'ok':      False,
+            'error':   f"Código HU inválido: '{raw}' tiene {len(raw)} caracteres. Rango permitido: 10–15",
+            'type':    'validation_error',
+        }, status=400)
+
+    # ── Duplicado ─────────────────────────────────────────────────────────────
+    if HUItem.objects.filter(hu_code=raw).exists():
+        ScanLog.objects.create(hu_code=raw, result='duplicate', message='Ya existe en cola')
+        return JsonResponse({
+            'ok':    False,
+            'error': f'Duplicado: {raw}',
+            'type':  'duplicate',
+        }, status=409)
+
+    # ── Crear HUItem en DB ────────────────────────────────────────────────────
+    origin  = detect_origin(raw)
+    pallet  = _get_or_create_active_pallet(raw, origin)
+    item    = HUItem.objects.create(
+        hu_code     = raw,
+        pallet      = pallet,
+        origin_code = origin.code,
+        status      = HUItem.STATUS_PENDING,
+    )
+    ScanLog.objects.create(hu_code=raw, result='queued', message=f'Pallet {pallet.pk}')
+
+    # ✅ Agrega esto después de crear el HUItem
+    from queue_app.utils import emit_item_update, emit_stats_update
+    emit_item_update(item)
+    emit_stats_update(item.pallet)
+
+    # ── Disparar tarea Celery ─────────────────────────────────────────────────
+    
+
+    log.info(f"scan_hu hu={raw} pallet={pallet.pk} origin={origin.code}")
+
+    return JsonResponse({
+        'ok':        True,
+        'hu_code':   raw,
+        'pallet_id': pallet.pk,
+        'origin':    origin.label,
+        'status':    item.status,
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PALLET — crear nuevo pallet manualmente
+# ══════════════════════════════════════════════════════════════════════════════
+
+@csrf_exempt
+@require_POST
+def new_pallet(request):
+    """
+    Equivale a _new_pallet() en queue_window.py.
+    Crea un nuevo pallet si el actual tiene HUs.
+    """
+    result = _new_pallet_logic()
+    return JsonResponse(result)
+
+
+def _new_pallet_logic() -> dict:
+    """Lógica compartida entre scan (separador) y botón nuevo pallet."""
+    active = Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).order_by('-id').first()
+
+    # Si el pallet activo está vacío, no crear uno nuevo
+    if active and not active.items.exists():
+        return {
+            'ok':        False,
+            'error':     f'El pallet actual (P{active.pk:02d}) está vacío. Escanea un HU primero.',
+            'type':      'empty_pallet',
+            'pallet_id': active.pk,
+        }
+
+    pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+    log.info(f"new_pallet created id={pallet.pk}")
+
+    return {
+        'ok':        True,
+        'pallet_id': pallet.pk,
+        'message':   f'Nuevo pallet #{pallet.pk} iniciado.',
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  BORRAR HU / PALLET
+# ══════════════════════════════════════════════════════════════════════════════
+
+@csrf_exempt
+@require_POST
+def delete_hu(request, hu_code):
+    """
+    Equivale a _delete_hu_row() en queue_window.py.
+    Solo permite borrar HUs en estado pending o error.
+    """
+    try:
+        item = HUItem.objects.get(hu_code=hu_code)
+    except HUItem.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'HU no encontrada'}, status=404)
+
+    if item.status in (HUItem.STATUS_PROCESSING, HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE):
+        return JsonResponse({
+            'ok':    False,
+            'error': f'HU ya procesada ({item.status_display}) — no se puede borrar',
+        }, status=409)
+
+    pallet = item.pallet
+    item.delete()
+    log.info(f"delete_hu hu={hu_code} pallet={pallet.pk}")
+
+    # Si el pallet quedó vacío y no es el único, borrarlo también
+    if not pallet.items.exists() and Pallet.objects.count() > 1:
+        pallet.delete()
+        return JsonResponse({'ok': True, 'pallet_deleted': True})
+
+    return JsonResponse({'ok': True, 'pallet_deleted': False})
+
+
+@csrf_exempt
+@require_POST
+def delete_pallet(request, pallet_id):
+    """
+    Equivale a _delete_pallet() en queue_window.py.
+    Borra el pallet y todos sus HUs si es seguro.
+    """
+    try:
+        pallet = Pallet.objects.get(pk=pallet_id)
+    except Pallet.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'Pallet no encontrado'}, status=404)
+
+    if not pallet.is_safe_to_delete:
+        return JsonResponse({
+            'ok':    False,
+            'error': 'Pallet en proceso — no se puede borrar',
+        }, status=409)
+
+    count = pallet.items.count()
+    pallet.delete()   # CASCADE elimina los HUItems
+    log.info(f"delete_pallet id={pallet_id} hu_count={count}")
+
+    return JsonResponse({'ok': True, 'deleted_hus': count})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  LIMPIAR / REPROCESAR
+# ══════════════════════════════════════════════════════════════════════════════
+
+@csrf_exempt
+@require_POST
+def clear_queue(request):
+    """Equivale a _clear() — borra toda la cola."""
+    # No permitir si hay HUs procesando
+    if HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
+        return JsonResponse({
+            'ok':    False,
+            'error': 'Hay HUs procesando — detén el proceso antes de limpiar',
+        }, status=409)
+
+    deleted_items   = HUItem.objects.all().delete()
+    deleted_pallets = Pallet.objects.all().delete()
+    # Crear pallet inicial vacío
+    Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+
+    log.info("clear_queue done")
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
+@require_POST
+def reprocess_queue(request):
+    """
+    Equivale a _reprocess() — resetea HUs procesados a pending
+    y dispara las tasks de Celery de nuevo.
+    """
+    if HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
+        return JsonResponse({
+            'ok':    False,
+            'error': 'Hay HUs procesando — espera a que terminen',
+        }, status=409)
+
+    items = HUItem.objects.filter(
+        status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE, HUItem.STATUS_ERROR]
+    )
+    count = items.count()
+
+    items.update(
+        status      = HUItem.STATUS_PENDING,
+        phase1_msg  = '',
+        phase2_msg  = '',
+        phase2_ms   = 0,
+        processed_at = None,
+        f1_done_at  = None,
+        sp01_done_at = None,
+    )
+
+    # Resetear timestamps de pallets
+    Pallet.objects.all().update(
+        status      = Pallet.STATUS_ACTIVE,
+        f2_done_at  = None,
+        sp01_done_at = None,
+    )
+
+    # Relanzar task por cada HU
+    for item in HUItem.objects.filter(status=HUItem.STATUS_PENDING):
+        process_hu_task.delay(item.pk)
+
+    log.info(f"reprocess_queue count={count}")
+    return JsonResponse({'ok': True, 'count': count})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  EXPORTAR CSV — mismas columnas que _export()
+# ══════════════════════════════════════════════════════════════════════════════
+
+@require_GET
+def export_csv(request):
+    """Equivale a _export() — descarga CSV con los datos de la cola actual."""
+    filename = f"HUFlow_Export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    writer = csv.writer(response)
+    writer.writerow([
+        'Pallet', 'Origen', 'Código HU', 'Estado',
+        'F1', 'F1 msg', 'F2', 'F2 msg', 'F2 ms',
+        'Agregada', 'Procesada',
+    ])
+
+    for item in HUItem.objects.select_related('pallet').order_by('pallet_id', 'added_at'):
+        writer.writerow([
+            f"P{item.pallet_id:02d}",
+            item.origin_code,
+            item.hu_code,
+            item.status_display,
+            'ZMOVEINBHU', item.phase1_msg or '',
+            'ZMMTIJSEP',  item.phase2_msg or '',
+            item.phase2_ms or '',
+            item.added_at.strftime('%d/%m/%Y %H:%M:%S')   if item.added_at   else '',
+            item.processed_at.strftime('%d/%m/%Y %H:%M:%S') if item.processed_at else '',
+        ])
+
+    return response
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  INICIAR SAP
+# ══════════════════════════════════════════════════════════════════════════════
+
+@csrf_exempt
+@require_POST
+def iniciar_sap_endpoint(request):
+    """
+    Endpoint para iniciar la conexión con SAP.
+    Equivale a la función iniciar_sap() — llama a SAP y abre la sesión.
+    
+    Returns:
+        JSON con status ok=True si la conexión fue exitosa.
+    """
+    try:
+        success = iniciar_sap()
+        if success:
+            log.info("iniciar_sap_endpoint conexión exitosa")
+            return JsonResponse({'ok': True, 'message': 'SAP conectado correctamente'})
+        else:
+            log.error("iniciar_sap_endpoint falló")
+            return JsonResponse({
+                'ok': False,
+                'error': 'No se pudo conectar con SAP. Verifica que SAP está instalado.'
+            }, status=500)
+    except Exception as e:
+        log.error(f"iniciar_sap_endpoint error: {type(e).__name__}: {e}")
+        return JsonResponse({
+            'ok': False,
+            'error': str(e)
+        }, status=500)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STATUS SAP — equivale al timer _check_sap()
+# ══════════════════════════════════════════════════════════════════════════════
+
+@require_GET
+def sap_status(request):
+    """
+    Equivale al QTimer que llama _check_sap() cada 5 segundos.
+    El browser lo polling cada 5s para mostrar el indicador de conexión SAP.
+    """
+    from core.sap_client import SAPClient
+    try:
+        ok, user = SAPClient.check_session()
+        return JsonResponse({'connected': ok, 'user': user})
+    except Exception as e:
+        return JsonResponse({'connected': False, 'user': '', 'error': str(e)})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STATS — para actualizar KPIs desde JS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@require_GET
+def stats_view(request):
+    return JsonResponse(_get_stats())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  HELPERS INTERNOS
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_stats() -> dict:
+    items = HUItem.objects.all()
+    return {
+        'total':   items.count(),
+        'ok':      items.filter(status__in=['ok', 'duplicate']).count(),
+        'errors':  items.filter(status='error').count(),
+        'pending': items.filter(status='pending').count(),
+        'pallets': Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).count(),
+    }
+
+
+def _get_or_create_active_pallet(hu_code: str, origin) -> Pallet:
+    """
+    Equivale a la lógica de asignación de pallet en HUQueue.add_hu().
+    Decide si el HU va al pallet activo o crea uno nuevo.
+    """
+    active = Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).order_by('-id').first()
+
+    # Sin pallets — crear el primero
+    if not active:
+        return Pallet.objects.create(
+            status=Pallet.STATUS_ACTIVE,
+            origin_code=origin.code,
+        )
+
+    # Pallet activo vacío — usarlo
+    if not active.items.exists():
+        active.origin_code = origin.code
+        active.save(update_fields=['origin_code'])
+        return active
+
+    # Origen distinto o auto_pallet → pallet nuevo
+    if active.origin_code != origin.code or origin.auto_pallet:
+        return Pallet.objects.create(
+            status=Pallet.STATUS_ACTIVE,
+            origin_code=origin.code,
+        )
+    
+
+    return active
+
+def iniciar_sap():
+    """
+    Inicia la conexión con SAP.
+    
+    Pasos:
+      1. Verifica que SAPgui (saplogon.exe) esté disponible
+      2. Abre SAP
+      3. Obtiene la sesión activa
+      4. Abre conexión a SAP Production
+    
+    Returns:
+        bool: True si la conexión fue exitosa, False si hubo error.
+    """
+    import os
+    import time
+    
+    if not win32com:
+        log.error("iniciar_sap win32com no está instalado")
+        return False
+    
+    ruta_saplogon = r"C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe"
+    
+    # Verificar que saplogon.exe existe
+    if not os.path.isfile(ruta_saplogon):
+        log.error(f"iniciar_sap saplogon.exe no encontrado en {ruta_saplogon}")
+        return False
+    
+    try:
+        # Abrir saplogon.exe
+        os.startfile(ruta_saplogon)
+        log.info("iniciar_sap saplogon abierto, esperando 5s...")
+        time.sleep(5)
+        
+        # Conectar a través de COM
+        SapGuiAuto = win32com.client.GetObject("SAPGUI")
+        application = SapGuiAuto.GetScriptingEngine
+        connection = application.OpenConnection("LUP Production [Public]", True)
+        log.info("iniciar_sap conexión abierta, esperando 3s...")
+        time.sleep(3)
+        
+        # Obtener sesión
+        session = connection.Children(0)
+        log.info("iniciar_sap sesión obtenida exitosamente")
+        return True
+        
+    except Exception as e:
+        log.error(f"iniciar_sap error: {type(e).__name__}: {e}")
+        return False
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  DETENER PROCESO
+# ══════════════════════════════════════════════════════════════════════════════
+
+@csrf_exempt
+@require_POST
+def detener_queue(request):
+    """
+    Equivale a btn_stop — marca el proceso como detenido en el lado servidor.
+    En este diseño el stop es principalmente UI.
+    Si en el futuro quieres cancelar tasks de Celery, aquí va la lógica.
+    """
+    log.info("detener_queue called")
+    return JsonResponse({'ok': True})
+
+@csrf_exempt
+@require_POST
+def procesar_pendientes(request):
+    """Dispara tasks de Celery para todos los HUs pendientes."""
+    import json
+    body   = json.loads(request.body) if request.body else {}
+    run_f1 = body.get('run_f1', True)
+    run_f2 = body.get('run_f2', True)
+
+    items = HUItem.objects.filter(status=HUItem.STATUS_PENDING)
+    count = items.count()
+
+    if not count:
+        return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes'})
+
+    for item in items:
+        process_hu_task.delay(item.pk, run_f1=run_f1, run_f2=run_f2)
+
+    log.info(f"procesar_pendientes disparadas {count} tasks")
+    return JsonResponse({'ok': True, 'count': count})
