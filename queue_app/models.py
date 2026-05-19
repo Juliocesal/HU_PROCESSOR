@@ -15,7 +15,12 @@ class Pallet(models.Model):
 
     created_at   = models.DateTimeField(default=timezone.now)
     f2_done_at   = models.DateTimeField(null=True, blank=True)
-    sp01_done_at = models.DateTimeField(null=True, blank=True)
+    receipt_done_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_column='sp01_done_at',
+        help_text='Timestamp de la generacion/impresion de recibo ZE16.',
+    )
     status       = models.CharField(max_length=20, default=STATUS_ACTIVE)
 
     # Origen del pallet (código del primer HU que entró)
@@ -31,7 +36,7 @@ class Pallet(models.Model):
     @property
     def processing_time_display(self) -> str:
         start = self.created_at
-        end   = self.sp01_done_at or self.f2_done_at or timezone.now()
+        end   = self.receipt_done_at or self.f2_done_at or timezone.now()
         delta = (end - start).total_seconds()
         if delta < 60:
             return f"{int(delta)}s"
@@ -102,7 +107,12 @@ class HUItem(models.Model):
 
     processed_at  = models.DateTimeField(null=True, blank=True)
     f1_done_at    = models.DateTimeField(null=True, blank=True)
-    sp01_done_at  = models.DateTimeField(null=True, blank=True)
+    receipt_done_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_column='sp01_done_at',
+        help_text='Timestamp de recibo ZE16/PDF para esta HU.',
+    )
 
     class Meta:
         ordering = ['added_at']

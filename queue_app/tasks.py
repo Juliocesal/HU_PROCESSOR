@@ -1,58 +1,299 @@
 import logging
-from datetime import datetime
+
 from celery import shared_task
+from django.conf import settings
 from django.utils import timezone
 
 log = logging.getLogger(__name__)
 
+QUEUE_LOCK_KEY = 'nexhus:queue_processing_lock'
+QUEUE_STOP_KEY = 'nexhus:queue_stop_requested'
+QUEUE_LOCK_TTL_SECONDS = 60 * 60 * 6
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  TAREA PRINCIPAL — procesar un HU completo (F1 → F2 → boundary check)
-# ══════════════════════════════════════════════════════════════════════════════
+
+def _get_redis_lock_client():
+    import redis
+
+    return redis.Redis.from_url(
+        settings.CELERY_BROKER_URL,
+        socket_connect_timeout=2,
+        socket_timeout=2,
+    )
+
+
+def _acquire_queue_lock(owner: str) -> bool:
+    try:
+        client = _get_redis_lock_client()
+        acquired = bool(client.set(QUEUE_LOCK_KEY, owner, nx=True, ex=QUEUE_LOCK_TTL_SECONDS))
+        if acquired:
+            client.delete(QUEUE_STOP_KEY)
+        return acquired
+    except Exception as e:
+        log.error("queue_lock_acquire_failed owner=%s error=%s", owner, e)
+        return False
+
+
+def _release_queue_lock(owner: str) -> None:
+    try:
+        client = _get_redis_lock_client()
+        current = client.get(QUEUE_LOCK_KEY)
+        if current and current.decode('utf-8', errors='replace') == owner:
+            client.delete(QUEUE_LOCK_KEY)
+            client.delete(QUEUE_STOP_KEY)
+    except Exception as e:
+        log.warning("queue_lock_release_failed owner=%s error=%s", owner, e)
+
+
+def is_queue_locked() -> bool:
+    """Return True when a queue worker owns the Redis processing lock."""
+    try:
+        return bool(_get_redis_lock_client().exists(QUEUE_LOCK_KEY))
+    except Exception as e:
+        log.warning("queue_lock_status_failed error=%s", e)
+        return False
+
+
+def request_queue_stop() -> bool:
+    """
+    Ask the active worker to stop at the next safe boundary.
+
+    SAP GUI work should not be killed mid-HU; the task checks this flag between
+    HUs and before ZE16/PDF so the queue stops without corrupting the SAP session.
+    """
+    try:
+        client = _get_redis_lock_client()
+        if not client.exists(QUEUE_LOCK_KEY):
+            return False
+        client.set(QUEUE_STOP_KEY, '1', ex=QUEUE_LOCK_TTL_SECONDS)
+        return True
+    except Exception as e:
+        log.error("queue_stop_request_failed error=%s", e)
+        return False
+
+
+def _stop_requested() -> bool:
+    try:
+        return bool(_get_redis_lock_client().exists(QUEUE_STOP_KEY))
+    except Exception as e:
+        log.warning("queue_stop_check_failed error=%s", e)
+        return False
+
+
+def _stopped_result(pallets_processed: int, hus_processed: int, errors: int) -> dict:
+    return {
+        'status': 'stopped',
+        'message': 'Proceso detenido por el usuario.',
+        'pallets_processed': pallets_processed,
+        'hus_processed': hus_processed,
+        'errors': errors,
+    }
+
+
+@shared_task(bind=True, max_retries=0)
+def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
+    """
+    Process the whole queue in deterministic order:
+    pallet -> all HUs -> ZE16/PDF/print -> next pallet.
+    """
+    from queue_app.models import HUItem, Pallet
+    from queue_app.utils import emit_error, emit_queue_done
+
+    owner = f"process_queue_task:{self.request.id}"
+    if not _acquire_queue_lock(owner):
+        message = 'Queue processing already active; start request ignored.'
+        log.warning(message)
+        emit_error(message)
+        return {'ok': False, 'error': message}
+
+    pallets_processed = 0
+    hus_processed = 0
+    errors = 0
+
+    try:
+        pallet_ids = list(
+            Pallet.objects.filter(items__status=HUItem.STATUS_PENDING)
+            .distinct()
+            .order_by('id')
+            .values_list('id', flat=True)
+        )
+
+        if not pallet_ids:
+            result = {
+                'status': 'error',
+                'message': 'No pending HUs to process.',
+                'pallets_processed': 0,
+                'hus_processed': 0,
+                'errors': 0,
+            }
+            emit_queue_done(result)
+            return result
+
+        log.info("process_queue_task start pallets=%s", pallet_ids)
+
+        for pallet_id in pallet_ids:
+            if _stop_requested():
+                final = _stopped_result(pallets_processed, hus_processed, errors)
+                emit_queue_done(final)
+                return final
+
+            pallet = Pallet.objects.get(pk=pallet_id)
+            item_ids = list(
+                pallet.items.filter(status=HUItem.STATUS_PENDING)
+                .order_by('added_at', 'id')
+                .values_list('id', flat=True)
+            )
+
+            if not item_ids:
+                continue
+
+            log.info(
+                "process_queue_task pallet_start pallet=%s hu_count=%s",
+                pallet_id,
+                len(item_ids),
+            )
+
+            for item_id in item_ids:
+                if _stop_requested():
+                    final = _stopped_result(pallets_processed, hus_processed, errors)
+                    emit_queue_done(final)
+                    return final
+
+                item = _process_hu_item(
+                    item_id,
+                    run_f1=run_f1,
+                    run_f2=run_f2,
+                    run_pallet_boundary=False,
+                    emit_pallet_completion=False,
+                )
+                hus_processed += 1
+                if item and item.status in (HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND):
+                    errors += 1
+
+            pallet_errors = pallet.items.filter(
+                status__in=[HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
+            ).count()
+            if pallet_errors:
+                log.warning(
+                    "process_queue_task pallet_has_errors pallet=%s errors=%s",
+                    pallet_id,
+                    pallet_errors,
+                )
+                pallets_processed += 1
+                continue
+
+            if run_pdf:
+                if _stop_requested():
+                    final = _stopped_result(pallets_processed, hus_processed, errors)
+                    emit_queue_done(final)
+                    return final
+
+                result = _run_pallet_boundary(pallet_id, emit_completion=False)
+                if result and result.get('status') != 'ok':
+                    errors += 1
+                    log.error(
+                        "process_queue_task pallet_receipt_failed pallet=%s result=%s",
+                        pallet_id,
+                        result,
+                    )
+                    pallets_processed += 1
+                    continue
+
+            pallets_processed += 1
+            log.info("process_queue_task pallet_done pallet=%s", pallet_id)
+
+        final_status = 'ok' if errors == 0 else 'error'
+        final_message = (
+            'All pallets were processed and printed successfully'
+            if errors == 0
+            else f'Queue finished with {errors} error(s)'
+        )
+        final = {
+            'status': final_status,
+            'message': final_message,
+            'pallets_processed': pallets_processed,
+            'hus_processed': hus_processed,
+            'errors': errors,
+        }
+        emit_queue_done(final)
+        log.info("process_queue_task done result=%s", final)
+        return final
+
+    except Exception as e:
+        log.exception("process_queue_task fatal_error")
+        final = {
+            'status': 'error',
+            'message': str(e),
+            'pallets_processed': pallets_processed,
+            'hus_processed': hus_processed,
+            'errors': errors + 1,
+        }
+        emit_queue_done(final)
+        return final
+    finally:
+        _release_queue_lock(owner)
+
 
 @shared_task(bind=True, max_retries=0)
 def process_hu_task(self, hu_item_id: int, run_f1=True, run_f2=True):
     """
-    Equivalente al loop _run() del QueueWorker, pero para un solo HUItem.
-    Celery lo ejecuta en el worker Windows que tiene SAP GUI abierto.
+    Compatibility task for one HU. The UI now starts process_queue_task instead.
     """
+    owner = f"process_hu_task:{self.request.id}"
+    if not _acquire_queue_lock(owner):
+        log.warning("process_hu_task skipped because queue lock is active hu_id=%s", hu_item_id)
+        return {'ok': False, 'error': 'Queue processing already active'}
+
+    try:
+        return _process_hu_item(
+            hu_item_id,
+            run_f1=run_f1,
+            run_f2=run_f2,
+            run_pallet_boundary=True,
+            emit_pallet_completion=True,
+        )
+    finally:
+        _release_queue_lock(owner)
+
+
+def _process_hu_item(
+    hu_item_id: int,
+    run_f1=True,
+    run_f2=True,
+    run_pallet_boundary=True,
+    emit_pallet_completion=True,
+):
     import pythoncom
-    from core.sap_client import SAPClient, SAPConnectionError
     from core.hu_origins import detect_origin
-    from queue_app.models import HUItem, Pallet
+    from core.sap_client import SAPClient, SAPConnectionError
+    from queue_app.models import HUItem
     from queue_app.utils import emit_item_update, emit_stats_update
 
     pythoncom.CoInitialize()
-    sap = None
 
     try:
-        # ── Cargar el HUItem desde la DB ──────────────────────────────────────
         try:
-            item = HUItem.objects.get(pk=hu_item_id)
+            item = HUItem.objects.select_related('pallet').get(pk=hu_item_id)
         except HUItem.DoesNotExist:
-            log.error(f"process_hu_task — HUItem id={hu_item_id} no existe")
-            return
+            log.error("process_hu_item missing hu_id=%s", hu_item_id)
+            return None
 
         if item.status != HUItem.STATUS_PENDING:
-            log.warning(f"process_hu_task — hu={item.hu_code} ya tiene status={item.status}, skip")
-            return
+            log.warning("process_hu_item skip hu=%s status=%s", item.hu_code, item.status)
+            return item
 
         origin = detect_origin(item.hu_code)
 
-        # ── Marcar como procesando ────────────────────────────────────────────
         item.status = HUItem.STATUS_PROCESSING
         item.save(update_fields=['status'])
         emit_item_update(item)
         emit_stats_update(item.pallet)
 
-        # ── Conectar a SAP ────────────────────────────────────────────────────
         sap = SAPClient()
         sap.connect()
-        log.info(f"process_hu_task sap_connected hu={item.hu_code}")
+        log.info("process_hu_item sap_connected hu=%s", item.hu_code)
 
         res1 = None
 
-        # ── Fase 1: ZMOVEINBHU ────────────────────────────────────────────────
         if run_f1:
             sap.setup_phase1(origin=origin)
             res1 = sap.process_hu_phase1(item.hu_code, origin=origin)
@@ -60,20 +301,27 @@ def process_hu_task(self, hu_item_id: int, run_f1=True, run_f2=True):
             item.f1_done_at = timezone.now()
 
             if res1['status'] in ('error', 'hu_not_found'):
-                item.status = res1['status'] if res1['status'] == 'hu_not_found' else HUItem.STATUS_ERROR
+                item.status = (
+                    HUItem.STATUS_HU_NOT_FOUND
+                    if res1['status'] == 'hu_not_found'
+                    else HUItem.STATUS_ERROR
+                )
                 item.processed_at = timezone.now()
                 item.save(update_fields=['status', 'phase1_msg', 'f1_done_at', 'processed_at'])
                 emit_item_update(item)
                 emit_stats_update(item.pallet)
-                log.warning(f"process_hu_task f1_failed hu={item.hu_code} reason={res1['message']}")
-                # Revisar si el pallet terminó
-                _check_pallet_boundary.delay(item.pallet_id)
-                return
+                log.warning(
+                    "process_hu_item f1_failed hu=%s reason=%s",
+                    item.hu_code,
+                    res1['message'],
+                )
+                if run_pallet_boundary:
+                    _run_pallet_boundary(item.pallet_id, emit_completion=emit_pallet_completion)
+                return item
 
             if res1['status'] == 'duplicate':
                 item.phase1_msg = 'Ya se hizo el Acknowledge'
 
-        # ── Fase 2: ZMMTIJSEP ────────────────────────────────────────────────
         if run_f2:
             sap.setup_phase2(origin=origin)
             res2 = sap.process_hu_phase2(
@@ -82,242 +330,202 @@ def process_hu_task(self, hu_item_id: int, run_f1=True, run_f2=True):
                 origin=origin,
             )
             item.phase2_msg = res2['message']
-            item.phase2_ms  = res2['duration_ms']
+            item.phase2_ms = res2['duration_ms']
 
             if res2['status'] == 'ok':
-                # Guardar timestamp F2 en el pallet para SP01
                 pallet = item.pallet
                 pallet.f2_done_at = res2['phase2_ts']
                 pallet.save(update_fields=['f2_done_at'])
-                item.status = HUItem.STATUS_OK if (not run_f1 or (res1 and res1['status'] == 'ok')) else HUItem.STATUS_DUPLICATE
+                item.status = (
+                    HUItem.STATUS_OK
+                    if (not run_f1 or (res1 and res1['status'] == 'ok'))
+                    else HUItem.STATUS_DUPLICATE
+                )
             else:
                 item.status = HUItem.STATUS_ERROR
-
         else:
             item.status = HUItem.STATUS_OK
 
         item.processed_at = timezone.now()
         item.save(update_fields=[
-            'status', 'phase1_msg', 'phase2_msg',
-            'phase2_ms', 'f1_done_at', 'processed_at'
+            'status',
+            'phase1_msg',
+            'phase2_msg',
+            'phase2_ms',
+            'f1_done_at',
+            'processed_at',
         ])
         emit_item_update(item)
         emit_stats_update(item.pallet)
 
-        # Revisar si el pallet terminó para lanzar SP01/ZE16
-        _check_pallet_boundary.delay(item.pallet_id)
+        if run_pallet_boundary:
+            _run_pallet_boundary(item.pallet_id, emit_completion=emit_pallet_completion)
+
+        return item
 
     except SAPConnectionError as e:
-        log.error(f"process_hu_task sap_error hu_id={hu_item_id} error={e}")
-        _mark_item_error(hu_item_id, str(e))
+        log.error("process_hu_item sap_error hu_id=%s error=%s", hu_item_id, e)
+        return _mark_item_error(hu_item_id, str(e))
     except Exception as e:
-        log.exception(f"process_hu_task fatal_error hu_id={hu_item_id}")
-        _mark_item_error(hu_item_id, str(e))
+        log.exception("process_hu_item fatal_error hu_id=%s", hu_item_id)
+        return _mark_item_error(hu_item_id, str(e))
     finally:
         pythoncom.CoUninitialize()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  BOUNDARY — revisar si el pallet terminó y lanzar SP01 o ZE16+PDF
-# ══════════════════════════════════════════════════════════════════════════════
-
-@shared_task(bind=True, max_retries=0)
-def _check_pallet_boundary(self, pallet_id: int):
+def _run_pallet_boundary(pallet_id: int, emit_completion=True):
     """
-    Equivalente a _handle_pallet_boundary() del QueueWorker.
-    Se lanza después de cada HU procesado.
-    Si todos los HUs del pallet terminaron → lanza sp01_task o ze16_pdf_task.
+    Run the pallet receipt step only after every HU in the pallet has finished.
     """
-    from queue_app.models import Pallet, HUItem
+    from queue_app.models import HUItem, Pallet
 
     try:
         pallet = Pallet.objects.get(pk=pallet_id)
     except Pallet.DoesNotExist:
-        return
+        return {'status': 'error', 'message': f'Pallet {pallet_id} no existe', 'marked': 0}
 
     items = pallet.items.all()
-
-    # Si algún HU sigue pendiente o procesando, esperar
     still_running = items.filter(
         status__in=[HUItem.STATUS_PENDING, HUItem.STATUS_PROCESSING]
     ).exists()
 
     if still_running:
-        log.debug(f"_check_pallet_boundary pallet={pallet_id} — aún hay HUs activos")
-        return
+        log.debug("_run_pallet_boundary pallet=%s still active, skip", pallet_id)
+        return {'status': 'pending', 'message': 'Pallet still processing', 'marked': 0}
 
-    # Ya terminaron todos — marcar pallet done
-    if pallet.status == Pallet.STATUS_DONE:
-        log.debug(f"_check_pallet_boundary pallet={pallet_id} — ya estaba done")
-        return
+    if pallet.status == Pallet.STATUS_DONE and pallet.receipt_done_at:
+        log.debug("_run_pallet_boundary pallet=%s already done, skip", pallet_id)
+        return {'status': 'ok', 'message': 'Pallet already printed', 'marked': 0}
 
-    pallet.status = Pallet.STATUS_DONE
-    pallet.save(update_fields=['status'])
-
-    hu_count   = items.count()
-    valid_hus  = list(
+    valid_hus = list(
         items.filter(status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE])
-              .values_list('hu_code', flat=True)
+        .values_list('hu_code', flat=True)
     )
 
     if not valid_hus:
-        log.warning(f"_check_pallet_boundary pallet={pallet_id} — sin HUs válidos, skip")
-        return
+        log.warning("_run_pallet_boundary pallet=%s without valid HUs", pallet_id)
+        return {'status': 'error', 'message': 'Sin HUs validos para ZE16/PDF', 'marked': 0}
 
-    if hu_count >= 2:
-        # Pallet multi-HU → ZE16 + PDF
-        log.info(f"_check_pallet_boundary pallet={pallet_id} multi_hu={hu_count} → ze16_pdf_task")
-        ze16_pdf_task.delay(pallet_id)
-    else:
-        # Pallet single-HU → SP01
-        log.info(f"_check_pallet_boundary pallet={pallet_id} single_hu → sp01_task")
-        phase2_ts_str = pallet.f2_done_at.isoformat() if pallet.f2_done_at else None
-        sp01_task.delay(pallet_id, phase2_ts_str)
+    log.info(
+        "_run_pallet_boundary pallet=%s hu_count=%s -> ze16_pdf_task_sync",
+        pallet_id,
+        len(valid_hus),
+    )
+    result = ze16_pdf_task_sync(pallet_id, emit_completion=emit_completion)
+
+    if result.get('status') == 'ok':
+        pallet.status = Pallet.STATUS_DONE
+        pallet.save(update_fields=['status'])
+
+    return result
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SP01 — impresión para pallet single-HU
-# ══════════════════════════════════════════════════════════════════════════════
-
-@shared_task(bind=True, max_retries=0)
-def sp01_task(self, pallet_id: int, phase2_ts_str: str | None):
+def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
     """
-    Equivalente al bloque single-HU de _handle_pallet_boundary().
+    Synchronous ZE16 + PDF + print step. Returns only after print_pdf returns.
     """
     import pythoncom
-    from core.sap_client import SAPClient, SAPConnectionError
-    from core.hu_origins import detect_origin
-    from core.print_watcher import PrintDialogWatcher
-    from queue_app.models import Pallet, HUItem
-    from queue_app.utils import emit_sp01_done
-
-    pythoncom.CoInitialize()
-    try:
-        pallet    = Pallet.objects.get(pk=pallet_id)
-        hu_codes  = list(
-            pallet.items.filter(status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE])
-                        .values_list('hu_code', flat=True)
-        )
-
-        if not hu_codes:
-            emit_sp01_done(pallet_id, {'status': 'error', 'message': 'Sin HUs válidos para SP01', 'marked': 0})
-            return
-
-        # Reconstruir timestamp de F2
-        phase2_ts = datetime.fromisoformat(phase2_ts_str) if phase2_ts_str else datetime.now()
-
-        origin = detect_origin(hu_codes[0])
-        watcher = PrintDialogWatcher(idle_timeout=8.0, poll_interval=0.15)
-
-        sap = SAPClient()
-        sap.connect()
-
-        result = sap.execute_sp01_for_pallet(
-            hu_codes=hu_codes,
-            phase2_ts=phase2_ts,
-            expected_count=1,
-            print_watcher_start=lambda: watcher.start(expected_count=1),
-            origin=origin,
-        )
-
-        pallet.sp01_done_at = timezone.now()
-        pallet.save(update_fields=['sp01_done_at'])
-
-        log.info(f"sp01_task done pallet={pallet_id} result={result}")
-        emit_sp01_done(pallet_id, result)
-
-    except Exception as e:
-        log.exception(f"sp01_task error pallet={pallet_id}")
-        emit_sp01_done(pallet_id, {'status': 'error', 'message': str(e), 'marked': 0})
-    finally:
-        pythoncom.CoUninitialize()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  ZE16 + PDF — impresión para pallet multi-HU
-# ══════════════════════════════════════════════════════════════════════════════
-
-@shared_task(bind=True, max_retries=0)
-def ze16_pdf_task(self, pallet_id: int):
-    """
-    Equivalente al bloque multi-HU de _handle_pallet_boundary().
-    """
-    import pythoncom
+    from core.hu_origins import detect_origin, resolve_effective_origin
+    from core.pdf_receipt import PalletReceiptPDF
     from core.sap_client import SAPClient
     from core.ze16_client import ZE16Client, ZE16Error
-    from core.pdf_receipt import PalletReceiptPDF
-    from core.hu_origins import detect_origin, resolve_effective_origin
-    from queue_app.models import Pallet, HUItem
-    from queue_app.utils import emit_sp01_done
+    from queue_app.models import HUItem, Pallet
+    from queue_app.utils import emit_receipt_done
 
     pythoncom.CoInitialize()
+    result = {'status': 'error', 'message': 'Unknown ZE16/PDF error', 'marked': 0}
+
     try:
-        pallet    = Pallet.objects.get(pk=pallet_id)
-        hu_codes  = list(
+        pallet = Pallet.objects.get(pk=pallet_id)
+        hu_codes = list(
             pallet.items.filter(status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE])
-                        .values_list('hu_code', flat=True)
+            .values_list('hu_code', flat=True)
         )
-        hu_count  = len(hu_codes)
+        hu_count = len(hu_codes)
 
         if not hu_codes:
-            emit_sp01_done(pallet_id, {'status': 'error', 'message': 'Sin HUs válidos para ZE16', 'marked': 0})
-            return
+            result = {'status': 'error', 'message': 'Sin HUs validos para ZE16', 'marked': 0}
+            return result
 
-        origin           = detect_origin(hu_codes[0])
+        origin = detect_origin(hu_codes[0])
         effective_origin = resolve_effective_origin(origin, hu_count)
 
         sap = SAPClient()
         sap.connect()
 
-        ze16     = ZE16Client(sap.session)
+        ze16 = ZE16Client(sap.session)
         receipts = ze16.get_receipts_for_pallet(hu_codes)
+        hu_display_map = {}
+        for hu in hu_codes:
+            hu_norm = ze16._normalize_hu(hu)
+            hu_display = hu_norm.lstrip('0') if hu_norm.lstrip('0').startswith('29') else hu.strip()
+            hu_display_map[hu_norm] = hu_display
 
         if not receipts:
-            result = {'status': 'error', 'message': f'ZE16: sin Receipt IDs para pallet {pallet_id}', 'marked': 0}
-            emit_sp01_done(pallet_id, result)
-            return
+            result = {
+                'status': 'error',
+                'message': f'ZE16: sin Receipt IDs para pallet {pallet_id}',
+                'marked': 0,
+            }
+            return result
 
         pdf_path = PalletReceiptPDF.generate(
             pallet_id=pallet_id,
             origin_label=effective_origin.label,
             receipts=receipts,
+            hu_display_map=hu_display_map,
         )
-        PalletReceiptPDF.print_pdf(pdf_path)
+        printed = PalletReceiptPDF.print_pdf(pdf_path)
 
-        found  = len(receipts)
+        if not printed:
+            result = {
+                'status': 'error',
+                'message': f'PDF generado pero no confirmado por impresora: {pdf_path}',
+                'marked': 0,
+            }
+            return result
+
+        found = len(receipts)
         suffix = f" ({found}/{hu_count} con receipt)" if found < hu_count else ""
-        result = {'status': 'ok', 'message': f'ZE16+PDF OK — {found} recibos{suffix}', 'marked': found}
+        result = {
+            'status': 'ok',
+            'message': f'ZE16+PDF OK - {found} recibos{suffix}',
+            'marked': found,
+        }
 
-        pallet.sp01_done_at = timezone.now()
-        pallet.save(update_fields=['sp01_done_at'])
+        pallet.receipt_done_at = timezone.now()
+        pallet.save(update_fields=['receipt_done_at'])
 
-        log.info(f"ze16_pdf_task done pallet={pallet_id} result={result}")
-        emit_sp01_done(pallet_id, result)
+        log.info("ze16_pdf_task_sync done pallet=%s result=%s", pallet_id, result)
+        return result
 
     except ZE16Error as e:
-        log.error(f"ze16_pdf_task ZE16Error pallet={pallet_id} error={e}")
-        emit_sp01_done(pallet_id, {'status': 'error', 'message': f'ZE16 Error: {e}', 'marked': 0})
+        log.error("ze16_pdf_task_sync ZE16Error pallet=%s error=%s", pallet_id, e)
+        result = {'status': 'error', 'message': f'ZE16 Error: {e}', 'marked': 0}
+        return result
     except Exception as e:
-        log.exception(f"ze16_pdf_task error pallet={pallet_id}")
-        emit_sp01_done(pallet_id, {'status': 'error', 'message': str(e), 'marked': 0})
+        log.exception("ze16_pdf_task_sync error pallet=%s", pallet_id)
+        result = {'status': 'error', 'message': str(e), 'marked': 0}
+        return result
     finally:
+        if emit_completion:
+            emit_receipt_done(pallet_id, result)
         pythoncom.CoUninitialize()
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  HELPERS INTERNOS
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _mark_item_error(hu_item_id: int, message: str):
     from queue_app.models import HUItem
     from queue_app.utils import emit_item_update, emit_stats_update
+
     try:
-        item = HUItem.objects.get(pk=hu_item_id)
-        item.status       = HUItem.STATUS_ERROR
-        item.phase1_msg   = message
+        item = HUItem.objects.select_related('pallet').get(pk=hu_item_id)
+        item.status = HUItem.STATUS_ERROR
+        item.phase1_msg = message
         item.processed_at = timezone.now()
         item.save(update_fields=['status', 'phase1_msg', 'processed_at'])
         emit_item_update(item)
         emit_stats_update(item.pallet)
+        return item
     except Exception:
-        log.exception(f"_mark_item_error failed hu_id={hu_item_id}")
+        log.exception("_mark_item_error failed hu_id=%s", hu_item_id)
+        return None

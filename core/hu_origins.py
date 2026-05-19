@@ -23,7 +23,7 @@ class Origin:
     wait_long:   float  # espera larga en SAP (para navegación)
     wait_short:  float  # espera corta en SAP
     wait_tree:   float  # espera extra para que cargue el árbol interno
-    wait_sp01_refresh: float  # segundos entre recargas de spools
+    wait_receipt_refresh: float  # reserva para esperas de recibo/impresion
 
 
 # Tabla de orígenes por prefijo — orden importa (más específico primero)
@@ -31,18 +31,18 @@ class Origin:
 # Orígenes lentos (ITA, BRA/ATL, FHR): tiempos mayores
 ORIGIN_RULES: list[tuple[str, Origin]] = [
     ("TH", Origin("THA", "Tailandia (THA)", auto_pallet=False, color="#BDD7EE", 
-                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_sp01_refresh=1.5)),
+                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.5)),
     ("T", Origin("CNA", "China (CNA)", auto_pallet=False, color="#BDD7EE", 
-                    phase2_wait=1.0, wait_long=0.5, wait_short=0.5, wait_tree=1.0, wait_sp01_refresh=1.5)),
+                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.5)),
     ("C10",  Origin("BRA/ATL", "ATL, (BRA/ATL)", auto_pallet=False, color="#C6EFCE", 
-                    phase2_wait=0.8, wait_long=0.5, wait_short=1.3, wait_tree=2.0, wait_sp01_refresh=3.0)),
+                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.0)),
     ("29",   Origin("ITA", "Italia (ITA)", auto_pallet=True, color="#FFEB9C", 
-                    phase2_wait=1.0, wait_long=0.5, wait_short=1.0, wait_tree=2.5, wait_sp01_refresh=3.0)),
+                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.0)),
     ("ELPS", Origin("FHR", "Foothill Ranch (ELPS)", auto_pallet=True, color="#F4B084", 
-                    phase2_wait=1.0, wait_long=0.5, wait_short=1.0, wait_tree=2.5, wait_sp01_refresh=3.0)),
+                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.0)),
 ]
 UNKNOWN_ORIGIN = Origin("UNK", "Desconocido", auto_pallet=False, color="#E2EFDA", 
-                        phase2_wait=2.0, wait_long=1.0, wait_short=1.0, wait_tree=3.0, wait_sp01_refresh=3.0)
+                        phase2_wait=0.5, wait_long=1.0, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.0)
 
 # Código especial de separador de pallet (case-insensitive)
 PALLET_SEPARATOR_CODE = "PALLET"

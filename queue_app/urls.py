@@ -12,6 +12,7 @@ urlpatterns = [
     path('pallet/<int:pallet_id>/borrar/', views.delete_pallet, name='delete_pallet'),
     path('cola/limpiar/',           views.clear_queue,    name='clear_queue'),
     path('cola/reprocesar/',        views.reprocess_queue,name='reprocess_queue'),
+    path('cola/iniciar/',           views.start_processing, name='start_processing'),
 
     # Datos / utilidades
     path('exportar/',               views.export_csv,     name='export_csv'),

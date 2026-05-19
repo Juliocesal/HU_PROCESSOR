@@ -1,19 +1,27 @@
 import csv
+import json
 import logging
 import os
 import time
 from datetime import datetime
+from django.core.management.color import no_style
+from django.db import connection
 from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST, require_GET
-from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import render
 from django.utils import timezone
 
 from core.hu_origins import detect_origin, is_pallet_separator
 
 from queue_app.models import HUItem, Pallet, ScanLog
-from queue_app.tasks import process_hu_task
-from queue_app.utils import emit_item_update, emit_stats_update
+from queue_app.tasks import is_queue_locked, process_queue_task, request_queue_stop
+from queue_app.utils import (
+    calculate_queue_stats,
+    emit_item_update,
+    emit_pallet_created,
+    emit_stats_update,
+)
 
 try:
     import win32com.client
@@ -27,6 +35,7 @@ log = logging.getLogger(__name__)
 #  PÁGINA PRINCIPAL
 # ══════════════════════════════════════════════════════════════════════════════
 
+@ensure_csrf_cookie
 def queue_view(request):
     """
     Renderiza la UI principal.
@@ -45,7 +54,7 @@ def queue_view(request):
 #  SCAN — escanear HU o separador de pallet
 # ══════════════════════════════════════════════════════════════════════════════
 
-@csrf_exempt
+
 @require_POST
 def scan_hu(request):
     """
@@ -67,6 +76,8 @@ def scan_hu(request):
     # ── Separador de pallet ───────────────────────────────────────────────────
     if is_pallet_separator(raw):
         result = _new_pallet_logic()
+        if result.get('ok'):
+            result['stats'] = _get_stats()
         return JsonResponse(result)
 
     # ── Validar longitud — misma regla que _on_scan() ────────────────────────
@@ -103,7 +114,7 @@ def scan_hu(request):
     emit_stats_update(item.pallet)
 
     # ── Disparar tarea Celery ─────────────────────────────────────────────────
-    
+    # NO se ejecuta aquí — espera a que el usuario presione "Iniciar" desde el frontend
 
     log.info(f"scan_hu hu={raw} pallet={pallet.pk} origin={origin.code}")
 
@@ -120,7 +131,7 @@ def scan_hu(request):
 #  PALLET — crear nuevo pallet manualmente
 # ══════════════════════════════════════════════════════════════════════════════
 
-@csrf_exempt
+
 @require_POST
 def new_pallet(request):
     """
@@ -128,6 +139,8 @@ def new_pallet(request):
     Crea un nuevo pallet si el actual tiene HUs.
     """
     result = _new_pallet_logic()
+    if result.get('ok'):
+        result['stats'] = _get_stats()
     return JsonResponse(result)
 
 
@@ -145,6 +158,7 @@ def _new_pallet_logic() -> dict:
         }
 
     pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+    emit_pallet_created(pallet)
     log.info(f"new_pallet created id={pallet.pk}")
 
     return {
@@ -158,7 +172,7 @@ def _new_pallet_logic() -> dict:
 #  BORRAR HU / PALLET
 # ══════════════════════════════════════════════════════════════════════════════
 
-@csrf_exempt
+
 @require_POST
 def delete_hu(request, hu_code):
     """
@@ -188,7 +202,7 @@ def delete_hu(request, hu_code):
     return JsonResponse({'ok': True, 'pallet_deleted': False})
 
 
-@csrf_exempt
+
 @require_POST
 def delete_pallet(request, pallet_id):
     """
@@ -217,10 +231,16 @@ def delete_pallet(request, pallet_id):
 #  LIMPIAR / REPROCESAR
 # ══════════════════════════════════════════════════════════════════════════════
 
-@csrf_exempt
+
 @require_POST
 def clear_queue(request):
     """Equivale a _clear() — borra toda la cola."""
+    if is_queue_locked():
+        return JsonResponse({
+            'ok': False,
+            'error': 'Hay una tarea de procesamiento activa. Detenla y espera la confirmacion antes de limpiar.',
+        }, status=409)
+
     # No permitir si hay HUs procesando
     if HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
         return JsonResponse({
@@ -230,14 +250,46 @@ def clear_queue(request):
 
     deleted_items   = HUItem.objects.all().delete()
     deleted_pallets = Pallet.objects.all().delete()
+    _reset_queue_sequences()
     # Crear pallet inicial vacío
-    Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+    pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
 
-    log.info("clear_queue done")
-    return JsonResponse({'ok': True})
+    log.info(f"clear_queue done reset_pallet_id={pallet.pk}")
+    return JsonResponse({'ok': True, 'pallet_id': pallet.pk})
 
 
-@csrf_exempt
+def _reset_queue_sequences():
+    """Reinicia los IDs de la cola para que Limpiar HUs vuelva a P01."""
+    table_names = [Pallet._meta.db_table, HUItem._meta.db_table]
+
+    with connection.cursor() as cursor:
+        if connection.vendor == 'sqlite':
+            cursor.execute(
+                "DELETE FROM sqlite_sequence WHERE name IN (%s, %s)",
+                table_names,
+            )
+            return
+
+        for sql in connection.ops.sequence_reset_sql(no_style(), [Pallet, HUItem]):
+            cursor.execute(sql)
+
+
+def _sap_session_error_response():
+    from core.sap_client import SAPClient
+
+    connected, user = SAPClient.check_session()
+    if connected:
+        return None
+
+    return JsonResponse({
+        'ok': False,
+        'error': 'No hay sesion SAP activa. Abre SAP e inicia sesion antes de procesar.',
+        'sap_connected': False,
+        'sap_user': user,
+    }, status=409)
+
+
+
 @require_POST
 def reprocess_queue(request):
     """
@@ -250,34 +302,125 @@ def reprocess_queue(request):
             'error': 'Hay HUs procesando — espera a que terminen',
         }, status=409)
 
-    items = HUItem.objects.filter(
-        status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE, HUItem.STATUS_ERROR]
-    )
-    count = items.count()
+    if is_queue_locked():
+        return JsonResponse({
+            'ok': False,
+            'error': 'Hay una tarea de procesamiento activa. Espera a que termine antes de reprocesar.',
+        }, status=409)
 
-    items.update(
-        status      = HUItem.STATUS_PENDING,
-        phase1_msg  = '',
-        phase2_msg  = '',
-        phase2_ms   = 0,
-        processed_at = None,
-        f1_done_at  = None,
-        sp01_done_at = None,
-    )
+    sap_error = _sap_session_error_response()
+    if sap_error:
+        return sap_error
 
-    # Resetear timestamps de pallets
-    Pallet.objects.all().update(
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except json.JSONDecodeError:
+        payload = {}
+
+    mode = payload.get('mode', 'all')
+    if mode not in ('all', 'errors'):
+        return JsonResponse({'ok': False, 'error': 'Modo de reproceso invalido'}, status=400)
+
+    error_statuses = [HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
+    all_statuses = [
+        HUItem.STATUS_OK,
+        HUItem.STATUS_DUPLICATE,
+        HUItem.STATUS_ERROR,
+        HUItem.STATUS_HU_NOT_FOUND,
+    ]
+    target_statuses = error_statuses if mode == 'errors' else all_statuses
+
+    items = list(HUItem.objects.filter(status__in=target_statuses).select_related('pallet'))
+    count = len(items)
+
+    if count == 0:
+        return JsonResponse({'ok': False, 'error': 'No hay HUs para reprocesar'}, status=400)
+
+    affected_pallet_ids = {item.pallet_id for item in items}
+    for item in items:
+        item.status = HUItem.STATUS_PENDING
+        item.phase1_msg = ''
+        item.phase2_msg = ''
+        item.phase2_ms = 0
+        item.processed_at = None
+        item.f1_done_at = None
+        item.receipt_done_at = None
+        item.save(update_fields=[
+            'status',
+            'phase1_msg',
+            'phase2_msg',
+            'phase2_ms',
+            'processed_at',
+            'f1_done_at',
+            'receipt_done_at',
+        ])
+        emit_item_update(item)
+
+    Pallet.objects.filter(pk__in=affected_pallet_ids).update(
         status      = Pallet.STATUS_ACTIVE,
         f2_done_at  = None,
-        sp01_done_at = None,
+        receipt_done_at = None,
     )
 
-    # Relanzar task por cada HU
-    for item in HUItem.objects.filter(status=HUItem.STATUS_PENDING):
-        process_hu_task.delay(item.pk)
+    emit_stats_update(None)
+    try:
+        process_queue_task.delay()
+    except Exception as e:
+        log.exception("reprocess_queue celery_dispatch_failed")
+        return JsonResponse({
+            'ok': False,
+            'error': f'No se pudo iniciar Celery/Redis: {e}',
+        }, status=503)
 
-    log.info(f"reprocess_queue count={count}")
-    return JsonResponse({'ok': True, 'count': count})
+    log.info("reprocess_queue mode=%s count=%d", mode, count)
+    return JsonResponse({'ok': True, 'count': count, 'mode': mode})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  INICIAR PROCESAMIENTO
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@require_POST
+def start_processing(request):
+    """
+    Inicia el procesamiento de todos los HUs pendientes.
+    Se llama desde el botón "Iniciar" en el frontend.
+    """
+    pending_items = HUItem.objects.filter(status=HUItem.STATUS_PENDING)
+    count = pending_items.count()
+
+    if count == 0:
+        return JsonResponse({
+            'ok':    False,
+            'error': 'No hay HUs pendientes para procesar',
+        }, status=400)
+
+    if is_queue_locked():
+        return JsonResponse({
+            'ok': False,
+            'error': 'Ya hay una tarea de procesamiento activa',
+        }, status=409)
+
+    sap_error = _sap_session_error_response()
+    if sap_error:
+        return sap_error
+
+    try:
+        process_queue_task.delay()
+    except Exception as e:
+        log.exception("start_processing celery_dispatch_failed")
+        return JsonResponse({
+            'ok': False,
+            'error': f'No se pudo iniciar Celery/Redis: {e}',
+        }, status=503)
+
+    log.info(f"start_processing launched queue task for {count} HUs")
+    return JsonResponse({
+        'ok':    True,
+        'count': count,
+        'message': f'Iniciando procesamiento de {count} HU{"s" if count != 1 else ""}...',
+    })
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -318,13 +461,13 @@ def export_csv(request):
 #  INICIAR SAP
 # ══════════════════════════════════════════════════════════════════════════════
 
-@csrf_exempt
+
 @require_POST
 def iniciar_sap_endpoint(request):
     """
     Endpoint para iniciar la conexión con SAP.
     Equivale a la función iniciar_sap() — llama a SAP y abre la sesión.
-    
+
     Returns:
         JSON con status ok=True si la conexión fue exitosa.
     """
@@ -379,14 +522,7 @@ def stats_view(request):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _get_stats() -> dict:
-    items = HUItem.objects.all()
-    return {
-        'total':   items.count(),
-        'ok':      items.filter(status__in=['ok', 'duplicate']).count(),
-        'errors':  items.filter(status='error').count(),
-        'pending': items.filter(status='pending').count(),
-        'pallets': Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).count(),
-    }
+    return calculate_queue_stats()
 
 
 def _get_or_create_active_pallet(hu_code: str, origin) -> Pallet:
@@ -415,55 +551,55 @@ def _get_or_create_active_pallet(hu_code: str, origin) -> Pallet:
             status=Pallet.STATUS_ACTIVE,
             origin_code=origin.code,
         )
-    
+
 
     return active
 
 def iniciar_sap():
     """
     Inicia la conexión con SAP.
-    
+
     Pasos:
       1. Verifica que SAPgui (saplogon.exe) esté disponible
       2. Abre SAP
       3. Obtiene la sesión activa
       4. Abre conexión a SAP Production
-    
+
     Returns:
         bool: True si la conexión fue exitosa, False si hubo error.
     """
     import os
     import time
-    
+
     if not win32com:
         log.error("iniciar_sap win32com no está instalado")
         return False
-    
+
     ruta_saplogon = r"C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe"
-    
+
     # Verificar que saplogon.exe existe
     if not os.path.isfile(ruta_saplogon):
         log.error(f"iniciar_sap saplogon.exe no encontrado en {ruta_saplogon}")
         return False
-    
+
     try:
         # Abrir saplogon.exe
         os.startfile(ruta_saplogon)
         log.info("iniciar_sap saplogon abierto, esperando 5s...")
         time.sleep(5)
-        
+
         # Conectar a través de COM
         SapGuiAuto = win32com.client.GetObject("SAPGUI")
         application = SapGuiAuto.GetScriptingEngine
         connection = application.OpenConnection("LUP Production [Public]", True)
         log.info("iniciar_sap conexión abierta, esperando 3s...")
         time.sleep(3)
-        
+
         # Obtener sesión
         session = connection.Children(0)
         log.info("iniciar_sap sesión obtenida exitosamente")
         return True
-        
+
     except Exception as e:
         log.error(f"iniciar_sap error: {type(e).__name__}: {e}")
         return False
@@ -473,7 +609,7 @@ def iniciar_sap():
 #  DETENER PROCESO
 # ══════════════════════════════════════════════════════════════════════════════
 
-@csrf_exempt
+
 @require_POST
 def detener_queue(request):
     """
@@ -481,17 +617,21 @@ def detener_queue(request):
     En este diseño el stop es principalmente UI.
     Si en el futuro quieres cancelar tasks de Celery, aquí va la lógica.
     """
-    log.info("detener_queue called")
-    return JsonResponse({'ok': True})
+    stopped = request_queue_stop()
+    log.info("detener_queue stop_requested=%s", stopped)
+    if not stopped:
+        return JsonResponse({'ok': False, 'error': 'No hay proceso activo'}, status=409)
+    return JsonResponse({'ok': True, 'message': 'Detencion solicitada. Esperando cierre seguro.'})
 
-@csrf_exempt
+
 @require_POST
 def procesar_pendientes(request):
-    """Dispara tasks de Celery para todos los HUs pendientes."""
+    """Dispara una task secuencial para todos los HUs pendientes."""
     import json
     body   = json.loads(request.body) if request.body else {}
     run_f1 = body.get('run_f1', True)
     run_f2 = body.get('run_f2', True)
+    run_pdf = body.get('run_pdf', True)
 
     items = HUItem.objects.filter(status=HUItem.STATUS_PENDING)
     count = items.count()
@@ -499,8 +639,24 @@ def procesar_pendientes(request):
     if not count:
         return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes'})
 
-    for item in items:
-        process_hu_task.delay(item.pk, run_f1=run_f1, run_f2=run_f2)
+    if HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
+        return JsonResponse({'ok': False, 'error': 'Ya hay HUs procesando'}, status=409)
 
-    log.info(f"procesar_pendientes disparadas {count} tasks")
+    if is_queue_locked():
+        return JsonResponse({'ok': False, 'error': 'Ya hay una tarea de procesamiento activa'}, status=409)
+
+    sap_error = _sap_session_error_response()
+    if sap_error:
+        return sap_error
+
+    try:
+        process_queue_task.delay(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+    except Exception as e:
+        log.exception("procesar_pendientes celery_dispatch_failed")
+        return JsonResponse({
+            'ok': False,
+            'error': f'No se pudo iniciar Celery/Redis: {e}',
+        }, status=503)
+
+    log.info(f"procesar_pendientes disparada task secuencial count={count}")
     return JsonResponse({'ok': True, 'count': count})

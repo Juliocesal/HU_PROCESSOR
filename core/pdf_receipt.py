@@ -1,6 +1,7 @@
 
 import os
 import sys
+import time
 import glob
 import shutil
 import atexit
@@ -258,6 +259,7 @@ class PalletReceiptPDF:
         pallet_id: int,
         origin_label: str,
         receipts: dict[str, str],
+        hu_display_map: dict[str, str] | None = None,
         output_path: str | None = None,
     ) -> str:
         """
@@ -342,6 +344,7 @@ class PalletReceiptPDF:
                 f"Pallet {pallet_id}  |  Pág. {page_num}",
             )
 
+        hu_display_map = hu_display_map or {}
         items    = list(receipts.items())
         cur_col  = 0
         cur_row  = 0
@@ -408,7 +411,8 @@ class PalletReceiptPDF:
             r, g, b = _hex_to_rgb(PDF_C.TEXT)
             c.setFillColorRGB(r, g, b)
             c.setFont("Courier-Bold", 9)
-            hu_display = hu_code if len(hu_code) <= 22 else hu_code[:20] + "…"
+            hu_for_print = hu_display_map.get(hu_code, hu_code)
+            hu_display = hu_for_print if len(hu_for_print) <= 22 else hu_for_print[:20] + "..."
             c.drawCentredString(content_center_x, content_top_y, f"HU: {hu_display}")
 
             r, g, b = _hex_to_rgb(PDF_C.MUTED)
@@ -547,7 +551,11 @@ class PalletReceiptPDF:
                             log.error("sumatra_stderr_error stderr=%s", stderr_text)
                             return False
 
-                        return True
+                        return cls._wait_for_print_job_to_finish(
+                            pdf_path,
+                            printer_name=printer_name,
+                            timeout=60,
+                        )
 
                     except subprocess.TimeoutExpired:
                         proc.kill()
@@ -573,6 +581,69 @@ class PalletReceiptPDF:
             except Exception as e:
                 log.error("pdf_print_error path=%s error=%s", pdf_path, e)
                 return False
+
+    @staticmethod
+    def _wait_for_print_job_to_finish(
+        pdf_path: str,
+        printer_name: str | None = None,
+        timeout: float = 60,
+    ) -> bool:
+        """
+        Wait until the Windows spooler no longer has this PDF queued.
+        If the job disappears too quickly to observe, Sumatra's successful exit is
+        treated as confirmation that the job was handed to the spooler.
+        """
+        if sys.platform != "win32":
+            return True
+
+        try:
+            import win32print
+        except Exception as e:
+            log.warning("print_spool_wait_unavailable error=%s", e)
+            return True
+
+        try:
+            resolved_printer = printer_name or win32print.GetDefaultPrinter()
+            document_name = os.path.basename(pdf_path).lower()
+            deadline = datetime.now().timestamp() + timeout
+            seen_job = False
+
+            while datetime.now().timestamp() < deadline:
+                handle = win32print.OpenPrinter(resolved_printer)
+                try:
+                    jobs = win32print.EnumJobs(handle, 0, 99, 1)
+                finally:
+                    win32print.ClosePrinter(handle)
+
+                matching = [
+                    job for job in jobs
+                    if document_name in str(job.get('pDocument', '')).lower()
+                    or document_name in str(job.get('pUserName', '')).lower()
+                ]
+
+                if matching:
+                    seen_job = True
+                    time.sleep(0.5)
+                    continue
+
+                if seen_job:
+                    log.info("print_spool_job_finished printer=%s pdf=%s", resolved_printer, pdf_path)
+                    return True
+
+                remaining = deadline - datetime.now().timestamp()
+
+                if remaining > 57:
+                    time.sleep(0.5)
+                    continue
+
+                log.info("print_spool_job_not_observed printer=%s pdf=%s", resolved_printer, pdf_path)
+                return True
+
+            log.error("print_spool_timeout printer=%s pdf=%s", resolved_printer, pdf_path)
+            return False
+        except Exception as e:
+            log.warning("print_spool_wait_error path=%s error=%s", pdf_path, e)
+            return True
 
     @classmethod
     def open_pdf(cls, pdf_path: str) -> bool:

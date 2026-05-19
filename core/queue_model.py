@@ -25,7 +25,7 @@ class HUItem:
     phase2_ms:    int = 0
     processed_at: datetime | None = None
     f1_done_at:   datetime | None = None
-    sp01_done_at: datetime | None = None
+    receipt_done_at: datetime | None = None
 
     @property
     def status_display(self) -> str:
@@ -73,7 +73,7 @@ class HUQueue:
         self._recycled_ids: list[int] = []
         self._pallet_start_times: dict[int, datetime] = {}
         self._pallet_f2_end_times: dict[int, datetime] = {}
-        self._pallet_sp01_end_times: dict[int, datetime] = {}
+        self._pallet_receipt_end_times: dict[int, datetime] = {}
 
     # ── Gestión de pallets ────────────────────────────────────────────────────
 
@@ -129,12 +129,12 @@ class HUQueue:
                     item.phase2_ms = 0
                     item.processed_at = None
                     item.f1_done_at = None
-                    item.sp01_done_at = None
+                    item.receipt_done_at = None
                     count += 1
                     items_to_requeue.append(item)
             self._pallet_start_times.clear()
             self._pallet_f2_end_times.clear()
-            self._pallet_sp01_end_times.clear()
+            self._pallet_receipt_end_times.clear()
 
         while not self._q.empty():
             try:
@@ -304,13 +304,13 @@ class HUQueue:
             if pallet_id not in self._pallet_f2_end_times:
                 self._pallet_f2_end_times[pallet_id] = datetime.now()
 
-    def mark_pallet_sp01_done(self, pallet_id: int):
+    def mark_pallet_receipt_done(self, pallet_id: int):
         with self._lock:
-            self._pallet_sp01_end_times[pallet_id] = datetime.now()
+            self._pallet_receipt_end_times[pallet_id] = datetime.now()
             now = datetime.now()
             for item in self._items:
                 if item.pallet_id == pallet_id:
-                    item.sp01_done_at = now
+                    item.receipt_done_at = now
 
     def get_pallet_processing_time(self, pallet_id: int) -> str | None:
         with self._lock:
@@ -320,12 +320,12 @@ class HUQueue:
 
             hu_codes = [i for i in self._items if i.pallet_id == pallet_id]
             f2_end   = self._pallet_f2_end_times.get(pallet_id)
-            sp01_end = self._pallet_sp01_end_times.get(pallet_id)
+            receipt_end = self._pallet_receipt_end_times.get(pallet_id)
 
             if len(hu_codes) == 1 and f2_end:
                 end = f2_end
-            elif sp01_end:
-                end = sp01_end
+            elif receipt_end:
+                end = receipt_end
             elif f2_end:
                 end = datetime.now()
             else:
@@ -349,7 +349,7 @@ class HUQueue:
             self._cancelled_hus.clear()
             self._pallet_start_times.clear()
             self._pallet_f2_end_times.clear()
-            self._pallet_sp01_end_times.clear()
+            self._pallet_receipt_end_times.clear()
         while not self._q.empty():
             try:
                 self._q.get_nowait()
@@ -363,7 +363,7 @@ class HUQueue:
 # ══════════════════════════════════════════════════════════════════════════════
 
 class QueueWorker:
-    """Worker que consume la cola y ejecuta F1 → F2 → ZE16/SP01."""
+    """Worker que consume la cola y ejecuta F1 → F2 → ZE16/ZE16/PDF."""
 
     def __init__(self, hu_queue: HUQueue):
         self._queue   = hu_queue
@@ -376,13 +376,13 @@ class QueueWorker:
 
         self.on_item_update:  Callable | None = None
         self.on_stats_update: Callable | None = None
-        self.on_sp01_done:    Callable | None = None
+        self.on_receipt_done:    Callable | None = None
         self.on_pallet_done:  Callable | None = None
         self.on_error:        Callable | None = None
 
         self.run_f1   = True
         self.run_f2   = True
-        self.run_sp01 = True
+        self.run_receipt = True
         self._print_watcher = PrintDialogWatcher(idle_timeout=8.0, poll_interval=0.15)
 
         # ── Timestamps de F2 por pallet ───────────────────────────────────────
@@ -393,12 +393,12 @@ class QueueWorker:
 
     # ── Ciclo de vida ─────────────────────────────────────────────────────────
 
-    def start(self, run_f1=True, run_f2=True, run_sp01=True, **kwargs):
+    def start(self, run_f1=True, run_f2=True, run_receipt=True, **kwargs):
         if self._running:
             return
         self.run_f1   = run_f1
         self.run_f2   = run_f2
-        self.run_sp01 = run_sp01
+        self.run_receipt = run_receipt
         self._running = True
         self._resume_event.set()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -423,7 +423,7 @@ class QueueWorker:
     def reset_pallet_timestamps(self) -> None:
         """
         Limpia todos los timestamps de F2 almacenados.
-        Llamar siempre antes de reprocess_all() para evitar que SP01
+        Llamar siempre antes de reprocess_all() para evitar que ZE16/PDF
         use timestamps de una ejecución anterior.
         """
         self._pallet_phase2_ts.clear()
@@ -442,9 +442,9 @@ class QueueWorker:
     def _pallet_hu_count(self, pallet_id: int) -> int:
         return len(self._queue.get_hu_codes_for_pallet(pallet_id))
 
-    # ── Resolución del timestamp de F2 para SP01 ──────────────────────────────
+    # ── Resolución del timestamp de F2 para ZE16/PDF ──────────────────────────────
 
-    def _get_phase2_ts_for_sp01(self, pallet_id: int) -> datetime:
+    def _get_phase2_ts_for_receipt(self, pallet_id: int) -> datetime:
         """
         Retorna el timestamp de F2 para el pallet dado.
 
@@ -488,6 +488,11 @@ class QueueWorker:
         try:
             ze16 = ZE16Client(self._sap.session)
             receipts = ze16.get_receipts_for_pallet(valid_codes)
+            hu_display_map = {}
+            for hu in valid_codes:
+                hu_norm = ze16._normalize_hu(hu)
+                hu_display = hu_norm.lstrip("0") if hu_norm.lstrip("0").startswith("29") else hu.strip()
+                hu_display_map[hu_norm] = hu_display
         except ZE16Error as e:
             log.error("ze16_pdf_pallet ZE16Error pallet=%d error=%s", pallet_id, e)
             return {"status": "error", "message": f"ZE16 Error: {e}", "marked": 0}
@@ -511,6 +516,7 @@ class QueueWorker:
                 pallet_id=pallet_id,
                 origin_label=origin_label,
                 receipts=receipts,
+                hu_display_map=hu_display_map,
             )
         except Exception as e:
             log.error("ze16_pdf_pallet pdf_error pallet=%d error=%s", pallet_id, e)
@@ -544,126 +550,68 @@ class QueueWorker:
     ) -> bool:
         """
         Llamado cuando se detecta cambio de pallet o fin de cola.
-        Ejecuta ZE16+PDF (multi-HU) o SP01 (single-HU) según corresponda.
-        El timestamp de F2 se resuelve aquí y se consume del dict interno.
+        Siempre ejecuta ZE16+PDF independientemente del número de HUs.
         """
-        if not self.run_f2 or not self.run_sp01:
+        if not self.run_f2 or not self.run_receipt:
             return True
 
         hu_count = self._pallet_hu_count(finished_pallet)
         hu_codes = self._queue.get_hu_codes_for_pallet(finished_pallet)
 
-        if hu_count >= 2:
-            # ── Pallet multi-HU: ZE16 + PDF ──────────────────────────────────
-            log.info(
-                "pallet_boundary multi_hu pallet=%d count=%d",
-                finished_pallet, hu_count,
+        log.info(
+            "pallet_boundary pallet=%d hu_count=%d → ze16_pdf",
+            finished_pallet, hu_count,
+        )
+
+        valid_codes = [
+            c for c in hu_codes
+            if self._queue.get_hu_status(c) in ("ok", "duplicate")
+        ]
+
+        if not valid_codes:
+            log.warning(
+                "pallet_boundary pallet=%d — no valid HUs, skip ZE16",
+                finished_pallet,
             )
-
-            valid_codes = [
-                c for c in hu_codes
-                if self._queue.get_hu_status(c) in ("ok", "duplicate")
-            ]
-
-            if not valid_codes:
-                log.warning(
-                    "pallet_boundary multi_hu pallet=%d — no valid HUs, skip ZE16",
-                    finished_pallet,
-                )
-                # Limpiar timestamp aunque no se use
-                self._pallet_phase2_ts.pop(finished_pallet, None)
-
-                if next_pallet is None:
-                    if self.on_sp01_done:
-                        self.on_sp01_done({
-                            "status":  "error",
-                            "message": "No hay HUs válidos para generar recibos",
-                            "marked":  0,
-                        })
-                    return False
-                if self.on_pallet_done:
-                    self.on_pallet_done(finished_pallet)
-                return True
-
-            pallet_origin = self._queue.get_origin_for_pallet(finished_pallet)
-            effective_origin = (
-                resolve_effective_origin(pallet_origin, hu_count)
-                if pallet_origin else pallet_origin
-            )
-
-            # ZE16+PDF no usa phase2_ts — consumirlo para no acumular
             self._pallet_phase2_ts.pop(finished_pallet, None)
 
-            res = self._ze16_and_print_pallet(
-                pallet_id=finished_pallet,
-                valid_codes=valid_codes,
-                origin=effective_origin,
-            )
-
-            self._queue.mark_pallet_sp01_done(finished_pallet)
-
             if next_pallet is None:
-                if self.on_sp01_done:
-                    self.on_sp01_done(res)
+                if self.on_receipt_done:
+                    self.on_receipt_done({
+                        "status":  "error",
+                        "message": "No hay HUs válidos para generar recibos",
+                        "marked":  0,
+                    })
                 return False
-
             if self.on_pallet_done:
                 self.on_pallet_done(finished_pallet)
             return True
 
-        else:
-            # ── Pallet single-HU: SP01 directo ───────────────────────────────
-            log.info(
-                "pallet_boundary single_hu pallet=%d hu=%s — using SP01",
-                finished_pallet, hu_codes,
-            )
+        pallet_origin = self._queue.get_origin_for_pallet(finished_pallet)
+        effective_origin = (
+            resolve_effective_origin(pallet_origin, hu_count)
+            if pallet_origin else pallet_origin
+        )
 
-            valid_codes = [
-                c for c in hu_codes
-                if self._queue.get_hu_status(c) in ("ok", "duplicate")
-            ]
+        # ZE16+PDF no usa phase2_ts — consumirlo para no acumular
+        self._pallet_phase2_ts.pop(finished_pallet, None)
 
-            if not valid_codes:
-                log.warning(
-                    "pallet_boundary single_hu pallet=%d — no valid HUs, skip SP01",
-                    finished_pallet,
-                )
-                # Limpiar timestamp aunque no se use
-                self._pallet_phase2_ts.pop(finished_pallet, None)
+        res = self._ze16_and_print_pallet(
+            pallet_id=finished_pallet,
+            valid_codes=valid_codes,
+            origin=effective_origin,
+        )
 
-                if next_pallet is None:
-                    if self.on_sp01_done:
-                        self.on_sp01_done({
-                            "status":  "error",
-                            "message": "No hay HUs válidos para SP01",
-                            "marked":  0,
-                        })
-                    return False
-                return True
+        self._queue.mark_pallet_receipt_done(finished_pallet)
 
-            pallet_origin = self._queue.get_origin_for_pallet(finished_pallet)
+        if next_pallet is None:
+            if self.on_receipt_done:
+                self.on_receipt_done(res)
+            return False
 
-            # Resolver y consumir el timestamp de F2 para este pallet
-            phase2_ts = self._get_phase2_ts_for_sp01(finished_pallet)
-
-            res = self._sap.execute_sp01_for_pallet(
-                hu_codes=valid_codes,
-                phase2_ts=phase2_ts,
-                expected_count=1,
-                print_watcher_start=lambda: self._print_watcher.start(expected_count=1),
-                origin=pallet_origin,
-            )
-
-            self._queue.mark_pallet_sp01_done(finished_pallet)
-
-            if next_pallet is None:
-                if self.on_sp01_done:
-                    self.on_sp01_done(res)
-                return False
-
-            if self.on_pallet_done:
-                self.on_pallet_done(finished_pallet)
-            return True
+        if self.on_pallet_done:
+            self.on_pallet_done(finished_pallet)
+        return True
 
     # ── Loop principal ────────────────────────────────────────────────────────
 
@@ -755,7 +703,7 @@ class QueueWorker:
                     item.phase2_ms  = res2["duration_ms"]
 
                     # Guardar timestamp solo si F2 fue exitoso.
-                    # El último F2 exitoso del pallet es el que se usa en SP01
+                    # El último F2 exitoso del pallet es el que se usa en ZE16/PDF
                     # (sobrescribir está bien — queremos el más reciente).
                     if res2["status"] == "ok":
                         self._pallet_phase2_ts[item.pallet_id] = res2["phase2_ts"]

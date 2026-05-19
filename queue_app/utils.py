@@ -5,21 +5,42 @@ from channels.layers import get_channel_layer
 log = logging.getLogger(__name__)
 
 
+def calculate_queue_stats() -> dict:
+    """Centraliza los KPIs para que HTTP, WebSocket y estado inicial coincidan."""
+    from queue_app.models import HUItem, Pallet
+
+    items = HUItem.objects.all()
+    return {
+        'total': items.count(),
+        'ok': items.filter(status__in=['ok', 'duplicate']).count(),
+        'errors': items.filter(status__in=['error', 'hu_not_found']).count(),
+        'pending': items.filter(status='pending').count(),
+        'pallets': Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).count(),
+    }
+
+
 def emit_item_update(item):
     """
     Llamado desde Celery task después de cada cambio en un HUItem.
     Equivale a: self._bridge.item_update.emit(item)
     """
+    from core.hu_origins import detect_origin
+
+    # Detectar origin desde el hu_code si no está guardado
+    origin = detect_origin(item.hu_code)
+    origin_code = item.origin_code if item.origin_code else origin.code
+
     _send_group('item_update', {
-        'type':       'item_update',
-        'hu_code':    item.hu_code,
-        'status':     item.status,
-        'f1_display': item.f1_display,
-        'f2_display': item.f2_display,
-        'phase1_msg': item.phase1_msg,
-        'phase2_msg': item.phase2_msg,
-        'phase2_ms':  item.phase2_ms,
-        'pallet_id':  item.pallet_id,
+        'type':        'item_update',
+        'hu_code':     item.hu_code,
+        'status':      item.status,
+        'f1_display':  item.f1_display,
+        'f2_display':  item.f2_display,
+        'phase1_msg':  item.phase1_msg,
+        'phase2_msg':  item.phase2_msg,
+        'phase2_ms':   item.phase2_ms,
+        'pallet_id':   item.pallet_id,
+        'origin_code': origin_code,
     })
 
 
@@ -28,29 +49,39 @@ def emit_stats_update(pallet):
     Recalcula stats del pallet y los manda al browser.
     Equivale a: self._bridge.stats_update.emit(self._queue.stats)
     """
-    from queue_app.models import HUItem
-    items = HUItem.objects.all()
+    _send_group('stats_update', {'type': 'stats_update', **calculate_queue_stats()})
 
-    _send_group('stats_update', {
-        'type':    'stats_update',
-        'total':   items.count(),
-        'ok':      items.filter(status__in=['ok', 'duplicate']).count(),
-        'errors':  items.filter(status='error').count(),
-        'pending': items.filter(status='pending').count(),
-        'pallets': items.values('pallet_id').distinct().count(),
+
+def emit_pallet_created(pallet):
+    """Notifica a todos los browsers que existe un nuevo pallet vacio."""
+    _send_group('pallet_created', {
+        'type': 'pallet_created',
+        'pallet_id': pallet.pk,
+        'origin_code': pallet.origin_code or '',
+        'stats': calculate_queue_stats(),
     })
 
 
-def emit_sp01_done(pallet_id, result):
-    """
-    Equivale a: self._bridge.sp01_done.emit(result)
-    """
-    _send_group('sp01_done', {
-        'type':      'sp01_done',
+def emit_receipt_done(pallet_id, result):
+    """Notifica el resultado de ZE16/PDF para un pallet."""
+    _send_group('receipt_done', {
+        'type':      'receipt_done',
         'pallet_id': pallet_id,
         'status':    result.get('status', 'error'),
         'message':   result.get('message', ''),
         'marked':    result.get('marked', 0),
+    })
+
+
+def emit_queue_done(result):
+    """Notifica una sola vez que toda la corrida de cola terminó."""
+    _send_group('queue_done', {
+        'type':              'queue_done',
+        'status':            result.get('status', 'error'),
+        'message':           result.get('message', ''),
+        'pallets_processed': result.get('pallets_processed', 0),
+        'hus_processed':     result.get('hus_processed', 0),
+        'errors':            result.get('errors', 0),
     })
 
 

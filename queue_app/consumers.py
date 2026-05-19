@@ -59,15 +59,16 @@ class QueueConsumer(AsyncWebsocketConsumer):
     async def item_update(self, event):
         """Equivale a _on_item() en queue_window.py"""
         await self.send(json.dumps({
-            'type':       'item_update',
-            'hu_code':    event['hu_code'],
-            'status':     event['status'],
-            'f1_display': event['f1_display'],
-            'f2_display': event['f2_display'],
-            'phase1_msg': event['phase1_msg'],
-            'phase2_msg': event['phase2_msg'],
-            'phase2_ms':  event['phase2_ms'],
-            'pallet_id':  event['pallet_id'],
+            'type':        'item_update',
+            'hu_code':     event['hu_code'],
+            'status':      event['status'],
+            'f1_display':  event['f1_display'],
+            'f2_display':  event['f2_display'],
+            'phase1_msg':  event['phase1_msg'],
+            'phase2_msg':  event['phase2_msg'],
+            'phase2_ms':   event['phase2_ms'],
+            'pallet_id':   event['pallet_id'],
+            'origin_code': event.get('origin_code', '?'),
         }))
 
     async def stats_update(self, event):
@@ -81,14 +82,25 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'pallets': event['pallets'],
         }))
 
-    async def sp01_done(self, event):
-        """Equivale a _on_sp01() en queue_window.py"""
+    async def receipt_done(self, event):
+        """Resultado ZE16/PDF de un pallet."""
         await self.send(json.dumps({
-            'type':      'sp01_done',
+            'type':      'receipt_done',
             'pallet_id': event['pallet_id'],
             'status':    event['status'],
             'message':   event['message'],
             'marked':    event['marked'],
+        }))
+
+    async def queue_done(self, event):
+        """Se emite una sola vez al terminar toda la cola."""
+        await self.send(json.dumps({
+            'type':              'queue_done',
+            'status':            event['status'],
+            'message':           event['message'],
+            'pallets_processed': event['pallets_processed'],
+            'hus_processed':     event['hus_processed'],
+            'errors':            event['errors'],
         }))
 
     async def pallet_done(self, event):
@@ -97,6 +109,15 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'type':      'pallet_done',
             'pallet_id': event['pallet_id'],
             'hu_count':  event['hu_count'],
+        }))
+
+    async def pallet_created(self, event):
+        """Notifica pallets vacios creados manualmente o por separador."""
+        await self.send(json.dumps({
+            'type':        'pallet_created',
+            'pallet_id':   event['pallet_id'],
+            'origin_code': event.get('origin_code', ''),
+            'stats':       event.get('stats', {}),
         }))
 
     async def error_message(self, event):
@@ -119,12 +140,7 @@ class QueueConsumer(AsyncWebsocketConsumer):
         @database_sync_to_async
         def get_state():
             items = list(HUItem.objects.select_related('pallet').order_by('added_at'))
-            pallets = list(Pallet.objects.filter(status=Pallet.STATUS_ACTIVE))
-
-            total   = len(items)
-            ok      = sum(1 for i in items if i.status in ('ok', 'duplicate'))
-            errors  = sum(1 for i in items if i.status == 'error')
-            pending = sum(1 for i in items if i.status == 'pending')
+            from queue_app.utils import calculate_queue_stats
 
             return {
                 'items': [{
@@ -138,11 +154,7 @@ class QueueConsumer(AsyncWebsocketConsumer):
                     'pallet_id':  i.pallet_id,
                     'origin_code': i.origin_code,
                 } for i in items],
-                'stats': {
-                    'total': total, 'ok': ok,
-                    'errors': errors, 'pending': pending,
-                    'pallets': len(pallets),
-                },
+                'stats': calculate_queue_stats(),
             }
 
         state = await get_state()

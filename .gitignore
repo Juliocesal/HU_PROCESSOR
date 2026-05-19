@@ -2,4 +2,10 @@
 venv/
 __pycache__/
 *.pyc
+*.pyo
 db.sqlite3
+db.sqlite3-journal
+db.sqlite3-journal.bak
+db.sqlite3-journal.20260519_113318.bak
+logs/
+staticfiles/

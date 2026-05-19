@@ -76,7 +76,13 @@ class ZE16Client:
         return False
 
     def _normalize_hu(self, hu: str) -> str:
-        return hu.strip().upper()
+        normalized = hu.strip().upper()
+        numeric = normalized.lstrip("0")
+
+        if numeric.startswith("29") and numeric.isdigit():
+            return numeric.zfill(20)
+
+        return normalized
 
     # ── Resiliencia de campo ──────────────────────────────────────────────────
 

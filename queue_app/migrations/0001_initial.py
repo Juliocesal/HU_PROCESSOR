@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('created_at', models.DateTimeField(default=django.utils.timezone.now)),
                 ('f2_done_at', models.DateTimeField(blank=True, null=True)),
-                ('sp01_done_at', models.DateTimeField(blank=True, null=True)),
+                ('receipt_done_at', models.DateTimeField(blank=True, db_column='sp01_done_at', help_text='Timestamp de la generacion/impresion de recibo ZE16.', null=True)),
                 ('status', models.CharField(default='active', max_length=20)),
                 ('origin_code', models.CharField(blank=True, default='', max_length=20)),
             ],
@@ -53,7 +53,7 @@ class Migration(migrations.Migration):
                 ('phase2_ms', models.IntegerField(default=0)),
                 ('processed_at', models.DateTimeField(blank=True, null=True)),
                 ('f1_done_at', models.DateTimeField(blank=True, null=True)),
-                ('sp01_done_at', models.DateTimeField(blank=True, null=True)),
+                ('receipt_done_at', models.DateTimeField(blank=True, db_column='sp01_done_at', help_text='Timestamp de recibo ZE16/PDF para esta HU.', null=True)),
                 ('pallet', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='items', to='queue_app.pallet')),
             ],
             options={
