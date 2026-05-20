@@ -514,6 +514,30 @@
     background: #253448;
     margin: 2px 0;
   }
+
+  /* Botón hamburguesa */
+  .ham {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    border-radius: 5px;
+    transition: background .15s;
+  }
+  .ham:hover { background: rgba(255,255,255,.08); }
+  .ham span {
+    display: block;
+    width: 14px;
+    height: 2px;
+    background: var(--shell-muted);
+    border-radius: 999px;
+    transition: .15s;
+  }
+  .ham:hover span { background: white; }
   
   /* ── Pipeline cards — estado activo/inactivo ─────────────── */
   .phase-card.active {

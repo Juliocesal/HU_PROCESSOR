@@ -1,13 +1,7 @@
-"""
-core/hu_origins.py
-Detecta el origen y comportamiento de pallet de una HU
-basado en su prefijo.
+"""Reglas de origen para Handling Units (HUs) escaneadas.
 
-Reglas:
-  T100...  → China (THA/CNA)  — multi-HU por pallet, separador manual
-  C10...   → Atlanta (ATL)    — híbrido 1-10+ HUs, separador manual
-  29...    → Italia (ITA)     — siempre 1 HU por pallet (auto-pallet)
-  otros    → desconocido       — separador manual como fallback
+El orden de ``ORIGIN_RULES`` es intencional: los prefijos mas especificos deben
+evaluarse antes que los prefijos mas generales.
 """
 
 from dataclasses import dataclass
@@ -15,44 +9,108 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Origin:
-    code:        str    # ej: "THA", "ITA", "ATL"
-    label:       str    # ej: "China (THA/CNA)"
-    auto_pallet: bool   # True = cada HU es su propio pallet automáticamente
-    color:       str    # color hex para la UI
-    phase2_wait: float  # segundos de espera extra en ZMMTIJSEP para este origen
-    wait_long:   float  # espera larga en SAP (para navegación)
-    wait_short:  float  # espera corta en SAP
-    wait_tree:   float  # espera extra para que cargue el árbol interno
-    wait_receipt_refresh: float  # reserva para esperas de recibo/impresion
+    code: str
+    label: str
+    auto_pallet: bool
+    color: str
+    phase2_wait: float
+    wait_long: float
+    wait_short: float
+    wait_tree: float
+    wait_receipt_refresh: float
 
 
-# Tabla de orígenes por prefijo — orden importa (más específico primero)
-# Orígenes rápidos (THA, CNA): tiempos menores
-# Orígenes lentos (ITA, BRA/ATL, FHR): tiempos mayores
 ORIGIN_RULES: list[tuple[str, Origin]] = [
-    ("TH", Origin("THA", "Tailandia (THA)", auto_pallet=False, color="#BDD7EE", 
-                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.5)),
-    ("T", Origin("CNA", "China (CNA)", auto_pallet=False, color="#BDD7EE", 
-                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.5)),
-    ("C10",  Origin("BRA/ATL", "ATL, (BRA/ATL)", auto_pallet=False, color="#C6EFCE", 
-                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.0)),
-    ("29",   Origin("ITA", "Italia (ITA)", auto_pallet=True, color="#FFEB9C", 
-                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.0)),
-    ("ELPS", Origin("FHR", "Foothill Ranch (ELPS)", auto_pallet=True, color="#F4B084", 
-                    phase2_wait=0.5, wait_long=0.5, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.0)),
+    (
+        "TH",
+        Origin(
+            "THA",
+            "Tailandia (THA)",
+            auto_pallet=False,
+            color="#BDD7EE",
+            phase2_wait=0.5,
+            wait_long=0.5,
+            wait_short=0.3,
+            wait_tree=1.0,
+            wait_receipt_refresh=1.5,
+        ),
+    ),
+    (
+        "T",
+        Origin(
+            "CNA",
+            "China (CNA)",
+            auto_pallet=False,
+            color="#BDD7EE",
+            phase2_wait=0.5,
+            wait_long=0.5,
+            wait_short=0.3,
+            wait_tree=1.0,
+            wait_receipt_refresh=1.5,
+        ),
+    ),
+    (
+        "C10",
+        Origin(
+            "BRA/ATL",
+            "ATL, (BRA/ATL)",
+            auto_pallet=False,
+            color="#C6EFCE",
+            phase2_wait=0.5,
+            wait_long=0.5,
+            wait_short=0.3,
+            wait_tree=1.0,
+            wait_receipt_refresh=1.0,
+        ),
+    ),
+    (
+        "29",
+        Origin(
+            "ITA",
+            "Italia (ITA)",
+            auto_pallet=True,
+            color="#FFEB9C",
+            phase2_wait=0.5,
+            wait_long=0.5,
+            wait_short=0.3,
+            wait_tree=1.0,
+            wait_receipt_refresh=1.0,
+        ),
+    ),
+    (
+        "ELPS",
+        Origin(
+            "FHR",
+            "Foothill Ranch (ELPS)",
+            auto_pallet=True,
+            color="#F4B084",
+            phase2_wait=0.5,
+            wait_long=0.5,
+            wait_short=0.3,
+            wait_tree=1.0,
+            wait_receipt_refresh=1.0,
+        ),
+    ),
 ]
-UNKNOWN_ORIGIN = Origin("UNK", "Desconocido", auto_pallet=False, color="#E2EFDA", 
-                        phase2_wait=0.5, wait_long=1.0, wait_short=0.3, wait_tree=1.0, wait_receipt_refresh=1.0)
 
-# Código especial de separador de pallet (case-insensitive)
+UNKNOWN_ORIGIN = Origin(
+    "UNK",
+    "Desconocido",
+    auto_pallet=False,
+    color="#E2EFDA",
+    phase2_wait=0.5,
+    wait_long=1.0,
+    wait_short=0.3,
+    wait_tree=1.0,
+    wait_receipt_refresh=1.0,
+)
+
 PALLET_SEPARATOR_CODE = "PALLET"
+ATL_FAST_CODES = {"BRA/ATL"}
 
 
 def detect_origin(hu_code: str) -> Origin:
-    """
-    Determina el origen de una HU por su prefijo.
-    Retorna UNKNOWN_ORIGIN si no hay coincidencia.
-    """
+    """Devuelve el origen configurado para una HU o ``UNKNOWN_ORIGIN``."""
     code = hu_code.strip().upper()
     for prefix, origin in ORIGIN_RULES:
         if code.startswith(prefix.upper()):
@@ -61,39 +119,24 @@ def detect_origin(hu_code: str) -> Origin:
 
 
 def is_pallet_separator(scanned_value: str) -> bool:
-    """
-    True si el valor escaneado es el código especial de separador de pallet.
-    Case-insensitive, ignora espacios.
-    """
-    return scanned_value.strip().upper() == PALLET_SEPARATOR_CODE.upper()
+    """Devuelve True cuando el valor escaneado es el separador de pallet."""
+    return scanned_value.strip().upper() == PALLET_SEPARATOR_CODE
 
 
 def needs_auto_pallet(hu_code: str) -> bool:
-    """
-    True si esta HU debe crear su propio pallet automáticamente
-    (sin necesitar código separador).
-    Aplica a Italia (prefijo 29).
-    """
+    """Devuelve True cuando la regla de negocio exige una HU por pallet."""
     return detect_origin(hu_code).auto_pallet
-
-
-ATL_FAST_CODES = {"BRA/ATL"}  # Orígenes que usan tiempos rápidos cuando pallet_size > 1
 
 
 def resolve_effective_origin(origin: Origin, pallet_size: int) -> Origin:
     """
-    Devuelve el Origin efectivo considerando el tamaño del pallet.
+    Devuelve el perfil de tiempos que debe usarse para ZE16/PDF del pallet.
 
-    Regla de negocio:
-      ATL con pallet_size > 1  → usar tiempos de THA (rápido),
-                                  porque los HUs son de 1 pieza y cargan rápido.
-      Cualquier otro caso       → devolver el origin sin cambios.
+    Los pallets BRA/ATL con mas de una HU usan tiempos de THA porque esas HUs
+    son de una pieza y se comportan mas rapido en SAP.
     """
     if origin.code in ATL_FAST_CODES and pallet_size > 1:
-        # Buscar THA en las reglas para no hardcodear los valores
-        for _, o in ORIGIN_RULES:
-            if o.code == "THA":
-                return o
-        # Fallback por si THA no existe en las reglas (no debería ocurrir)
-        return origin
+        for _, candidate in ORIGIN_RULES:
+            if candidate.code == "THA":
+                return candidate
     return origin

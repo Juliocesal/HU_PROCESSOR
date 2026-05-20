@@ -161,6 +161,27 @@ class StartProcessingTests(TestCase):
         stop.assert_called_once()
 
 
+class ScanHuTests(TestCase):
+    def test_scan_response_includes_updated_stats_for_current_ui_state(self):
+        with (
+            patch('queue_app.views.emit_item_update'),
+            patch('queue_app.views.emit_stats_update'),
+        ):
+            response = self.client.post(
+                '/scan/',
+                data='{"code": "TH0000268197"}',
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertIn('stats', payload)
+        self.assertEqual(payload['stats']['total'], 1)
+        self.assertEqual(payload['stats']['pending'], 1)
+        self.assertEqual(payload['stats']['pallets'], 1)
+
+
 class NewPalletTests(TestCase):
     def test_new_pallet_returns_updated_stats(self):
         pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)

@@ -109,7 +109,6 @@
         <span class="scan-hint idle" id="scan-hint">
           Escribe PALLET para separar
         </span>
-
       </div>
     </div>
   </div>
@@ -118,10 +117,11 @@
     <button class="btn-new-pallet" id="btn-new-pallet" onclick="newPallet()">
       + Nuevo pallet
     </button>
-
+    
     <div class="scan-auto-row">
       <input type="checkbox" id="chk-auto" style="accent-color:var(--blue-hover);width:14px;height:14px;">
       <label for="chk-auto">Iniciar proceso automáticamente al escanear primer HU</label>
+      <div class="kpi-value" id="pal-lbl">{{ stats.pallets }}</div>
     </div>
   </div>
 </div>
@@ -274,9 +274,9 @@
 
 
 <div id="ctx-menu">
-  <div class="ctx-item" id="ctx-delete-hu"   onclick="ctxDeleteHU()">Borrar HU</div>
+  <div class="ctx-item danger" id="ctx-delete-hu" onclick="ctxDeleteHU()">Borrar HU</div>
   <div class="ctx-sep"></div>
-  <div class="ctx-item danger" id="ctx-delete-pal" onclick="ctxDeletePallet()">X Borrar pallet completo</div>
+  <div class="ctx-item danger" id="ctx-delete-pal" onclick="ctxDeletePallet()">Borrar pallet completo</div>
 </div>
 
 <div id="reprocess-menu">

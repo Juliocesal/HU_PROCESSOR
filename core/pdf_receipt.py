@@ -1,4 +1,3 @@
-
 import os
 import sys
 import time
@@ -122,7 +121,7 @@ def find_sumatra() -> str | None:
     """
     Busca SumatraPDF.exe priorizando el ejecutable portable bundled.
 
-    Returns:
+    Retorna:
         Ruta absoluta al ejecutable, o None si no se encontró.
     """
     # 1. Bundled portable — siempre disponible si el equipo tiene la carpeta vendors/
@@ -158,7 +157,7 @@ def verify_sumatra_on_startup() -> bool:
     Verifica que SumatraPDF esté disponible al arrancar la app.
     Llama a esta función en el __init__ o al iniciar la ventana principal.
 
-    Returns:
+    Retorna:
         True  → SumatraPDF encontrado, todo OK.
         False → No encontrado, se mostró aviso al usuario.
 
@@ -271,7 +270,7 @@ class PalletReceiptPDF:
             receipts     : dict { hu_code → receipt_id }.
             output_path  : ruta de salida; si es None, crea archivo temporal.
 
-        Returns:
+        Retorna:
             Ruta absoluta del PDF generado.
 
         Raises:
@@ -489,7 +488,7 @@ class PalletReceiptPDF:
             pdf_path     : ruta absoluta del PDF a imprimir.
             printer_name : nombre de la impresora (opcional).
 
-        Returns:
+        Retorna:
             True si SumatraPDF arrancó correctamente.
         """
         # Resolver impresora
@@ -589,7 +588,7 @@ class PalletReceiptPDF:
         timeout: float = 60,
     ) -> bool:
         """
-        Wait until the Windows spooler no longer has this PDF queued.
+        Espera hasta que el spooler de Windows ya no tenga este PDF en cola.
         If the job disappears too quickly to observe, Sumatra's successful exit is
         treated as confirmation that the job was handed to the spooler.
         """

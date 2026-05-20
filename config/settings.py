@@ -19,11 +19,11 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # terceros
-    'channels',          # WebSocket — reemplaza pyqtSignal
-    'rest_framework',    # API JSON opcional
+    # Apps de terceros
+    'channels',
+    'rest_framework',
 
-    # tu app
+    # Apps locales
     'queue_app',
 ]
 
@@ -52,10 +52,10 @@ TEMPLATES = [{
     },
 }]
 
-# ASGI — necesario para Channels (WebSocket)
+# Punto de entrada Channels para trafico HTTP y WebSocket.
 ASGI_APPLICATION = 'config.asgi.application'
 
-# Base de datos — SQLite para dev, cambia a PostgreSQL en prod
+# SQLite es el valor local por defecto. Sobrescribe este bloque en produccion.
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -63,34 +63,36 @@ DATABASES = {
     }
 }
 
-# Channels + Redis (reemplaza la cola threading de queue_model.py)
+REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
+
+# Channels y Celery comparten Redis para mantener cola y eventos UI sincronizados.
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [config('REDIS_URL', default='redis://localhost:6379/0')],
+            'hosts': [REDIS_URL],
         },
     },
 }
 
-# Celery (workers async para SAP, impresión, etc.)
-CELERY_BROKER_URL = config('REDIS_URL', default='redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = config('REDIS_URL', default='redis://localhost:6379/0')
+# Celery debe usar un solo worker para evitar sesiones SAP GUI concurrentes.
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_WORKER_CONCURRENCY = 1
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
-# Constantes SAP — leídas desde .env, no hardcodeadas
-SAP_SISTEMA     = config('SAP_SISTEMA',     default='LUP')
+# Constantes SAP leidas desde .env con valores por defecto para el entorno local.
+SAP_SISTEMA = config('SAP_SISTEMA', default='LUP')
 SAP_TX_MOVEINBHU = config('SAP_TX_MOVEINBHU', default='/nZMOVEINBHU')
-SAP_TX_TIJSEP   = config('SAP_TX_TIJSEP',   default='/nZMMTIJSEP')
+SAP_TX_TIJSEP = config('SAP_TX_TIJSEP', default='/nZMMTIJSEP')
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Endurecimiento basico para despliegue. En desarrollo quedan apagados por DEBUG=True.
+# Endurecimiento de produccion activo por defecto cuando DEBUG=False.
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=not DEBUG, cast=bool)
 SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=not DEBUG, cast=bool)
 CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=not DEBUG, cast=bool)
@@ -104,13 +106,13 @@ SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=not DEBUG, cast=bool
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Logging — equivalente al setup_logging() de main_queue.py
+# Logging compartido para vistas HTTP, Channels y tareas Celery.
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
     'formatters': {
         'hu_format': {
-            'format': '%(asctime)s [%(levelname)s] %(name)s — %(message)s',
+            'format': '%(asctime)s [%(levelname)s] %(name)s - %(message)s',
             'datefmt': '%H:%M:%S',
         },
     },

@@ -84,18 +84,18 @@ class HUQueue:
                     i.pallet_id == self._last_pallet_id for i in self._items
                 )
                 if not current_has_items:
-                    log.info(f"new_pallet — pallet {self._last_pallet_id} ya está vacío, reutilizando")
+                    log.info("new_pallet id=%s empty_reused=True", self._last_pallet_id)
                     return self._last_pallet_id
 
             if self._recycled_ids:
                 pallet_id = self._recycled_ids.pop(0)
                 self._last_pallet_id = pallet_id
-                log.info(f"new_pallet id={pallet_id} (reciclado)")
+                log.info("new_pallet id=%s recycled=True", pallet_id)
                 return pallet_id
 
             self._pallet_counter += 1
             self._last_pallet_id = self._pallet_counter
-            log.info(f"new_pallet id={self._pallet_counter}")
+            log.info("new_pallet id=%s", self._pallet_counter)
             return self._pallet_counter
 
     @property
@@ -109,12 +109,12 @@ class HUQueue:
                 return
             still_has_items = any(i.pallet_id == pallet_id for i in self._items)
             if still_has_items:
-                log.debug(f"release_pallet id={pallet_id} — aún tiene ítems, ignorado")
+                log.debug("release_pallet id=%s still_has_items=True", pallet_id)
                 return
             if pallet_id not in self._recycled_ids:
                 self._recycled_ids.append(pallet_id)
                 self._recycled_ids.sort()
-                log.info(f"release_pallet id={pallet_id} reciclado={self._recycled_ids}")
+                log.info("release_pallet id=%s recycled_ids=%s", pallet_id, self._recycled_ids)
 
     def reprocess_all(self) -> int:
         items_to_requeue = []
@@ -145,7 +145,7 @@ class HUQueue:
         for item in items_to_requeue:
             self._q.put(item)
 
-        log.info(f"reprocess_all — reiniciados {count} HUs")
+        log.info("reprocess_all reset_count=%s", count)
         return count
 
     def set_active_pallet(self, pallet_id: int):
@@ -159,7 +159,7 @@ class HUQueue:
         with self._lock:
             for item in self._items:
                 if item.hu_code == hu_code:
-                    log.warning(f"hu_duplicate_scan hu={hu_code}")
+                    log.warning("hu_duplicate_scan hu=%s", hu_code)
                     return None
 
             self._cancelled_hus.discard(hu_code)
@@ -193,7 +193,7 @@ class HUQueue:
             self._items.append(item)
 
         self._q.put(item)
-        log.info(f"hu_added hu={hu_code} pallet={pallet_id} origin={origin.code}")
+        log.info("hu_added hu=%s pallet=%s origin=%s", hu_code, pallet_id, origin.code)
         return item
 
     # ── Acceso a items ────────────────────────────────────────────────────────
@@ -207,7 +207,7 @@ class HUQueue:
             item = self._q.get(timeout=0.5)
             with self._lock:
                 if item.hu_code in self._cancelled_hus:
-                    log.info(f"get_next_pending — skipping cancelled hu={item.hu_code}")
+                    log.info("get_next_pending skipping_cancelled hu=%s", item.hu_code)
                     self._q.task_done()
                     return None
             return item
@@ -233,7 +233,7 @@ class HUQueue:
                     pallet_id = item.pallet_id
                     self._items.pop(i)
                     self._cancelled_hus.add(hu_code)
-                    log.info(f"remove_hu hu={hu_code} pallet={pallet_id}")
+                    log.info("remove_hu hu=%s pallet=%s", hu_code, pallet_id)
                     return pallet_id
         return None
 

@@ -36,7 +36,7 @@ SAP_ICON_ERROR = "@5C@"
 
 ALV_ERROR_KEYWORDS = [
     "deficit", "error", "not found", "no existe", "bloqueado",
-    "locked", "incorrect", "invalid", "no se encontrÃ³",
+    "locked", "incorrect", "invalid", "no se encontro",
     "quantity", "cantidad", "warehouse", "stock",
     "wrong",
     "not allowed",
@@ -46,7 +46,7 @@ ALV_ERROR_KEYWORDS = [
 ]
 
 
-# â”€â”€ TypedDicts para retornos estructurados â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- TypedDicts para retornos estructurados ------------------------------------
 
 class Phase1Result(TypedDict):
     status:  str   # "ok" | "duplicate" | "hu_not_found" | "error"
@@ -67,8 +67,8 @@ class SAPConnectionError(Exception):
     pass
 
 
-# â”€â”€ Centinela de timestamp invÃ¡lido â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# Usar datetime.min como valor explÃ­cito en Phase2Result cuando F2 falla.
+# -- Centinela de timestamp invalido -------------------------------------------
+# Usar datetime.min como valor explicito en Phase2Result cuando F2 falla.
 _INVALID_TS = datetime.min
 
 
@@ -84,7 +84,7 @@ class SAPClient:
         self._usuario  = ""
         # El timestamp de F2 viaja en Phase2Result para auditoria del pallet.
 
-    # â”€â”€ ConexiÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # -- Conexion --------------------------------------------------------------
 
     def connect(self, sistema: str = SISTEMA_SAP) -> bool:
         pythoncom.CoInitialize()
@@ -105,17 +105,17 @@ class SAPClient:
                     if sess.Info.SystemName.upper().strip() == sistema.upper():
                         self._session = sess
                         self._usuario = sess.Info.User
-                        log.info(f"sap_connected system={sistema} user={self._usuario}")
+                        log.info("sap_connected system=%s user=%s", sistema, self._usuario)
                         return True
                 except Exception:
                     continue
 
-        raise SAPConnectionError(f"No se encontrÃ³ sesiÃ³n {sistema} activa")
+        raise SAPConnectionError(f"No se encontro sesion {sistema} activa")
 
     @property
     def session(self):
         if self._session is None:
-            raise SAPConnectionError("Sin sesiÃ³n SAP.")
+            raise SAPConnectionError("Sin sesion SAP.")
         return self._session
 
     def get_user(self) -> str:
@@ -128,7 +128,7 @@ class SAPClient:
             origin = detect_origin(hu_code) if hu_code else UNKNOWN_ORIGIN
         return (origin.wait_long, origin.wait_short, origin.wait_tree, origin.wait_receipt_refresh)
 
-    # â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # -- Helpers ---------------------------------------------------------------
 
     def _find(self, element_id: str):
         try:
@@ -170,13 +170,13 @@ class SAPClient:
             except Exception:
                 break
 
-    # â”€â”€ ALV grid de ZMOVEINBHU â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # -- ALV grid de ZMOVEINBHU ------------------------------------------------
 
     def _get_alv_message(self) -> str:
         try:
             shell = self._find(ALV_GRID_PATH)
             if shell is None:
-                log.debug("alv_grid_not_found â€” usando sbar como fallback")
+                log.debug("alv_grid_not_found - usando sbar como fallback")
                 return ""
 
             try:
@@ -200,8 +200,8 @@ class SAPClient:
                             break
                     except Exception:
                         continue
-                error_msg = f"{SAP_ICON_ERROR} {msg_text}" if msg_text else f"{SAP_ICON_ERROR} Error en SAP (hexÃ¡gono rojo)"
-                log.warning(f"alv_error_detected icon={SAP_ICON_ERROR} msg='{error_msg}'")
+                error_msg = f"{SAP_ICON_ERROR} {msg_text}" if msg_text else f"{SAP_ICON_ERROR} Error en SAP (hexagono rojo)"
+                log.warning("alv_error_detected icon=%s msg=%r", SAP_ICON_ERROR, error_msg)
                 return error_msg
 
             msg_text = ""
@@ -215,13 +215,13 @@ class SAPClient:
                     continue
 
             if not msg_text:
-                log.debug(f"alv_no_text_col_found icon='{icon_val}'")
+                log.debug("alv_no_text_col_found icon=%r", icon_val)
                 return ""
 
             return msg_text.strip()
 
         except Exception as e:
-            log.debug(f"alv_read_exception: {e}")
+            log.debug("alv_read_exception: %s", e)
             return ""
 
     def _is_alv_error(self, alv_message: str) -> bool:
@@ -232,7 +232,7 @@ class SAPClient:
         msg_lower = alv_message.lower()
         return any(kw in msg_lower for kw in ALV_ERROR_KEYWORDS)
 
-    # â”€â”€ NavegaciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # -- Navegacion ------------------------------------------------------------
 
     def _abrir_transaccion(self, tx_code: str, origin: Origin | None = None) -> None:
         wait_long, _, wait_tree, _ = (
@@ -251,14 +251,14 @@ class SAPClient:
         self._wait_idle()
         time.sleep(wait_tree)
         self._wait_idle()
-        log.info(f"tx_opened code={tx_code} current_tx={self._session.Info.Transaction}")
+        log.info("tx_opened code=%s current_tx=%s", tx_code, self._session.Info.Transaction)
 
     def _navegar_nodo(self, node_id: str, origin: Origin | None = None) -> bool:
         wait_long = origin.wait_long if origin else WAIT_LONG
 
         tree = self._find(TREE_PATH)
         if tree is None:
-            log.warning(f"tree_not_found path={TREE_PATH}")
+            log.warning("tree_not_found path=%s", TREE_PATH)
             return False
 
         try:
@@ -266,13 +266,13 @@ class SAPClient:
             tree.doubleClickNode(node_id)
             self._wait_idle()
             time.sleep(wait_long)
-            log.info(f"node_clicked node={node_id}")
+            log.info("node_clicked node=%s", node_id)
             return True
         except Exception as e:
-            log.warning(f"node_click_failed node={node_id} error={e}")
+            log.warning("node_click_failed node=%s error=%s", node_id, e)
             return False
 
-    # â”€â”€ Setup de fases â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # -- Setup de fases --------------------------------------------------------
 
     def setup_phase1(self, origin: Origin | None = None) -> None:
         log.info("setup_phase1_start")
@@ -290,9 +290,9 @@ class SAPClient:
             self._navegar_nodo(NODE_MOVEINBHU, origin=origin)
 
         if self._find(FIELD_F1_HU) is not None:
-            log.info("phase1_ready â€” ctxtP_HU confirmed")
+            log.info("phase1_ready - ctxtP_HU confirmed")
         else:
-            log.warning(f"phase1_field_not_visible sbar='{self._get_sbar_text()}'")
+            log.warning("phase1_field_not_visible sbar=%r", self._get_sbar_text())
 
     def setup_phase2(self, origin: Origin | None = None) -> None:
         log.info("setup_phase2_start")
@@ -304,11 +304,11 @@ class SAPClient:
             self._navegar_nodo(NODE_TIJSEP, origin=origin)
 
         if self._find(FIELD_F2_HU) is not None:
-            log.info("phase2_ready â€” txtGV_HU confirmed")
+            log.info("phase2_ready - txtGV_HU confirmed")
         else:
-            log.warning(f"phase2_field_not_visible sbar='{self._get_sbar_text()}'")
+            log.warning("phase2_field_not_visible sbar=%r", self._get_sbar_text())
 
-    # â”€â”€ Fase 1: ZMOVEINBHU â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # -- Fase 1: ZMOVEINBHU ----------------------------------------------------
 
     def process_hu_phase1(self, hu_code: str, origin: Origin | None = None) -> Phase1Result:
         wait_long, wait_short, _, _ = self._get_origin_timings(origin, hu_code)
@@ -316,14 +316,14 @@ class SAPClient:
         try:
             campo_hu = self._find(FIELD_F1_HU)
             if campo_hu is None:
-                log.warning(f"phase1_wrong_screen hu={hu_code} â€” re-navigating")
+                log.warning("phase1_wrong_screen hu=%s - re-navigating", hu_code)
                 self.setup_phase1(origin=origin)
                 campo_hu = self._find(FIELD_F1_HU)
                 if campo_hu is None:
                     sbar = self._get_sbar_text()
                     return Phase1Result(
                         status="error",
-                        message=f"No se encontrÃ³ campo HU. SAP: '{sbar}'",
+                        message=f"No se encontro campo HU. SAP: '{sbar}'",
                         sbar=sbar,
                     )
 
@@ -371,8 +371,10 @@ class SAPClient:
 
                 if is_not_found:
                     log.warning(
-                        f"hu_phase1_not_found hu={hu_code} "
-                        f"popup_title='{popup_title}' popup_text='{popup_text}'"
+                        "hu_phase1_not_found hu=%s popup_title=%r popup_text=%r",
+                        hu_code,
+                        popup_title,
+                        popup_text,
                     )
                     return Phase1Result(
                         status="hu_not_found",
@@ -381,8 +383,10 @@ class SAPClient:
                     )
                 else:
                     log.info(
-                        f"hu_phase1_duplicate hu={hu_code} "
-                        f"popup_title='{popup_title}' popup_text='{popup_text}'"
+                        "hu_phase1_duplicate hu=%s popup_title=%r popup_text=%r",
+                        hu_code,
+                        popup_title,
+                        popup_text,
                     )
                     return Phase1Result(
                         status="duplicate",
@@ -395,7 +399,12 @@ class SAPClient:
 
                 if alv_message and self._is_alv_error(alv_message):
                     error_type = "SAP_AUTHORIZATION_DENIED" if SAP_ICON_ERROR in alv_message else "ALV_ERROR"
-                    log.warning(f"hu_phase1_error_alv hu={hu_code} type={error_type} msg='{alv_message}'")
+                    log.warning(
+                        "hu_phase1_error_alv hu=%s type=%s msg=%r",
+                        hu_code,
+                        error_type,
+                        alv_message,
+                    )
                     wnd_back = self._find("wnd[0]")
                     if wnd_back:
                         wnd_back.sendVKey(3)
@@ -409,20 +418,20 @@ class SAPClient:
                         wnd_back.sendVKey(3)
                     self._wait_idle()
                     time.sleep(wait_short)
-                    log.info(f"hu_phase1_ok hu={hu_code} msg='{ok_msg}'")
+                    log.info("hu_phase1_ok hu=%s msg=%r", hu_code, ok_msg)
                     return Phase1Result(status="ok", message=ok_msg, sbar=sbar)
 
         except Exception as e:
-            log.error(f"hu_phase1_error hu={hu_code} error={e}")
+            log.error("hu_phase1_error hu=%s error=%s", hu_code, e)
             return Phase1Result(status="error", message=f"ERROR: {e}", sbar="")
 
-    # â”€â”€ Fase 2: ZMMTIJSEP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # -- Fase 2: ZMMTIJSEP -----------------------------------------------------
     #
     # CAMBIO CLAVE: el timestamp de F2 ya no se guarda en self._phase2_ts.
     # Se captura localmente y se retorna en Phase2Result["phase2_ts"].
-    # Si F2 falla, phase2_ts = datetime.min (centinela explÃ­cito).
+    # Si F2 falla, phase2_ts = datetime.min (centinela explicito).
     # El worker lo almacena por pallet_id para auditoria del proceso.
-    # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # --------------------------------------------------------------------------
 
     def process_hu_phase2(
         self,
@@ -435,7 +444,7 @@ class SAPClient:
         if phase2_wait is None:
             phase2_wait = origin.phase2_wait if origin else WAIT_SHORT
 
-        # Capturar timestamp localmente â€” no se almacena en self
+        # Capturar timestamp localmente - no se almacena en self
         phase2_ts = _make_phase2_ts()
         log.info("phase2_timestamp_captured ts=%s", phase2_ts.strftime("%d.%m.%Y %H:%M:%S"))
 
@@ -443,14 +452,14 @@ class SAPClient:
         try:
             campo_hu = self._find(FIELD_F2_HU)
             if campo_hu is None:
-                log.warning(f"phase2_wrong_screen hu={hu_code} â€” re-navigating")
+                log.warning("phase2_wrong_screen hu=%s - re-navigating", hu_code)
                 self.setup_phase2(origin=origin)
                 campo_hu = self._find(FIELD_F2_HU)
                 if campo_hu is None:
                     sbar = self._get_sbar_text()
                     return Phase2Result(
                         status="error",
-                        message=f"No se encontrÃ³ campo HU. SAP: '{sbar}'",
+                        message=f"No se encontro campo HU. SAP: '{sbar}'",
                         duration_ms=int((time.time() - t_start) * 1000),
                         phase2_ts=_INVALID_TS,
                     )
@@ -474,7 +483,7 @@ class SAPClient:
             if not self._wait_idle(timeout=TIMEOUT_SAP):
                 return Phase2Result(
                     status="error",
-                    message="TIMEOUT: SAP no respondiÃ³ en 15s",
+                    message="TIMEOUT: SAP no respondio en 15s",
                     duration_ms=int((time.time() - t_start) * 1000),
                     phase2_ts=_INVALID_TS,
                 )
@@ -486,17 +495,22 @@ class SAPClient:
             self._wait_idle()
 
             duration = int((time.time() - t_start) * 1000)
-            log.info(f"hu_phase2_ok hu={hu_code} duration_ms={duration} phase2_wait={phase2_wait}")
+            log.info(
+                "hu_phase2_ok hu=%s duration_ms=%s phase2_wait=%s",
+                hu_code,
+                duration,
+                phase2_wait,
+            )
             return Phase2Result(
                 status="ok",
                 message="OK",
                 duration_ms=duration,
-                phase2_ts=phase2_ts,   # timestamp vÃ¡lido solo en Ã©xito
+                phase2_ts=phase2_ts,   # timestamp valido solo en exito
             )
 
         except Exception as e:
             duration = int((time.time() - t_start) * 1000)
-            log.error(f"hu_phase2_error hu={hu_code} error={e}")
+            log.error("hu_phase2_error hu=%s error=%s", hu_code, e)
             return Phase2Result(
                 status="error",
                 message=f"ERROR: {e}",
@@ -504,7 +518,7 @@ class SAPClient:
                 phase2_ts=_INVALID_TS,
             )
 
-    # â”€â”€ VerificaciÃ³n estÃ¡tica â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # -- Verificacion estatica -------------------------------------------------
 
     @staticmethod
     def check_session(sistema: str = SISTEMA_SAP) -> tuple[bool, str]:

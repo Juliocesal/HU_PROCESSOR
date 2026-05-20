@@ -1,5 +1,4 @@
 
-
 import logging
 import os
 import time
@@ -105,7 +104,7 @@ class ZE16Client:
             ingresados : HUs ya escritos exitosamente (para el mensaje de error).
             total      : total de HUs a ingresar.
 
-        Returns:
+        Retorna:
             El elemento SAP GUI del campo.
 
         Raises:
@@ -316,7 +315,7 @@ class ZE16Client:
             plant          : código de planta SAP.
             wait_after_exec: segundos de espera tras F8 para carga del grid.
 
-        Returns:
+        Retorna:
             dict { hu_code_normalizado: receipt_id } con los HUs encontrados.
             Los HUs sin resultado no aparecen en el dict.
 
@@ -403,7 +402,7 @@ class ZE16Client:
         Consulta ZE16 para un solo HU.
         Útil como fallback o para depuración individual.
 
-        Returns:
+        Retorna:
             receipt_id string sin ceros a la izquierda, o None si no se encontró.
         """
         hu_norm = self._normalize_hu(hu_code)

@@ -45,7 +45,7 @@ def _release_queue_lock(owner: str) -> None:
 
 
 def is_queue_locked() -> bool:
-    """Return True when a queue worker owns the Redis processing lock."""
+    """Devuelve True cuando un worker posee el lock de procesamiento en Redis."""
     try:
         return bool(_get_redis_lock_client().exists(QUEUE_LOCK_KEY))
     except Exception as e:
@@ -55,10 +55,10 @@ def is_queue_locked() -> bool:
 
 def request_queue_stop() -> bool:
     """
-    Ask the active worker to stop at the next safe boundary.
+    Solicita al worker activo detenerse en el siguiente punto seguro.
 
-    SAP GUI work should not be killed mid-HU; the task checks this flag between
-    HUs and before ZE16/PDF so the queue stops without corrupting the SAP session.
+    El trabajo en SAP GUI no debe cortarse a mitad de HU. La tarea revisa esta
+    marca entre HUs y antes de ZE16/PDF para detener la cola sin corromper SAP.
     """
     try:
         client = _get_redis_lock_client()
@@ -92,8 +92,8 @@ def _stopped_result(pallets_processed: int, hus_processed: int, errors: int) -> 
 @shared_task(bind=True, max_retries=0)
 def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
     """
-    Process the whole queue in deterministic order:
-    pallet -> all HUs -> ZE16/PDF/print -> next pallet.
+    Procesa toda la cola en orden deterministico:
+    pallet -> todas sus HUs -> ZE16/PDF/impresion -> siguiente pallet.
     """
     from queue_app.models import HUItem, Pallet
     from queue_app.utils import emit_error, emit_queue_done
@@ -236,7 +236,7 @@ def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
 @shared_task(bind=True, max_retries=0)
 def process_hu_task(self, hu_item_id: int, run_f1=True, run_f2=True):
     """
-    Compatibility task for one HU. The UI now starts process_queue_task instead.
+    Tarea de compatibilidad para una HU. La UI actual inicia process_queue_task.
     """
     owner = f"process_hu_task:{self.request.id}"
     if not _acquire_queue_lock(owner):
@@ -375,7 +375,7 @@ def _process_hu_item(
 
 def _run_pallet_boundary(pallet_id: int, emit_completion=True):
     """
-    Run the pallet receipt step only after every HU in the pallet has finished.
+    Ejecuta el recibo del pallet solo cuando todas sus HUs terminaron.
     """
     from queue_app.models import HUItem, Pallet
 
@@ -420,9 +420,28 @@ def _run_pallet_boundary(pallet_id: int, emit_completion=True):
     return result
 
 
+def _build_hu_display_map(ze16_client, hu_codes: list[str]) -> dict[str, str]:
+    """
+    Mantiene las llaves HU normalizadas de SAP e imprime ITA sin ceros iniciales.
+
+    ZE16 requiere HUs ITA de 20 digitos, pero el recibo debe mostrar la HU tal
+    como la escanearon los operadores.
+    """
+    display_map = {}
+    for hu_code in hu_codes:
+        normalized_hu = ze16_client._normalize_hu(hu_code)
+        display_hu = (
+            normalized_hu.lstrip('0')
+            if normalized_hu.lstrip('0').startswith('29')
+            else hu_code.strip()
+        )
+        display_map[normalized_hu] = display_hu
+    return display_map
+
+
 def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
     """
-    Synchronous ZE16 + PDF + print step. Returns only after print_pdf returns.
+    Paso sincronico ZE16 + PDF + impresion. Retorna solo despues de print_pdf.
     """
     import pythoncom
     from core.hu_origins import detect_origin, resolve_effective_origin
@@ -455,11 +474,7 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
 
         ze16 = ZE16Client(sap.session)
         receipts = ze16.get_receipts_for_pallet(hu_codes)
-        hu_display_map = {}
-        for hu in hu_codes:
-            hu_norm = ze16._normalize_hu(hu)
-            hu_display = hu_norm.lstrip('0') if hu_norm.lstrip('0').startswith('29') else hu.strip()
-            hu_display_map[hu_norm] = hu_display
+        hu_display_map = _build_hu_display_map(ze16, hu_codes)
 
         if not receipts:
             result = {

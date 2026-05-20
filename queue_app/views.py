@@ -10,7 +10,6 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST, require_GET
 from django.shortcuts import render
-from django.utils import timezone
 
 from core.hu_origins import detect_origin, is_pallet_separator
 
@@ -29,6 +28,16 @@ except ImportError:
     win32com = None
 
 log = logging.getLogger(__name__)
+
+HU_CODE_MIN_LENGTH = 10
+HU_CODE_MAX_LENGTH = 15
+REPROCESS_ERROR_STATUSES = [HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
+REPROCESS_ALL_STATUSES = [
+    HUItem.STATUS_OK,
+    HUItem.STATUS_DUPLICATE,
+    HUItem.STATUS_ERROR,
+    HUItem.STATUS_HU_NOT_FOUND,
+]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -61,13 +70,12 @@ def scan_hu(request):
     Equivale a _on_scan() en queue_window.py.
     Recibe el código escaneado y decide si es HU o separador de pallet.
     """
-    import json
     try:
-        body    = json.loads(request.body)
-        raw     = body.get('code', '').strip()
-        run_f1  = body.get('run_f1', True)
-        run_f2  = body.get('run_f2', True)
-    except Exception:
+        payload = json.loads(request.body)
+        if not isinstance(payload, dict):
+            raise ValueError
+        raw = payload.get('code', '').strip()
+    except (json.JSONDecodeError, ValueError, AttributeError):
         return JsonResponse({'ok': False, 'error': 'JSON inválido'}, status=400)
 
     if not raw:
@@ -81,10 +89,13 @@ def scan_hu(request):
         return JsonResponse(result)
 
     # ── Validar longitud — misma regla que _on_scan() ────────────────────────
-    if not (10 <= len(raw) <= 15):
+    if not (HU_CODE_MIN_LENGTH <= len(raw) <= HU_CODE_MAX_LENGTH):
         return JsonResponse({
             'ok':      False,
-            'error':   f"Código HU inválido: '{raw}' tiene {len(raw)} caracteres. Rango permitido: 10–15",
+            'error':   (
+                f"Código HU inválido: '{raw}' tiene {len(raw)} caracteres. "
+                f"Rango permitido: {HU_CODE_MIN_LENGTH}-{HU_CODE_MAX_LENGTH}"
+            ),
             'type':    'validation_error',
         }, status=400)
 
@@ -108,15 +119,10 @@ def scan_hu(request):
     )
     ScanLog.objects.create(hu_code=raw, result='queued', message=f'Pallet {pallet.pk}')
 
-    # ✅ Agrega esto después de crear el HUItem
-    from queue_app.utils import emit_item_update, emit_stats_update
     emit_item_update(item)
     emit_stats_update(item.pallet)
 
-    # ── Disparar tarea Celery ─────────────────────────────────────────────────
-    # NO se ejecuta aquí — espera a que el usuario presione "Iniciar" desde el frontend
-
-    log.info(f"scan_hu hu={raw} pallet={pallet.pk} origin={origin.code}")
+    log.info("scan_hu hu=%s pallet=%s origin=%s", raw, pallet.pk, origin.code)
 
     return JsonResponse({
         'ok':        True,
@@ -124,6 +130,7 @@ def scan_hu(request):
         'pallet_id': pallet.pk,
         'origin':    origin.label,
         'status':    item.status,
+        'stats':     _get_stats(),
     })
 
 
@@ -159,7 +166,7 @@ def _new_pallet_logic() -> dict:
 
     pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
     emit_pallet_created(pallet)
-    log.info(f"new_pallet created id={pallet.pk}")
+    log.info("new_pallet created id=%s", pallet.pk)
 
     return {
         'ok':        True,
@@ -192,7 +199,7 @@ def delete_hu(request, hu_code):
 
     pallet = item.pallet
     item.delete()
-    log.info(f"delete_hu hu={hu_code} pallet={pallet.pk}")
+    log.info("delete_hu hu=%s pallet=%s", hu_code, pallet.pk)
 
     # Si el pallet quedó vacío y no es el único, borrarlo también
     if not pallet.items.exists() and Pallet.objects.count() > 1:
@@ -222,7 +229,7 @@ def delete_pallet(request, pallet_id):
 
     count = pallet.items.count()
     pallet.delete()   # CASCADE elimina los HUItems
-    log.info(f"delete_pallet id={pallet_id} hu_count={count}")
+    log.info("delete_pallet id=%s hu_count=%s", pallet_id, count)
 
     return JsonResponse({'ok': True, 'deleted_hus': count})
 
@@ -254,7 +261,7 @@ def clear_queue(request):
     # Crear pallet inicial vacío
     pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
 
-    log.info(f"clear_queue done reset_pallet_id={pallet.pk}")
+    log.info("clear_queue done reset_pallet_id=%s", pallet.pk)
     return JsonResponse({'ok': True, 'pallet_id': pallet.pk})
 
 
@@ -321,14 +328,11 @@ def reprocess_queue(request):
     if mode not in ('all', 'errors'):
         return JsonResponse({'ok': False, 'error': 'Modo de reproceso invalido'}, status=400)
 
-    error_statuses = [HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
-    all_statuses = [
-        HUItem.STATUS_OK,
-        HUItem.STATUS_DUPLICATE,
-        HUItem.STATUS_ERROR,
-        HUItem.STATUS_HU_NOT_FOUND,
-    ]
-    target_statuses = error_statuses if mode == 'errors' else all_statuses
+    target_statuses = (
+        REPROCESS_ERROR_STATUSES
+        if mode == 'errors'
+        else REPROCESS_ALL_STATUSES
+    )
 
     items = list(HUItem.objects.filter(status__in=target_statuses).select_related('pallet'))
     count = len(items)
@@ -415,7 +419,7 @@ def start_processing(request):
             'error': f'No se pudo iniciar Celery/Redis: {e}',
         }, status=503)
 
-    log.info(f"start_processing launched queue task for {count} HUs")
+    log.info("start_processing launched queue task for %s HUs", count)
     return JsonResponse({
         'ok':    True,
         'count': count,
@@ -468,22 +472,22 @@ def iniciar_sap_endpoint(request):
     Endpoint para iniciar la conexión con SAP.
     Equivale a la función iniciar_sap() — llama a SAP y abre la sesión.
 
-    Returns:
+    Retorna:
         JSON con status ok=True si la conexión fue exitosa.
     """
     try:
         success = iniciar_sap()
         if success:
-            log.info("iniciar_sap_endpoint conexión exitosa")
+            log.info("iniciar_sap_endpoint conexion exitosa")
             return JsonResponse({'ok': True, 'message': 'SAP conectado correctamente'})
         else:
-            log.error("iniciar_sap_endpoint falló")
+            log.error("iniciar_sap_endpoint failed")
             return JsonResponse({
                 'ok': False,
                 'error': 'No se pudo conectar con SAP. Verifica que SAP está instalado.'
             }, status=500)
     except Exception as e:
-        log.error(f"iniciar_sap_endpoint error: {type(e).__name__}: {e}")
+        log.error("iniciar_sap_endpoint error=%s: %s", type(e).__name__, e)
         return JsonResponse({
             'ok': False,
             'error': str(e)
@@ -565,43 +569,40 @@ def iniciar_sap():
       3. Obtiene la sesión activa
       4. Abre conexión a SAP Production
 
-    Returns:
+    Retorna:
         bool: True si la conexión fue exitosa, False si hubo error.
     """
-    import os
-    import time
-
     if not win32com:
-        log.error("iniciar_sap win32com no está instalado")
+        log.error("iniciar_sap win32com is not installed")
         return False
 
     ruta_saplogon = r"C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe"
 
     # Verificar que saplogon.exe existe
     if not os.path.isfile(ruta_saplogon):
-        log.error(f"iniciar_sap saplogon.exe no encontrado en {ruta_saplogon}")
+        log.error("iniciar_sap saplogon.exe not found path=%s", ruta_saplogon)
         return False
 
     try:
         # Abrir saplogon.exe
         os.startfile(ruta_saplogon)
-        log.info("iniciar_sap saplogon abierto, esperando 5s...")
+        log.info("iniciar_sap saplogon opened, waiting 5s")
         time.sleep(5)
 
         # Conectar a través de COM
         SapGuiAuto = win32com.client.GetObject("SAPGUI")
         application = SapGuiAuto.GetScriptingEngine
         connection = application.OpenConnection("LUP Production [Public]", True)
-        log.info("iniciar_sap conexión abierta, esperando 3s...")
+        log.info("iniciar_sap connection opened, waiting 3s")
         time.sleep(3)
 
         # Obtener sesión
-        session = connection.Children(0)
-        log.info("iniciar_sap sesión obtenida exitosamente")
+        connection.Children(0)
+        log.info("iniciar_sap session acquired")
         return True
 
     except Exception as e:
-        log.error(f"iniciar_sap error: {type(e).__name__}: {e}")
+        log.error("iniciar_sap error=%s: %s", type(e).__name__, e)
         return False
 
 
@@ -627,7 +628,6 @@ def detener_queue(request):
 @require_POST
 def procesar_pendientes(request):
     """Dispara una task secuencial para todos los HUs pendientes."""
-    import json
     body   = json.loads(request.body) if request.body else {}
     run_f1 = body.get('run_f1', True)
     run_f2 = body.get('run_f2', True)
@@ -658,5 +658,5 @@ def procesar_pendientes(request):
             'error': f'No se pudo iniciar Celery/Redis: {e}',
         }, status=503)
 
-    log.info(f"procesar_pendientes disparada task secuencial count={count}")
+    log.info("procesar_pendientes sequential_task_started count=%s", count)
     return JsonResponse({'ok': True, 'count': count})

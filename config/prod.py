@@ -1,4 +1,3 @@
-# prod.py
-from .base import *
+from .settings import *
+
 DEBUG = False
-# Aquí irías a PostgreSQL, HTTPS, etc.
