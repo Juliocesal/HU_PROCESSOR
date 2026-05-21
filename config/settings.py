@@ -87,6 +87,14 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 SAP_SISTEMA = config('SAP_SISTEMA', default='LUP')
 SAP_TX_MOVEINBHU = config('SAP_TX_MOVEINBHU', default='/nZMOVEINBHU')
 SAP_TX_TIJSEP = config('SAP_TX_TIJSEP', default='/nZMMTIJSEP')
+SAP_CONNECTION_NAME = config('SAP_CONNECTION_NAME', default='LUP Production [Public]')
+SAP_LOGON_EXE = config(
+    'SAP_LOGON_EXE',
+    default=r'C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe',
+)
+SAP_LOGIN_USER = config('SAP_LOGIN_USER', default='')
+SAP_LOGIN_PASSWORD = config('SAP_LOGIN_PASSWORD', default='')
+SAP_LOGIN_LANGUAGE = config('SAP_LOGIN_LANGUAGE', default='EN')
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']

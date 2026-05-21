@@ -790,11 +790,36 @@
       if (data.connected) return true;
     } catch {}
 
-    flash('No hay sesion SAP activa. Abre SAP e inicia sesion antes de procesar.', 'orange');
-    setProgBadge('EN ESPERA', '');
-    setProgStatus('SAP sin sesion activa.', 'error');
-    setFooterStatus('SAP sin sesion activa.', 'error');
-    return false;
+    flash('Inicializando SAP e iniciando sesion...', 'orange');
+    setProgBadge('SAP', 'running');
+    setProgStatus('Inicializando SAP e iniciando sesion...', 'running');
+    setFooterStatus('Inicializando SAP...', 'running');
+
+    try {
+      const res = await fetch('/api/sap/iniciar/', {
+        method: 'POST',
+        headers: { ...csrfHeaders() },
+      });
+      const data = await readJsonResponse(res);
+
+      if (data.ok) {
+        flash(data.message || 'SAP conectado correctamente.', 'green');
+        await checkSAP();
+        return true;
+      }
+
+      flash(`Error SAP: ${data.error}`, 'red');
+      setProgBadge('EN ESPERA', '');
+      setProgStatus(data.error || 'SAP sin sesion activa.', 'error');
+      setFooterStatus('SAP sin sesion activa.', 'error');
+      return false;
+    } catch (e) {
+      flash(`Error SAP: ${e.message}`, 'red');
+      setProgBadge('EN ESPERA', '');
+      setProgStatus('No se pudo inicializar SAP.', 'error');
+      setFooterStatus('SAP sin sesion activa.', 'error');
+      return false;
+    }
   }
 
   // -- Init ----------------------------------------------------------------------

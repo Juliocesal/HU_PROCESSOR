@@ -1,3 +1,4 @@
+import os
 import time
 import logging
 import pythoncom
@@ -12,6 +13,15 @@ log = logging.getLogger(__name__)
 SISTEMA_SAP    = getattr(settings, 'SAP_SISTEMA',      'LUP')
 TX_MOVEINBHU   = getattr(settings, 'SAP_TX_MOVEINBHU', '/nZMOVEINBHU')
 TX_TIJSEP      = getattr(settings, 'SAP_TX_TIJSEP',    '/nZMMTIJSEP')
+SAP_CONNECTION_NAME = getattr(settings, 'SAP_CONNECTION_NAME', 'LUP Production [Public]')
+SAP_LOGON_EXE = getattr(
+    settings,
+    'SAP_LOGON_EXE',
+    r'C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe',
+)
+SAP_LOGIN_USER = getattr(settings, 'SAP_LOGIN_USER', '')
+SAP_LOGIN_PASSWORD = getattr(settings, 'SAP_LOGIN_PASSWORD', '')
+SAP_LOGIN_LANGUAGE = getattr(settings, 'SAP_LOGIN_LANGUAGE', 'EN')
 NODE_MOVEINBHU = "F00098"
 NODE_TIJSEP    = "F00097"
 
@@ -26,6 +36,10 @@ POLL_INTERVAL     = 0.05
 TREE_PATH        = "wnd[0]/usr/cntlIMAGE_CONTAINER/shellcont/shell/shellcont[0]/shell"
 FIELD_F1_HU      = "wnd[0]/usr/ctxtP_HU"
 FIELD_F2_HU      = "wnd[0]/usr/txtGV_HU"
+FIELD_LOGIN_USER = "wnd[0]/usr/txtRSYST-BNAME"
+FIELD_LOGIN_PASSWORD = "wnd[0]/usr/pwdRSYST-BCODE"
+FIELD_LOGIN_LANGUAGE = "wnd[0]/usr/txtRSYST-LANGU"
+MULTI_LOGON_TITLE = "License Information for Multiple Logons"
 
 # ALV grid de ZMOVEINBHU
 ALV_GRID_PATH   = "wnd[0]/usr/cntlCC_ALV/shellcont/shell"
@@ -120,6 +134,92 @@ class SAPClient:
 
     def get_user(self) -> str:
         return self._usuario
+
+    # -- Inicio automatico de SAP ---------------------------------------------
+
+    @staticmethod
+    def _find_on_session(session, element_id: str):
+        try:
+            return session.findById(element_id)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _handle_multiple_logon(session) -> None:
+        """Selecciona la opcion permitida cuando SAP muestra multiples sesiones."""
+        try:
+            popup = SAPClient._find_on_session(session, "wnd[1]")
+            active_title = getattr(session.ActiveWindow, 'Text', '')
+            popup_title = getattr(popup, 'Text', '') if popup else ''
+            if active_title == MULTI_LOGON_TITLE or popup_title == MULTI_LOGON_TITLE:
+                session.findById("wnd[1]/usr/radMULTI_LOGON_OPT2").select()
+                session.findById("wnd[1]/tbar[0]/btn[0]").press()
+                time.sleep(1)
+                log.info("sap_multi_logon_option_selected")
+        except Exception as e:
+            log.debug("sap_multi_logon_skip error=%s", e)
+
+    @classmethod
+    def ensure_session_ready(cls, sistema: str = SISTEMA_SAP) -> tuple[bool, str, str]:
+        """
+        Verifica una sesion SAP activa. Si no existe, abre SAP Logon y autentica
+        con las credenciales configuradas en .env.
+        """
+        connected, user = cls.check_session(sistema)
+        if connected:
+            return True, user, 'Sesion SAP activa'
+
+        return cls.open_and_login(sistema=sistema)
+
+    @classmethod
+    def open_and_login(cls, sistema: str = SISTEMA_SAP) -> tuple[bool, str, str]:
+        """Abre SAP Logon, crea la conexion configurada y llena la pantalla de login."""
+        if not os.path.isfile(SAP_LOGON_EXE):
+            return False, '', f'saplogon.exe no encontrado: {SAP_LOGON_EXE}'
+
+        try:
+            os.startfile(SAP_LOGON_EXE)
+            time.sleep(5)
+
+            pythoncom.CoInitialize()
+            try:
+                sap_gui = win32com.client.GetObject("SAPGUI")
+                app = sap_gui.GetScriptingEngine
+                connection = app.OpenConnection(SAP_CONNECTION_NAME, True)
+                time.sleep(2)
+
+                session = connection.Children(0)
+                user_field = cls._find_on_session(session, FIELD_LOGIN_USER)
+                password_field = cls._find_on_session(session, FIELD_LOGIN_PASSWORD)
+                language_field = cls._find_on_session(session, FIELD_LOGIN_LANGUAGE)
+
+                if user_field and password_field:
+                    if not SAP_LOGIN_USER or not SAP_LOGIN_PASSWORD:
+                        return (
+                            False,
+                            '',
+                            'Credenciales SAP no configuradas: define SAP_LOGIN_USER y SAP_LOGIN_PASSWORD.',
+                        )
+
+                    user_field.text = SAP_LOGIN_USER
+                    password_field.text = SAP_LOGIN_PASSWORD
+                    if language_field:
+                        language_field.text = SAP_LOGIN_LANGUAGE or 'EN'
+                    session.findById("wnd[0]").sendVKey(0)
+                    time.sleep(2)
+
+                cls._handle_multiple_logon(session)
+            finally:
+                pythoncom.CoUninitialize()
+
+            connected, user = cls.check_session(sistema)
+            if connected:
+                return True, user, 'SAP inicializado y autenticado correctamente'
+            return False, '', f'No se encontro sesion {sistema} despues del login SAP'
+
+        except Exception as e:
+            log.exception("sap_auto_login_failed")
+            return False, '', f'No se pudo inicializar SAP automaticamente: {e}'
 
     def _get_origin_timings(
         self, origin: Origin | None = None, hu_code: str = ""

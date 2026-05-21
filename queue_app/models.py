@@ -8,6 +8,9 @@ class Pallet(models.Model):
     STATUS_ACTIVE = 'active'
     STATUS_DONE = 'done'
 
+    # Variables para futura BD de consulta historica de pallets:
+    # WHERE sugeridos: id/pallet, origin_code, status, created_at,
+    # f2_done_at y receipt_done_at.
     created_at = models.DateTimeField(default=timezone.now)
     f2_done_at = models.DateTimeField(null=True, blank=True)
     receipt_done_at = models.DateTimeField(
@@ -71,6 +74,13 @@ class HUItem(models.Model):
         (STATUS_HU_NOT_FOUND, 'HU no existe'),
     ]
 
+    # Variables para futura BD de consulta historica de HUs:
+    # hu_code=HU, pallet_id=Pallet, origin_code=Origen, status=Estado general,
+    # phase1_msg=Estado/mensaje F1, phase2_msg=Estado/mensaje F2,
+    # phase2_ms=tiempo F2, added_at=hora escaneo, processed_at=hora final,
+    # f1_done_at=hora F1, receipt_done_at=hora ZE16/PDF.
+    # WHERE sugeridos: hu_code, pallet_id, origin_code, status,
+    # processed_at__range, added_at__range, f1_done_at__range.
     hu_code = models.CharField(max_length=50, unique=True)
     pallet = models.ForeignKey(
         Pallet,
@@ -132,6 +142,8 @@ class HUItem(models.Model):
 class ScanLog(models.Model):
     """Registro de auditoria por cada escaneo, incluyendo duplicados y errores."""
 
+    # Variables para auditoria de captura:
+    # WHERE sugeridos: hu_code, result, scanned_at__range.
     hu_code = models.CharField(max_length=50)
     scanned_at = models.DateTimeField(default=timezone.now)
     result = models.CharField(max_length=20)

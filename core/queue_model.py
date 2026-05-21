@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Callable
 
+from django.conf import settings
+
 from core.hu_origins import detect_origin, Origin, resolve_effective_origin
 from core.print_watcher import PrintDialogWatcher
 
@@ -517,6 +519,7 @@ class QueueWorker:
                 origin_label=origin_label,
                 receipts=receipts,
                 hu_display_map=hu_display_map,
+                printed_by=getattr(settings, "SAP_LOGIN_USER", "") or (self._sap.get_user() if self._sap else None),
             )
         except Exception as e:
             log.error("ze16_pdf_pallet pdf_error pallet=%d error=%s", pallet_id, e)

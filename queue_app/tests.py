@@ -57,7 +57,7 @@ class ReprocessQueueTests(TestCase):
         )
 
         with (
-            patch('core.sap_client.SAPClient.check_session', return_value=(True, 'TEST')),
+            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
             patch('queue_app.views.process_queue_task.delay'),
             patch('queue_app.views.emit_item_update'),
             patch('queue_app.views.emit_stats_update'),
@@ -86,7 +86,7 @@ class ReprocessQueueTests(TestCase):
         ]
 
         with (
-            patch('core.sap_client.SAPClient.check_session', return_value=(True, 'TEST')),
+            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
             patch('queue_app.views.process_queue_task.delay'),
             patch('queue_app.views.emit_item_update'),
             patch('queue_app.views.emit_stats_update'),
@@ -108,7 +108,7 @@ class ReprocessQueueTests(TestCase):
         HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_ERROR)
 
         with (
-            patch('core.sap_client.SAPClient.check_session', return_value=(False, '')),
+            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(False, '', 'SAP no disponible')),
             patch('queue_app.views.process_queue_task.delay') as delay,
         ):
             response = self.client.post(
@@ -128,7 +128,7 @@ class StartProcessingTests(TestCase):
         HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_PENDING)
 
         with (
-            patch('core.sap_client.SAPClient.check_session', return_value=(False, '')),
+            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(False, '', 'SAP no disponible')),
             patch('queue_app.views.process_queue_task.delay') as delay,
         ):
             response = self.client.post('/api/procesar/', data='{}', content_type='application/json')
@@ -143,13 +143,13 @@ class StartProcessingTests(TestCase):
 
         with (
             patch('queue_app.views.is_queue_locked', return_value=True),
-            patch('core.sap_client.SAPClient.check_session') as check_session,
+            patch('core.sap_client.SAPClient.ensure_session_ready') as ensure_session_ready,
             patch('queue_app.views.process_queue_task.delay') as delay,
         ):
             response = self.client.post('/api/procesar/', data='{}', content_type='application/json')
 
         self.assertEqual(response.status_code, 409)
-        check_session.assert_not_called()
+        ensure_session_ready.assert_not_called()
         delay.assert_not_called()
 
     def test_stop_requests_worker_cancellation(self):

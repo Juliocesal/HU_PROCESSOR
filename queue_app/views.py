@@ -1,8 +1,6 @@
 import csv
 import json
 import logging
-import os
-import time
 from datetime import datetime
 from django.core.management.color import no_style
 from django.db import connection
@@ -21,11 +19,6 @@ from queue_app.utils import (
     emit_pallet_created,
     emit_stats_update,
 )
-
-try:
-    import win32com.client
-except ImportError:
-    win32com = None
 
 log = logging.getLogger(__name__)
 
@@ -284,13 +277,13 @@ def _reset_queue_sequences():
 def _sap_session_error_response():
     from core.sap_client import SAPClient
 
-    connected, user = SAPClient.check_session()
+    connected, user, message = SAPClient.ensure_session_ready()
     if connected:
         return None
 
     return JsonResponse({
         'ok': False,
-        'error': 'No hay sesion SAP activa. Abre SAP e inicia sesion antes de procesar.',
+        'error': message,
         'sap_connected': False,
         'sap_user': user,
     }, status=409)
@@ -445,6 +438,11 @@ def export_csv(request):
         'Agregada', 'Procesada',
     ])
 
+    # FUTURA BD DE CONSULTA:
+    # Este queryset contiene las variables principales del historico HU.
+    # Aqui se agregarian los WHERE del reporte, por ejemplo:
+    # .filter(hu_code=...), .filter(origin_code=...), .filter(status__in=[...]),
+    # .filter(processed_at__range=(inicio, fin)) o .filter(pallet_id=...).
     for item in HUItem.objects.select_related('pallet').order_by('pallet_id', 'added_at'):
         writer.writerow([
             f"P{item.pallet_id:02d}",
@@ -475,23 +473,15 @@ def iniciar_sap_endpoint(request):
     Retorna:
         JSON con status ok=True si la conexión fue exitosa.
     """
-    try:
-        success = iniciar_sap()
-        if success:
-            log.info("iniciar_sap_endpoint conexion exitosa")
-            return JsonResponse({'ok': True, 'message': 'SAP conectado correctamente'})
-        else:
-            log.error("iniciar_sap_endpoint failed")
-            return JsonResponse({
-                'ok': False,
-                'error': 'No se pudo conectar con SAP. Verifica que SAP está instalado.'
-            }, status=500)
-    except Exception as e:
-        log.error("iniciar_sap_endpoint error=%s: %s", type(e).__name__, e)
-        return JsonResponse({
-            'ok': False,
-            'error': str(e)
-        }, status=500)
+    from core.sap_client import SAPClient
+
+    connected, user, message = SAPClient.ensure_session_ready()
+    if connected:
+        log.info("iniciar_sap_endpoint conexion exitosa user=%s", user)
+        return JsonResponse({'ok': True, 'message': message, 'user': user})
+
+    log.error("iniciar_sap_endpoint failed message=%s", message)
+    return JsonResponse({'ok': False, 'error': message}, status=500)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -572,38 +562,11 @@ def iniciar_sap():
     Retorna:
         bool: True si la conexión fue exitosa, False si hubo error.
     """
-    if not win32com:
-        log.error("iniciar_sap win32com is not installed")
-        return False
+    from core.sap_client import SAPClient
 
-    ruta_saplogon = r"C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe"
-
-    # Verificar que saplogon.exe existe
-    if not os.path.isfile(ruta_saplogon):
-        log.error("iniciar_sap saplogon.exe not found path=%s", ruta_saplogon)
-        return False
-
-    try:
-        # Abrir saplogon.exe
-        os.startfile(ruta_saplogon)
-        log.info("iniciar_sap saplogon opened, waiting 5s")
-        time.sleep(5)
-
-        # Conectar a través de COM
-        SapGuiAuto = win32com.client.GetObject("SAPGUI")
-        application = SapGuiAuto.GetScriptingEngine
-        connection = application.OpenConnection("LUP Production [Public]", True)
-        log.info("iniciar_sap connection opened, waiting 3s")
-        time.sleep(3)
-
-        # Obtener sesión
-        connection.Children(0)
-        log.info("iniciar_sap session acquired")
-        return True
-
-    except Exception as e:
-        log.error("iniciar_sap error=%s: %s", type(e).__name__, e)
-        return False
+    connected, user, message = SAPClient.ensure_session_ready()
+    log.info("iniciar_sap result connected=%s user=%s message=%s", connected, user, message)
+    return connected
 
 
 # ══════════════════════════════════════════════════════════════════════════════

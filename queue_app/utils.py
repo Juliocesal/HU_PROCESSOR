@@ -13,6 +13,10 @@ def calculate_queue_stats() -> dict:
     from queue_app.models import HUItem, Pallet
 
     items = HUItem.objects.all()
+    # FUTURA BD DE CONSULTA:
+    # Estos filtros ya representan WHERE por estado para KPIs/reportes:
+    # status OK/duplicate = procesados, status error/hu_not_found = problemas,
+    # status pending = pendientes, Pallet.status active = pallets abiertos.
     return {
         'total': items.count(),
         'ok': items.filter(status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE]).count(),

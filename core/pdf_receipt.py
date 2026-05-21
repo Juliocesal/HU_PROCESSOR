@@ -259,6 +259,7 @@ class PalletReceiptPDF:
         origin_label: str,
         receipts: dict[str, str],
         hu_display_map: dict[str, str] | None = None,
+        printed_by: str | None = None,
         output_path: str | None = None,
     ) -> str:
         """
@@ -304,6 +305,11 @@ class PalletReceiptPDF:
         footer_h = cls.FOOTER_H_MM * mm
 
         fecha = datetime.now().strftime("%d/%m/%Y %H:%M")
+        printed_by = (
+            printed_by
+            or getattr(settings, "SAP_LOGIN_USER", "")
+            or "Desconocido"
+        ).strip()
         c = rl_canvas.Canvas(output_path, pagesize=A4)
 
         def _draw_header(canvas_obj, page_num: int = 1):
@@ -325,7 +331,7 @@ class PalletReceiptPDF:
             canvas_obj.drawCentredString(
                 page_w / 2,
                 page_h - 14 * mm,
-                f"{fecha}  |  Total HUs: {len(receipts)}{suffix}",
+                f"{fecha}  |  Usuario: {printed_by}  |  Total HUs: {len(receipts)}{suffix}",
             )
 
         def _draw_footer(canvas_obj, page_num: int):
@@ -337,7 +343,7 @@ class PalletReceiptPDF:
             r, g, b = _hex_to_rgb(PDF_C.MUTED)
             canvas_obj.setFillColorRGB(r, g, b)
             canvas_obj.setFont("Helvetica", 6)
-            canvas_obj.drawString(margin, 3 * mm, f"Generado: {fecha}")
+            canvas_obj.drawString(margin, 3 * mm, f"Generado: {fecha}  |  Usuario: {printed_by}")
             canvas_obj.drawRightString(
                 page_w - margin, 3 * mm,
                 f"Pallet {pallet_id}  |  Pág. {page_num}",

@@ -471,6 +471,7 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
 
         sap = SAPClient()
         sap.connect()
+        printed_by = getattr(settings, 'SAP_LOGIN_USER', '') or sap.get_user()
 
         ze16 = ZE16Client(sap.session)
         receipts = ze16.get_receipts_for_pallet(hu_codes)
@@ -489,6 +490,7 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
             origin_label=effective_origin.label,
             receipts=receipts,
             hu_display_map=hu_display_map,
+            printed_by=printed_by,
         )
         printed = PalletReceiptPDF.print_pdf(pdf_path)
 
