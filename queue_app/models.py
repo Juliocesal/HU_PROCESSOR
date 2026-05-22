@@ -7,10 +7,12 @@ class Pallet(models.Model):
 
     STATUS_ACTIVE = 'active'
     STATUS_DONE = 'done'
+    PDF_STATUS_OK = 'ok'
+    PDF_STATUS_ERROR = 'error'
 
     # Variables para futura BD de consulta historica de pallets:
     # WHERE sugeridos: id/pallet, origin_code, status, created_at,
-    # f2_done_at y receipt_done_at.
+    # f2_done_at, receipt_done_at, pdf_status y rangos por duracion PDF.
     created_at = models.DateTimeField(default=timezone.now)
     f2_done_at = models.DateTimeField(null=True, blank=True)
     receipt_done_at = models.DateTimeField(
@@ -19,6 +21,9 @@ class Pallet(models.Model):
         db_column='sp01_done_at',
         help_text='Timestamp de la generacion/impresion de recibo ZE16.',
     )
+    pdf_status = models.CharField(max_length=20, blank=True, default='')
+    pdf_msg = models.CharField(max_length=255, blank=True, default='')
+    pdf_ms = models.IntegerField(default=0)
     status = models.CharField(max_length=20, default=STATUS_ACTIVE)
     origin_code = models.CharField(max_length=20, blank=True, default='')
 
@@ -39,6 +44,30 @@ class Pallet(models.Model):
         minutes = total_seconds // 60
         seconds = total_seconds % 60
         return f"{minutes}min" if seconds == 0 else f"{minutes}min {seconds}s"
+
+    @property
+    def pdf_duration_display(self) -> str:
+        """Duracion legible del ciclo PDF: generar archivo y confirmar impresion."""
+        if self.pdf_ms <= 0:
+            return ''
+
+        if self.pdf_ms < 1000:
+            return f"{self.pdf_ms}ms"
+
+        seconds = self.pdf_ms / 1000
+        return f"{seconds:.1f}s".replace(".0s", "s")
+
+    @property
+    def pdf_display(self) -> str:
+        """Texto compacto para la columna PDF de la UI."""
+        if self.pdf_status == self.PDF_STATUS_OK:
+            duration = self.pdf_duration_display
+            return f"OK ({duration})" if duration else "OK"
+
+        if self.pdf_status == self.PDF_STATUS_ERROR:
+            return self.pdf_msg or "Error PDF"
+
+        return ''
 
     @property
     def is_safe_to_delete(self) -> bool:
@@ -79,6 +108,7 @@ class HUItem(models.Model):
     # phase1_msg=Estado/mensaje F1, phase2_msg=Estado/mensaje F2,
     # phase2_ms=tiempo F2, added_at=hora escaneo, processed_at=hora final,
     # f1_done_at=hora F1, receipt_done_at=hora ZE16/PDF.
+    # Datos PDF por HU se consultan via pallet.pdf_status/pdf_msg/pdf_ms.
     # WHERE sugeridos: hu_code, pallet_id, origin_code, status,
     # processed_at__range, added_at__range, f1_done_at__range.
     hu_code = models.CharField(max_length=50, unique=True)

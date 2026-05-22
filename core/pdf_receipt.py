@@ -277,6 +277,7 @@ class PalletReceiptPDF:
         Raises:
             ImportError : si reportlab o python-barcode no están instalados.
         """
+        started_at = time.perf_counter()
         try:
             from reportlab.lib.pagesizes import A4
             from reportlab.lib.units import mm
@@ -477,7 +478,13 @@ class PalletReceiptPDF:
         _draw_footer(c, page_num)
         c.save()
 
-        log.info("pdf_generated path=%s pages=%d", output_path, page_num)
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        log.info(
+            "pdf_generated path=%s pages=%d duration_ms=%d",
+            output_path,
+            page_num,
+            elapsed_ms,
+        )
         return output_path
 
     @classmethod
@@ -501,6 +508,7 @@ class PalletReceiptPDF:
         if printer_name is None:
             printer_name = get_receipt_printer()
 
+        print_started_at = time.perf_counter()
         log.info(
             "pdf_print user=%s path=%s printer=%s",
             os.getlogin(), pdf_path, printer_name or "system_default",
@@ -529,6 +537,7 @@ class PalletReceiptPDF:
 
                     log.info("sumatra_cmd=%s", cmd)
 
+                    sumatra_started_at = time.perf_counter()
                     proc = subprocess.Popen(
                         cmd,
                         stdout=subprocess.DEVNULL,
@@ -537,6 +546,7 @@ class PalletReceiptPDF:
 
                     try:
                         _, stderr_bytes = proc.communicate(timeout=15)
+                        sumatra_ms = int((time.perf_counter() - sumatra_started_at) * 1000)
                         stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
 
                         # SumatraPDF puede retornar != 0 en éxito según la versión
@@ -556,11 +566,22 @@ class PalletReceiptPDF:
                             log.error("sumatra_stderr_error stderr=%s", stderr_text)
                             return False
 
-                        return cls._wait_for_print_job_to_finish(
+                        spool_started_at = time.perf_counter()
+                        spool_ok = cls._wait_for_print_job_to_finish(
                             pdf_path,
                             printer_name=printer_name,
                             timeout=60,
                         )
+                        spool_ms = int((time.perf_counter() - spool_started_at) * 1000)
+                        total_ms = int((time.perf_counter() - print_started_at) * 1000)
+                        log.info(
+                            "pdf_print_done ok=%s total_ms=%d sumatra_ms=%d spool_ms=%d",
+                            spool_ok,
+                            total_ms,
+                            sumatra_ms,
+                            spool_ms,
+                        )
+                        return spool_ok
 
                     except subprocess.TimeoutExpired:
                         proc.kill()
@@ -601,6 +622,7 @@ class PalletReceiptPDF:
         if sys.platform != "win32":
             return True
 
+        started_at = time.perf_counter()
         try:
             import win32print
         except Exception as e:
@@ -632,7 +654,13 @@ class PalletReceiptPDF:
                     continue
 
                 if seen_job:
-                    log.info("print_spool_job_finished printer=%s pdf=%s", resolved_printer, pdf_path)
+                    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                    log.info(
+                        "print_spool_job_finished printer=%s pdf=%s duration_ms=%d",
+                        resolved_printer,
+                        pdf_path,
+                        elapsed_ms,
+                    )
                     return True
 
                 remaining = deadline - datetime.now().timestamp()
@@ -641,10 +669,22 @@ class PalletReceiptPDF:
                     time.sleep(0.5)
                     continue
 
-                log.info("print_spool_job_not_observed printer=%s pdf=%s", resolved_printer, pdf_path)
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                log.info(
+                    "print_spool_job_not_observed printer=%s pdf=%s duration_ms=%d",
+                    resolved_printer,
+                    pdf_path,
+                    elapsed_ms,
+                )
                 return True
 
-            log.error("print_spool_timeout printer=%s pdf=%s", resolved_printer, pdf_path)
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            log.error(
+                "print_spool_timeout printer=%s pdf=%s duration_ms=%d",
+                resolved_printer,
+                pdf_path,
+                elapsed_ms,
+            )
             return False
         except Exception as e:
             log.warning("print_spool_wait_error path=%s error=%s", pdf_path, e)

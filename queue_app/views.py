@@ -18,6 +18,7 @@ from queue_app.utils import (
     emit_item_update,
     emit_pallet_created,
     emit_stats_update,
+    pallets_ready_for_pdf_queryset,
 )
 
 log = logging.getLogger(__name__)
@@ -192,14 +193,63 @@ def delete_hu(request, hu_code):
 
     pallet = item.pallet
     item.delete()
+    pdf_reset = _recalculate_pallet_after_hu_delete(pallet)
     log.info("delete_hu hu=%s pallet=%s", hu_code, pallet.pk)
 
     # Si el pallet quedó vacío y no es el único, borrarlo también
     if not pallet.items.exists() and Pallet.objects.count() > 1:
         pallet.delete()
-        return JsonResponse({'ok': True, 'pallet_deleted': True})
+        emit_stats_update(None)
+        return JsonResponse({
+            'ok': True,
+            'pallet_deleted': True,
+            'stats': _get_stats(),
+        })
 
-    return JsonResponse({'ok': True, 'pallet_deleted': False})
+    for remaining_item in pallet.items.select_related('pallet'):
+        emit_item_update(remaining_item)
+    emit_stats_update(pallet)
+
+    return JsonResponse({
+        'ok': True,
+        'pallet_deleted': False,
+        'pdf_reset': pdf_reset,
+        'pallet_id': pallet.pk,
+        'pdf_status': pallet.pdf_status,
+        'pdf_display': pallet.pdf_display,
+        'pdf_msg': pallet.pdf_msg,
+        'stats': _get_stats(),
+    })
+
+
+def _recalculate_pallet_after_hu_delete(pallet: Pallet) -> bool:
+    """Limpia el estado PDF si el pallet vuelve a ser imprimible tras borrar una HU."""
+    pallet.refresh_from_db()
+    if not pallet.items.exists():
+        return False
+
+    has_errors = pallet.items.filter(
+        status__in=[HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
+    ).exists()
+    if has_errors or pallet.pdf_status == Pallet.PDF_STATUS_OK:
+        return False
+
+    if pallet.pdf_status or pallet.pdf_msg or pallet.pdf_ms:
+        pallet.pdf_status = ''
+        pallet.pdf_msg = ''
+        pallet.pdf_ms = 0
+        pallet.receipt_done_at = None
+        pallet.status = Pallet.STATUS_ACTIVE
+        pallet.save(update_fields=[
+            'pdf_status',
+            'pdf_msg',
+            'pdf_ms',
+            'receipt_done_at',
+            'status',
+        ])
+        return True
+
+    return False
 
 
 
@@ -357,6 +407,9 @@ def reprocess_queue(request):
         status      = Pallet.STATUS_ACTIVE,
         f2_done_at  = None,
         receipt_done_at = None,
+        pdf_status = '',
+        pdf_msg    = '',
+        pdf_ms     = 0,
     )
 
     emit_stats_update(None)
@@ -435,6 +488,7 @@ def export_csv(request):
     writer.writerow([
         'Pallet', 'Origen', 'Código HU', 'Estado',
         'F1', 'F1 msg', 'F2', 'F2 msg', 'F2 ms',
+        'PDF', 'PDF msg', 'PDF ms',
         'Agregada', 'Procesada',
     ])
 
@@ -452,6 +506,9 @@ def export_csv(request):
             'ZMOVEINBHU', item.phase1_msg or '',
             'ZMMTIJSEP',  item.phase2_msg or '',
             item.phase2_ms or '',
+            item.pallet.pdf_display,
+            item.pallet.pdf_msg or '',
+            item.pallet.pdf_ms or '',
             item.added_at.strftime('%d/%m/%Y %H:%M:%S')   if item.added_at   else '',
             item.processed_at.strftime('%d/%m/%Y %H:%M:%S') if item.processed_at else '',
         ])
@@ -598,9 +655,10 @@ def procesar_pendientes(request):
 
     items = HUItem.objects.filter(status=HUItem.STATUS_PENDING)
     count = items.count()
+    pdf_count = pallets_ready_for_pdf_queryset().count() if run_pdf else 0
 
-    if not count:
-        return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes'})
+    if not count and not pdf_count:
+        return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes ni PDFs por imprimir'})
 
     if HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
         return JsonResponse({'ok': False, 'error': 'Ya hay HUs procesando'}, status=409)
@@ -621,5 +679,9 @@ def procesar_pendientes(request):
             'error': f'No se pudo iniciar Celery/Redis: {e}',
         }, status=503)
 
-    log.info("procesar_pendientes sequential_task_started count=%s", count)
-    return JsonResponse({'ok': True, 'count': count})
+    log.info(
+        "procesar_pendientes sequential_task_started count=%s pdf_count=%s",
+        count,
+        pdf_count,
+    )
+    return JsonResponse({'ok': True, 'count': count, 'pdf_count': pdf_count})

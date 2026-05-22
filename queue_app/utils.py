@@ -13,6 +13,7 @@ def calculate_queue_stats() -> dict:
     from queue_app.models import HUItem, Pallet
 
     items = HUItem.objects.all()
+    pdf_pending = pallets_ready_for_pdf_queryset().count()
     # FUTURA BD DE CONSULTA:
     # Estos filtros ya representan WHERE por estado para KPIs/reportes:
     # status OK/duplicate = procesados, status error/hu_not_found = problemas,
@@ -25,7 +26,37 @@ def calculate_queue_stats() -> dict:
         ).count(),
         'pending': items.filter(status=HUItem.STATUS_PENDING).count(),
         'pallets': Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).count(),
+        'pdf_pending': pdf_pending,
     }
+
+
+def pallets_ready_for_pdf_queryset():
+    """
+    Pallets sin HUs pendientes ni fallidas, con HUs OK y recibo PDF pendiente.
+
+    Esta regla permite imprimir un pallet que antes tuvo error si el HU fallido
+    fue borrado/corregido y los HUs restantes ya estan OK.
+    """
+    from queue_app.models import HUItem, Pallet
+
+    blocked_statuses = [
+        HUItem.STATUS_PENDING,
+        HUItem.STATUS_PROCESSING,
+        HUItem.STATUS_ERROR,
+        HUItem.STATUS_HU_NOT_FOUND,
+    ]
+
+    return (
+        Pallet.objects
+        .filter(
+            status=Pallet.STATUS_ACTIVE,
+            items__status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE],
+            receipt_done_at__isnull=True,
+        )
+        .exclude(items__status__in=blocked_statuses)
+        .exclude(pdf_status=Pallet.PDF_STATUS_OK)
+        .distinct()
+    )
 
 
 def emit_item_update(item):
@@ -34,6 +65,7 @@ def emit_item_update(item):
 
     origin = detect_origin(item.hu_code)
     origin_code = item.origin_code or origin.code
+    pallet = item.pallet
 
     _send_group('item_update', {
         'type': 'item_update',
@@ -46,6 +78,10 @@ def emit_item_update(item):
         'phase2_ms': item.phase2_ms,
         'pallet_id': item.pallet_id,
         'origin_code': origin_code,
+        'pdf_status': pallet.pdf_status,
+        'pdf_display': pallet.pdf_display,
+        'pdf_msg': pallet.pdf_msg,
+        'pdf_ms': pallet.pdf_ms,
     })
 
 
@@ -75,6 +111,10 @@ def emit_receipt_done(pallet_id, result):
         'status': result.get('status', 'error'),
         'message': result.get('message', ''),
         'marked': result.get('marked', 0),
+        'pdf_status': result.get('pdf_status', result.get('status', 'error')),
+        'pdf_display': result.get('pdf_display', ''),
+        'pdf_msg': result.get('pdf_msg', result.get('message', '')),
+        'pdf_ms': result.get('pdf_ms', 0),
     })
 
 

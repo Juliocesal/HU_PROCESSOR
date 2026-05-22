@@ -160,6 +160,23 @@ class StartProcessingTests(TestCase):
         self.assertTrue(response.json()['ok'])
         stop.assert_called_once()
 
+    def test_start_processing_allows_pdf_pending_pallet_without_pending_hus(self):
+        pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+        HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_OK)
+
+        with (
+            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
+            patch('queue_app.views.process_queue_task.delay') as delay,
+        ):
+            response = self.client.post('/api/procesar/', data='{}', content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['count'], 0)
+        self.assertEqual(payload['pdf_count'], 1)
+        delay.assert_called_once()
+
 
 class ScanHuTests(TestCase):
     def test_scan_response_includes_updated_stats_for_current_ui_state(self):
@@ -180,6 +197,35 @@ class ScanHuTests(TestCase):
         self.assertEqual(payload['stats']['total'], 1)
         self.assertEqual(payload['stats']['pending'], 1)
         self.assertEqual(payload['stats']['pallets'], 1)
+
+
+class DeleteHuTests(TestCase):
+    def test_delete_failed_hu_resets_pdf_status_when_remaining_hus_are_ok(self):
+        pallet = Pallet.objects.create(
+            status=Pallet.STATUS_ACTIVE,
+            pdf_status=Pallet.PDF_STATUS_ERROR,
+            pdf_msg='PDF omitido: HU con error',
+            pdf_ms=1200,
+        )
+        HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_OK)
+        HUItem.objects.create(hu_code='T10045916002', pallet=pallet, status=HUItem.STATUS_ERROR)
+
+        with (
+            patch('queue_app.views.emit_item_update'),
+            patch('queue_app.views.emit_stats_update'),
+        ):
+            response = self.client.post('/hu/T10045916002/borrar/')
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['pdf_reset'])
+        self.assertEqual(payload['stats']['pdf_pending'], 1)
+
+        pallet.refresh_from_db()
+        self.assertEqual(pallet.pdf_status, '')
+        self.assertEqual(pallet.pdf_msg, '')
+        self.assertEqual(pallet.pdf_ms, 0)
 
 
 class NewPalletTests(TestCase):
@@ -265,6 +311,29 @@ class SequentialQueueTaskTests(TestCase):
         self.assertEqual(result['status'], 'error')
         self.assertEqual(result['errors'], 1)
         self.assertEqual(events, [('hu', p1.pk), ('hu', p2.pk), ('print', p2.pk)])
+
+    def test_queue_task_prints_pallet_ready_for_pdf_after_error_hu_deleted(self):
+        pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+        HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_OK)
+        events = []
+
+        def print_pallet(pallet_id, **kwargs):
+            events.append(('print', pallet_id))
+            return {'status': 'ok', 'message': 'printed', 'marked': 1}
+
+        with (
+            patch('queue_app.tasks._acquire_queue_lock', return_value=True),
+            patch('queue_app.tasks._release_queue_lock'),
+            patch('queue_app.tasks._stop_requested', return_value=False),
+            patch('queue_app.tasks._process_hu_item') as process_item,
+            patch('queue_app.tasks._run_pallet_boundary', side_effect=print_pallet),
+            patch('queue_app.utils.emit_queue_done'),
+        ):
+            result = process_queue_task.run()
+
+        self.assertEqual(result['status'], 'ok')
+        self.assertEqual(events, [('print', pallet.pk)])
+        process_item.assert_not_called()
 
 
 class ZE16NormalizationTests(TestCase):

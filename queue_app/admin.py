@@ -12,8 +12,8 @@ class HUItemAdmin(admin.ModelAdmin):
 
 @admin.register(Pallet)
 class PalletAdmin(admin.ModelAdmin):
-    list_display = ['id', 'origin_code', 'status', 'created_at', 'hu_count']
-    list_filter = ['status', 'origin_code']
+    list_display = ['id', 'origin_code', 'status', 'pdf_status', 'pdf_ms', 'created_at', 'hu_count']
+    list_filter = ['status', 'origin_code', 'pdf_status']
 
 
 @admin.register(ScanLog)

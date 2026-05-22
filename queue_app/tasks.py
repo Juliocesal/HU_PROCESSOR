@@ -1,4 +1,5 @@
 import logging
+import time
 
 from celery import shared_task
 from django.conf import settings
@@ -96,7 +97,12 @@ def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
     pallet -> todas sus HUs -> ZE16/PDF/impresion -> siguiente pallet.
     """
     from queue_app.models import HUItem, Pallet
-    from queue_app.utils import emit_error, emit_queue_done
+    from queue_app.utils import (
+        emit_error,
+        emit_queue_done,
+        emit_receipt_done,
+        pallets_ready_for_pdf_queryset,
+    )
 
     owner = f"process_queue_task:{self.request.id}"
     if not _acquire_queue_lock(owner):
@@ -110,17 +116,23 @@ def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
     errors = 0
 
     try:
-        pallet_ids = list(
+        pending_pallet_ids = list(
             Pallet.objects.filter(items__status=HUItem.STATUS_PENDING)
             .distinct()
             .order_by('id')
             .values_list('id', flat=True)
         )
+        pdf_pallet_ids = list(
+            pallets_ready_for_pdf_queryset()
+            .order_by('id')
+            .values_list('id', flat=True)
+        ) if run_pdf else []
+        pallet_ids = sorted(set(pending_pallet_ids) | set(pdf_pallet_ids))
 
         if not pallet_ids:
             result = {
                 'status': 'error',
-                'message': 'No pending HUs to process.',
+                'message': 'No pending HUs or PDF receipts to process.',
                 'pallets_processed': 0,
                 'hus_processed': 0,
                 'errors': 0,
@@ -143,7 +155,7 @@ def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
                 .values_list('id', flat=True)
             )
 
-            if not item_ids:
+            if not item_ids and pallet_id not in pdf_pallet_ids:
                 continue
 
             log.info(
@@ -173,6 +185,15 @@ def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
                 status__in=[HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
             ).count()
             if pallet_errors:
+                if run_pdf:
+                    result = {
+                        'status': 'error',
+                        'message': f'PDF omitido: {pallet_errors} HU(s) con error en pallet {pallet_id}',
+                        'marked': 0,
+                    }
+                    _save_pdf_result(pallet, result, None)
+                    emit_receipt_done(pallet_id, result)
+
                 log.warning(
                     "process_queue_task pallet_has_errors pallet=%s errors=%s",
                     pallet_id,
@@ -187,7 +208,7 @@ def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
                     emit_queue_done(final)
                     return final
 
-                result = _run_pallet_boundary(pallet_id, emit_completion=False)
+                result = _run_pallet_boundary(pallet_id, emit_completion=True)
                 if result and result.get('status') != 'ok':
                     errors += 1
                     log.error(
@@ -453,6 +474,7 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
 
     pythoncom.CoInitialize()
     result = {'status': 'error', 'message': 'Unknown ZE16/PDF error', 'marked': 0}
+    pdf_started = None
 
     try:
         pallet = Pallet.objects.get(pk=pallet_id)
@@ -464,6 +486,7 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
 
         if not hu_codes:
             result = {'status': 'error', 'message': 'Sin HUs validos para ZE16', 'marked': 0}
+            _save_pdf_result(pallet, result, pdf_started)
             return result
 
         origin = detect_origin(hu_codes[0])
@@ -483,8 +506,10 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
                 'message': f'ZE16: sin Receipt IDs para pallet {pallet_id}',
                 'marked': 0,
             }
+            _save_pdf_result(pallet, result, pdf_started)
             return result
 
+        pdf_started = time.perf_counter()
         pdf_path = PalletReceiptPDF.generate(
             pallet_id=pallet_id,
             origin_label=effective_origin.label,
@@ -500,6 +525,7 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
                 'message': f'PDF generado pero no confirmado por impresora: {pdf_path}',
                 'marked': 0,
             }
+            _save_pdf_result(pallet, result, pdf_started)
             return result
 
         found = len(receipts)
@@ -510,8 +536,7 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
             'marked': found,
         }
 
-        pallet.receipt_done_at = timezone.now()
-        pallet.save(update_fields=['receipt_done_at'])
+        _save_pdf_result(pallet, result, pdf_started)
 
         log.info("ze16_pdf_task_sync done pallet=%s result=%s", pallet_id, result)
         return result
@@ -519,15 +544,50 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
     except ZE16Error as e:
         log.error("ze16_pdf_task_sync ZE16Error pallet=%s error=%s", pallet_id, e)
         result = {'status': 'error', 'message': f'ZE16 Error: {e}', 'marked': 0}
+        if 'pallet' in locals():
+            _save_pdf_result(pallet, result, pdf_started)
         return result
     except Exception as e:
         log.exception("ze16_pdf_task_sync error pallet=%s", pallet_id)
         result = {'status': 'error', 'message': str(e), 'marked': 0}
+        if 'pallet' in locals():
+            _save_pdf_result(pallet, result, pdf_started)
         return result
     finally:
         if emit_completion:
             emit_receipt_done(pallet_id, result)
         pythoncom.CoUninitialize()
+
+
+def _save_pdf_result(pallet, result: dict, started_at: float | None) -> dict:
+    """Guarda resultado y duracion del tramo PDF: generar archivo + imprimir."""
+    from queue_app.models import HUItem, Pallet
+
+    pdf_ms = max(0, int((time.perf_counter() - started_at) * 1000)) if started_at else 0
+    result['pdf_ms'] = pdf_ms
+
+    pallet.pdf_status = (
+        Pallet.PDF_STATUS_OK
+        if result.get('status') == 'ok'
+        else Pallet.PDF_STATUS_ERROR
+    )
+    pallet.pdf_msg = (result.get('message') or '')[:255]
+    pallet.pdf_ms = pdf_ms
+
+    update_fields = ['pdf_status', 'pdf_msg', 'pdf_ms']
+    if result.get('status') == 'ok':
+        completed_at = timezone.now()
+        pallet.receipt_done_at = completed_at
+        update_fields.append('receipt_done_at')
+        pallet.items.filter(
+            status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE]
+        ).update(receipt_done_at=completed_at)
+
+    pallet.save(update_fields=update_fields)
+    result['pdf_status'] = pallet.pdf_status
+    result['pdf_display'] = pallet.pdf_display
+    result['pdf_msg'] = pallet.pdf_msg
+    return result
 
 
 def _mark_item_error(hu_item_id: int, message: str):

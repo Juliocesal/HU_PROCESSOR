@@ -28,7 +28,7 @@
   let _stickyObserver = null;
   const tableWrap = document.getElementById('table-wrap');
   const stickyPallet = document.getElementById('sticky-pallet');
-  const QUEUE_TABLE_COLSPAN = 5;
+  const QUEUE_TABLE_COLSPAN = 6;
   const EMPTY_QUEUE_MESSAGE = 'Sin HUs en cola - escanea el primer código';
 
   const initialStats = JSON.parse(
@@ -40,11 +40,58 @@
     ok:      Number(initialStats.ok || 0),
     errors:  Number(initialStats.errors || 0),
     pending: Number(initialStats.pending || 0),
-    pallets: Number(initialStats.pallets || 0)
+    pallets: Number(initialStats.pallets || 0),
+    pdf_pending: Number(initialStats.pdf_pending || 0)
   };
 
   function emptyQueueRowHTML() {
-    return `<tr class="empty-row" id="empty-row"><td colspan="${QUEUE_TABLE_COLSPAN}">${EMPTY_QUEUE_MESSAGE}</td></tr>`;
+    return `
+      <tr class="empty-row" id="empty-row">
+        <td colspan="${QUEUE_TABLE_COLSPAN}">
+          <div class="empty-state">
+            ${iconHTML('scan-line')}
+            <span>${EMPTY_QUEUE_MESSAGE}</span>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  function iconHTML(name, className = 'ui-icon') {
+    return `<i data-lucide="${name}" class="${className}" aria-hidden="true"></i>`;
+  }
+
+  function escapeHTML(value) {
+    return String(value || '').replace(/[&<>"']/g, char => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[char]));
+  }
+
+  function refreshIcons() {
+    if (!window.lucide) return;
+    window.lucide.createIcons({ attrs: { 'stroke-width': 2 } });
+  }
+
+  function palletHeaderHTML(palletId, originCode, count, processingTime = '') {
+    const pid = String(palletId).padStart(2, '0');
+    const origin = originCode || 'Sin origen';
+    const huLabel = `${count} HU${count !== 1 ? 's' : ''}`;
+    const timeHTML = processingTime
+      ? `<span class="pallet-time">${processingTime}</span>`
+      : '';
+
+    return `
+      <div class="pallet-header">
+        <span class="pallet-title">Pallet P${pid}</span>
+        <span class="origin-badge pallet-origin">${origin}</span>
+        <span class="pallet-hu-count">${huLabel}</span>
+        ${timeHTML}
+      </div>
+    `;
   }
 
   // -- Reloj ---------------------------------------------------------------------
@@ -110,11 +157,13 @@
     }
     if (msg.stats) handleStatsUpdate(msg.stats);
     updateStickyPallet();
+    refreshIcons();
   }
 
   function handleItemUpdate(msg) {
     updateOrCreateRow(msg);
     updateProgress();
+    refreshIcons();
 
     if (msg.status === 'processing') {
       setProgStatus(`Procesando -> Pallet ${msg.pallet_id}  |  HU: ${msg.hu_code}`, 'running');
@@ -132,7 +181,8 @@
     ok:      Number(msg.ok || 0),
     errors:  Number(msg.errors || 0),
     pending: Number(msg.pending || 0),
-    pallets: Number(msg.pallets || 0)
+    pallets: Number(msg.pallets || 0),
+    pdf_pending: Number(msg.pdf_pending || 0)
   };
 
   const kpiTotal = document.getElementById('kpi-total');
@@ -156,6 +206,7 @@
 }
 
   function handleReceiptDone(msg) {
+    updatePalletPdfCells(msg);
     if (msg.status !== 'ok') {
       setProgStatus(`ZE16/PDF: ${msg.message}`, 'error');
       setFooterStatus(`ZE16/PDF: ${msg.message}`, 'error');
@@ -168,6 +219,7 @@
     updatePalletSep(msg.pallet_id);
     if (msg.stats) handleStatsUpdate(msg.stats);
     updateStickyPallet();
+    refreshIcons();
   }
 
   function handleQueueDone(msg) {
@@ -221,24 +273,48 @@
 
   function statusCellHTML(status, f1_display, f2_display, phase2_msg, col) {
     const display = col === 'f1' ? f1_display : f2_display;
+    const labels = { pending:'Pendiente', processing:'Procesando...' };
+    const statusIcon = {
+      pending: 'clock-3',
+      processing: 'loader-circle',
+      ok: 'circle-check',
+      duplicate: 'badge-check',
+      error: 'triangle-alert',
+      hu_not_found: 'circle-help',
+    }[status] || 'circle';
 
     if (col === 'f1') {
       if (status === 'ok' || status === 'duplicate')
-        return `<span class="ok-cell">${display || 'OK'}</span>`;
+        return `<span class="ok-cell">${iconHTML(statusIcon)}${display || 'OK'}</span>`;
       if (status === 'error' || status === 'hu_not_found')
-        return `<span style="color:var(--red)">${display || 'Error'}</span>`;
-      const labels = { pending:'Pendiente', processing:'Procesando...' };
-      return `<span class="cell-status status-${status}">${display || labels[status] || status}</span>`;
+        return `<span class="error-cell">${iconHTML(statusIcon)}${display || 'Error'}</span>`;
+      return `<span class="cell-status status-${status}">${iconHTML(statusIcon)}${display || labels[status] || status}</span>`;
     }
 
     // F2
     if (status === 'ok')
-      return `<span class="ok-cell">${display || 'OK'}</span>`;
+      return `<span class="ok-cell">${iconHTML('circle-check')}${display || 'OK'}</span>`;
     if (status === 'error' && !phase2_msg)
-      return `<span style="color:var(--muted)">- omitido</span>`;
+      return `<span class="muted-cell">${iconHTML('circle-minus')}omitido</span>`;
     if (status === 'error')
-      return `<span style="color:var(--red)">${display || 'Error'}</span>`;
-    return display || '';
+      return `<span class="error-cell">${iconHTML('triangle-alert')}${display || 'Error'}</span>`;
+    return `<span class="cell-status status-${status}">${iconHTML(statusIcon)}${display || labels[status] || 'Pendiente'}</span>`;
+  }
+
+  function pdfCellHTML(status, pdfStatus = '', pdfDisplay = '', pdfMsg = '') {
+    if (pdfStatus === 'ok') {
+      return `<span class="ok-cell">${iconHTML('circle-check')}${escapeHTML(pdfDisplay || 'OK')}</span>`;
+    }
+
+    if (pdfStatus === 'error') {
+      return `<span class="error-cell">${iconHTML('triangle-alert')}${escapeHTML(pdfMsg || pdfDisplay || 'Error PDF')}</span>`;
+    }
+
+    if (status === 'error' || status === 'hu_not_found') {
+      return `<span class="muted-cell">${iconHTML('circle-minus')}omitido</span>`;
+    }
+
+    return `<span class="cell-status status-pending">${iconHTML('clock-3')}Pendiente</span>`;
   }
 
   function updateOrCreateRow(item) {
@@ -265,9 +341,25 @@
       existing.cells[1].innerHTML = originBadgeHTML(item.origin_code);
       existing.cells[3].innerHTML = statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f1');
       existing.cells[4].innerHTML = statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f2');
+      existing.cells[5].innerHTML = pdfCellHTML(item.status, item.pdf_status, item.pdf_display, item.pdf_msg);
     }
 
     updatePalletSep(item.pallet_id);
+    refreshIcons();
+  }
+
+  function updatePalletPdfCells(msg) {
+    const rows = document.querySelectorAll(`tr[data-pallet="${msg.pallet_id}"]`);
+    rows.forEach(row => {
+      if (!row.cells[5]) return;
+      row.cells[5].innerHTML = pdfCellHTML(
+        row.dataset.status || '',
+        msg.pdf_status || msg.status,
+        msg.pdf_display || '',
+        msg.pdf_msg || msg.message || ''
+      );
+    });
+    refreshIcons();
   }
 
   function ensurePalletSep(palletId, originCode) {
@@ -276,11 +368,12 @@
     const sep = document.createElement('tr');
     sep.className = 'pallet-sep';
     sep.dataset.palletId = palletId;
-    const pid = String(palletId).padStart(2, '0');
-    sep.innerHTML = `<td colspan="${QUEUE_TABLE_COLSPAN}" id="sep-${palletId}">-- Pallet P${pid} - ${originCode || 'Sin origen'} - 0 HUs --</td>`;
+    sep.dataset.origin = originCode || 'Sin origen';
+    sep.innerHTML = `<td colspan="${QUEUE_TABLE_COLSPAN}" id="sep-${palletId}">${palletHeaderHTML(palletId, originCode || 'Sin origen', 0)}</td>`;
     palletSepRows[palletId] = sep;
     tbody.appendChild(sep);
     _observeSep(sep);
+    refreshIcons();
   }
 
   function updatePalletSep(palletId) {
@@ -302,8 +395,8 @@
       sep.dataset.origin = originCode;
     }
 
-    const pid = String(palletId).padStart(2, '0');
-    td.innerHTML = `-- Pallet P${pid} - ${originCode} - <strong style="color:var(--text)">${count} HU${count !== 1 ? 's' : ''}</strong> ---`;
+    td.innerHTML = palletHeaderHTML(palletId, originCode, count);
+    refreshIcons();
   }
 
   // -- Sticky pallet header (igual que PyQt _update_sticky_pallet) ---------------
@@ -336,9 +429,10 @@
     if (lastHiddenSep) {
       const rows = document.querySelectorAll(`tr[data-pallet="${lastHiddenSep.pid}"]`);
       const count = rows.length;
-      const pid = String(lastHiddenSep.pid).padStart(2, '0');
-      stickyPallet.textContent = `-- Pallet P${pid} - ${count} HU${count !== 1 ? 's' : ''} ---`;
+      const originCode = lastHiddenSep.sep.dataset.origin || 'Sin origen';
+      stickyPallet.innerHTML = palletHeaderHTML(lastHiddenSep.pid, originCode, count);
       stickyPallet.classList.add('visible');
+      refreshIcons();
     } else {
       stickyPallet.classList.remove('visible');
     }
@@ -378,8 +472,9 @@
   // -- Botones -------------------------------------------------------------------
   function updateButtons() {
     const hasPending   = stats.pending > 0;
+    const hasPdfWork   = Number(stats.pdf_pending || 0) > 0;
     const hasProcessed = stats.ok > 0 || stats.errors > 0;
-    document.getElementById('btn-start').disabled     = isRunning || !hasPending;
+    document.getElementById('btn-start').disabled     = isRunning || (!hasPending && !hasPdfWork);
     document.getElementById('btn-stop').disabled      = !isRunning;
     document.getElementById('btn-clear').disabled     = isRunning;
     document.getElementById('btn-reprocess').disabled = isRunning || hasPending || !hasProcessed;
@@ -391,12 +486,14 @@
       const el = document.getElementById(id);
       if (el) el.disabled = isRunning;
     });
+    updatePhaseCards();
   }
 
   function ensureEmptyQueueMessage() {
     const tbody = document.getElementById('queue-tbody');
     if (!tbody.querySelector('tr[data-hu]') && !tbody.querySelector('#empty-row')) {
       tbody.innerHTML = emptyQueueRowHTML();
+      refreshIcons();
     }
   }
 
@@ -454,6 +551,103 @@
     }
   });
 
+  // -- Pegado multiple por Ctrl+V ------------------------------------------------
+  const scanInputForPaste = document.getElementById('scan-input');
+  let ctrlVPastePending = false;
+  let bulkPasteRunning = false;
+
+  function getPastedLines(text) {
+    return String(text || '')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+  }
+
+  async function postScannedCode(code) {
+    const res = await fetch('/scan/', {
+      method: 'POST',
+      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        code,
+        run_f1: document.getElementById('chk-f1').checked,
+        run_f2: document.getElementById('chk-f2').checked,
+      }),
+    });
+    return await readJsonResponse(res);
+  }
+
+  async function scanPastedLines(codes) {
+    if (bulkPasteRunning) return;
+
+    bulkPasteRunning = true;
+    scanInputForPaste.value = '';
+    scanInputForPaste.disabled = true;
+    setHint(`Pegando ${codes.length} HUs...`, 'idle');
+
+    let okCount = 0;
+    let errorCount = 0;
+    let firstError = '';
+
+    try {
+      for (const code of codes) {
+        const data = await postScannedCode(code);
+        if (data.ok) {
+          okCount++;
+          if (data.stats) handleStatsUpdate(data.stats);
+        } else {
+          errorCount++;
+          if (!firstError) firstError = `${code}: ${data.error || 'rechazado'}`;
+        }
+      }
+    } catch (error) {
+      errorCount++;
+      if (!firstError) firstError = error.message || 'Error de conexion';
+    } finally {
+      scanInputForPaste.disabled = false;
+      scanInputForPaste.focus();
+      bulkPasteRunning = false;
+      updateButtons();
+    }
+
+    if (errorCount === 0) {
+      setHint(`OK: ${okCount} HUs agregados desde pegado`, 'ok');
+      flash(`OK: ${okCount} HUs agregados`, 'green');
+    } else {
+      setHint(`Pegado parcial: ${okCount} OK, ${errorCount} con error. ${firstError}`, 'warn');
+      flash(`Pegado parcial: ${okCount} OK, ${errorCount} con error`, okCount ? 'orange' : 'red');
+    }
+
+    if (okCount > 0 && !isRunning && document.getElementById('chk-auto').checked) {
+      if (!window._autoStarted) {
+        window._autoStarted = true;
+        setTimeout(() => {
+          startProcess();
+          setTimeout(() => { window._autoStarted = false; }, 2000);
+        }, 500);
+      }
+    }
+  }
+
+  scanInputForPaste.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+      ctrlVPastePending = true;
+      setTimeout(() => { ctrlVPastePending = false; }, 1000);
+    }
+  });
+
+  scanInputForPaste.addEventListener('paste', async (e) => {
+    if (!ctrlVPastePending) return;
+    ctrlVPastePending = false;
+
+    const pastedText = e.clipboardData?.getData('text') || '';
+    const codes = getPastedLines(pastedText);
+    if (codes.length <= 1) return;
+
+    e.preventDefault();
+    await scanPastedLines(codes);
+  });
+
   // -- Nuevo pallet --------------------------------------------------------------
   async function newPallet() {
     if (isRunning) {
@@ -481,8 +675,8 @@
   // -- Iniciar proceso -----------------------------------------------------------
   async function startProcess() {
     if (isRunning) return;
-    if (stats.pending === 0) {
-      flash('Error: No hay HUs pendientes.', 'orange');
+    if (stats.pending === 0 && Number(stats.pdf_pending || 0) === 0) {
+      flash('Error: No hay HUs pendientes ni PDFs por imprimir.', 'orange');
       return;
     }
 
@@ -520,7 +714,12 @@
         return;
       }
 
-      flash(` ${data.count} HUs enviadas a Celery`, 'green');
+      const huCount = Number(data.count || 0);
+      const pdfCount = Number(data.pdf_count || 0);
+      const message = pdfCount && !huCount
+        ? `${pdfCount} PDF pendiente enviado a Celery`
+        : `${huCount} HUs enviadas a Celery`;
+      flash(message, 'green');
 
     } catch (e) {
       flash(`Error: Error: ${e.message}`, 'red');
@@ -570,11 +769,12 @@
     const data = await readJsonResponse(res);
     if (data.ok) {
       document.getElementById('queue-tbody').innerHTML = emptyQueueRowHTML();
+      refreshIcons();
       Object.keys(palletSepRows).forEach(k => delete palletSepRows[k]);
       _visibleSeps.clear();
       if (stickyPallet) stickyPallet.classList.remove('visible');
       isRunning = false;
-      stats = { total:0, ok:0, errors:0, pending:0, pallets:0 };
+      stats = { total:0, ok:0, errors:0, pending:0, pallets:0, pdf_pending:0 };
       handleStatsUpdate(stats);
       setProgBadge('EN ESPERA', '');
       setProgStatus('Cola limpiada. Listo para escanear.', '');
@@ -651,10 +851,12 @@
         : '#queue-tbody tr[data-hu]';
 
       document.querySelectorAll(selector).forEach(tr => {
-        if (tr.cells[3]) tr.cells[3].innerHTML = '<span class="cell-status status-pending">Pendiente</span>';
-        if (tr.cells[4]) tr.cells[4].innerHTML = '';
+        if (tr.cells[3]) tr.cells[3].innerHTML = statusCellHTML('pending', 'Pendiente', '', '', 'f1');
+        if (tr.cells[4]) tr.cells[4].innerHTML = statusCellHTML('pending', '', 'Pendiente', '', 'f2');
+        if (tr.cells[5]) tr.cells[5].innerHTML = pdfCellHTML('pending');
         tr.dataset.status = 'pending';
       });
+      refreshIcons();
 
       if (isErrorsOnly) {
         stats.pending += data.count;
@@ -697,21 +899,35 @@
       if (row) {
         const palletId = parseInt(row.dataset.pallet);
         row.remove();
-        adjustStatsForDeletedStatus(currentStatus);
         if (data.pallet_deleted) {
           const sep = document.querySelector(`tr.pallet-sep[data-pallet-id="${palletId}"]`);
           if (sep) sep.remove();
           delete palletSepRows[palletId];
-          stats.pallets = Math.max(0, stats.pallets - 1);
-          handleStatsUpdate(stats);
         } else {
+          if (data.pdf_reset) {
+            updatePalletPdfCells({
+              pallet_id: palletId,
+              status: 'pending',
+              pdf_status: data.pdf_status || '',
+              pdf_display: data.pdf_display || '',
+              pdf_msg: data.pdf_msg || '',
+            });
+          }
           updatePalletSep(palletId);
+        }
+        if (data.stats) {
+          handleStatsUpdate(data.stats);
+        } else {
+          adjustStatsForDeletedStatus(currentStatus);
         }
         updateStickyPallet();
         ensureEmptyQueueMessage();
         updateButtons();
       }
-      flash(`OK HU ${huCode} eliminada.`, 'green');
+      flash(data.pdf_reset
+        ? `OK HU ${huCode} eliminada. Pallet listo para imprimir PDF.`
+        : `OK HU ${huCode} eliminada.`,
+        'green');
     } else {
       flash(`Error: ${data.error}`, 'orange');
     }
@@ -865,6 +1081,32 @@
       const active = chk.checked;
       card.classList.toggle('active',   active);
       card.classList.toggle('inactive', !active);
+      card.classList.toggle('is-disabled', chk.disabled);
+      card.setAttribute('aria-pressed', active ? 'true' : 'false');
+      card.setAttribute('aria-disabled', chk.disabled ? 'true' : 'false');
+    });
+  }
+
+  function togglePhaseCard(card) {
+    const checkboxId = card.dataset.checkboxId;
+    const checkbox = checkboxId ? document.getElementById(checkboxId) : null;
+    if (!checkbox || checkbox.disabled) return;
+
+    checkbox.checked = !checkbox.checked;
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function initializePhaseToggleCards() {
+    document.querySelectorAll('.phase-card.phase-toggle').forEach(card => {
+      if (card.dataset.bound === '1') return;
+      card.dataset.bound = '1';
+
+      card.addEventListener('click', () => togglePhaseCard(card));
+      card.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        togglePhaseCard(card);
+      });
     });
   }
   // -- Context menu de tabla -----------------------------------------------------
@@ -967,6 +1209,7 @@
       <td style="font-family:var(--mono);font-size:8.5pt;">${item.hu_code}</td>
       <td>${statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f1')}</td>
       <td>${statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f2')}</td>
+      <td>${pdfCellHTML(item.status, item.pdf_status, item.pdf_display, item.pdf_msg)}</td>
     `;
   }
 
@@ -1013,8 +1256,11 @@
     const pid   = hiddenAbove[hiddenAbove.length - 1];
     const rows  = document.querySelectorAll(`tr[data-pallet="${pid}"]`);
     const count = rows.length;
-    sticky.textContent = `-- Pallet P${String(pid).padStart(2,'0')} - ${count} HU${count !== 1 ? 's' : ''} ---`;
+    const sep = palletSepRows[pid];
+    const originCode = sep ? (sep.dataset.origin || 'Sin origen') : 'Sin origen';
+    sticky.innerHTML = palletHeaderHTML(pid, originCode, count);
     sticky.classList.add('visible');
+    refreshIcons();
   }
 
   // -- Exportar ------------------------------------------------------------------
@@ -1035,11 +1281,13 @@
       if (pid) palletSepRows[pid] = sep;
     });
 
+    initializePhaseToggleCards();
     updatePhaseCards();
     updateButtons();
     initStickyObserver();
     updateStickyPallet();
     checkSAP();
+    refreshIcons();
   }
 
   if (document.readyState === 'loading') {

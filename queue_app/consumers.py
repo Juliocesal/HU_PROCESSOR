@@ -47,6 +47,10 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'phase2_ms': event['phase2_ms'],
             'pallet_id': event['pallet_id'],
             'origin_code': event.get('origin_code', '?'),
+            'pdf_status': event.get('pdf_status', ''),
+            'pdf_display': event.get('pdf_display', ''),
+            'pdf_msg': event.get('pdf_msg', ''),
+            'pdf_ms': event.get('pdf_ms', 0),
         })
 
     async def stats_update(self, event):
@@ -66,6 +70,10 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'status': event['status'],
             'message': event['message'],
             'marked': event['marked'],
+            'pdf_status': event.get('pdf_status', event['status']),
+            'pdf_display': event.get('pdf_display', ''),
+            'pdf_msg': event.get('pdf_msg', event['message']),
+            'pdf_ms': event.get('pdf_ms', 0),
         })
 
     async def queue_done(self, event):
@@ -128,6 +136,10 @@ class QueueConsumer(AsyncWebsocketConsumer):
                 'phase2_ms': item.phase2_ms,
                 'pallet_id': item.pallet_id,
                 'origin_code': item.origin_code,
+                'pdf_status': item.pallet.pdf_status,
+                'pdf_display': item.pallet.pdf_display,
+                'pdf_msg': item.pallet.pdf_msg,
+                'pdf_ms': item.pallet.pdf_ms,
             } for item in items],
             'stats': calculate_queue_stats(),
         }

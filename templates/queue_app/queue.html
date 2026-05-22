@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NexHUs</title>
 <link rel="stylesheet" href="{% static 'queue_app/css/queue.css' %}">
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
 
 </head>
 <body>
@@ -28,11 +29,13 @@
       box-shadow:0 4px 16px rgba(0,0,0,0.4);
     ">
       <div class="ham-item" onclick="window.location.href='/exportar/'">
-        Exportar CSV
+        <i data-lucide="download"></i>
+        <span>Exportar CSV</span>
       </div>
       <div class="ham-sep"></div>
       <div class="ham-item" onclick="window.print()">
-        Imprimir
+        <i data-lucide="printer"></i>
+        <span>Imprimir</span>
       </div>
       <div class="ham-sep"></div>
       <div class="ham-item" style="color:var(--shell-muted);cursor:default;font-size:7.5pt;">
@@ -72,22 +75,34 @@
     <!-- KPIs -->
     <div class="kpi-strip">
       <div class="kpi-card">
-        <div class="kpi-label">Total HUs</div>
+        <i data-lucide="scan-line"></i>
+        <div class="kpi-head">
+          <span class="kpi-label">Total HUs</span>
+        </div>
         <div class="kpi-value" id="kpi-total">{{ stats.total }}</div>
         <div class="kpi-sub">escaneadas</div>
       </div>
       <div class="kpi-card kpi-ok">
-        <div class="kpi-label">Procesadas</div>
+        <i data-lucide="circle-check"></i>
+        <div class="kpi-head">
+          <span class="kpi-label">Procesadas</span>
+        </div>
         <div class="kpi-value" id="kpi-ok">{{ stats.ok }}</div>
         <div class="kpi-sub">OK</div>
       </div>
       <div class="kpi-card kpi-err {% if stats.errors %}has-errors{% endif %}">
-        <div class="kpi-label">Errores</div>
+        <i data-lucide="triangle-alert"></i>
+        <div class="kpi-head">
+          <span class="kpi-label">Errores</span>
+        </div>
         <div class="kpi-value" id="kpi-err">{{ stats.errors }}</div>
         <div class="kpi-sub">fallos</div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-label">Pendientes</div>
+        <i data-lucide="clock-3"></i>
+        <div class="kpi-head">
+          <span class="kpi-label">Pendientes</span>
+        </div>
         <div class="kpi-value" id="kpi-pend">{{ stats.pending }}</div>
         <div class="kpi-sub">en cola</div>
       </div>
@@ -115,7 +130,8 @@
 
   <div class="scan-actions-row">
     <button class="btn-new-pallet" id="btn-new-pallet" onclick="newPallet()">
-      + Nuevo pallet
+      <i data-lucide="plus"></i>
+      <span>Nuevo pallet</span>
     </button>
     
     <div class="scan-auto-row">
@@ -128,26 +144,31 @@
 
     <!-- Pipeline Card -->
     <div class="pipeline-card">
-      <div class="phase-card active" id="phase-f1">
+      <div class="phase-card active phase-toggle" id="phase-f1"
+           data-checkbox-id="chk-f1" role="button" tabindex="0" aria-controls="chk-f1" aria-pressed="true">
         <div class="phase-top">
           <input type="checkbox" class="phase-chk" id="chk-f1" checked onchange="updatePhaseCards()">
+          <i data-lucide="package-check"></i>
           <span class="phase-code">F1</span>
         </div>
         <div class="phase-tcode">ZMOVEINBHU</div>
         <div class="phase-desc">Acknowledge</div>
       </div>
-      <span class="phase-arrow">-></span>
-      <div class="phase-card active" id="phase-f2">
+      <span class="phase-arrow"><i data-lucide="arrow-right"></i></span>
+      <div class="phase-card active phase-toggle" id="phase-f2"
+           data-checkbox-id="chk-f2" role="button" tabindex="0" aria-controls="chk-f2" aria-pressed="true">
         <div class="phase-top">
           <input type="checkbox" class="phase-chk" id="chk-f2" checked onchange="updatePhaseCards()">
+          <i data-lucide="printer"></i>
           <span class="phase-code">F2</span>
         </div>
         <div class="phase-tcode">ZMMTIJSEP</div>
         <div class="phase-desc">Spool</div>
       </div>
-      <span class="phase-arrow">-></span>
+      <span class="phase-arrow"><i data-lucide="arrow-right"></i></span>
       <div class="phase-card active" id="phase-receipt">
         <div class="phase-top">
+          <i data-lucide="file-check-2"></i>
           <span class="phase-code">ZE16</span>
         </div>
         <div class="phase-tcode">ZE16 + PDF</div>
@@ -172,7 +193,9 @@
   <!-- TABLE CARD -->
   <div class="table-card">
     <div class="table-hdr">
-      <span class="table-hdr-title">Listado de Pallets Procesados</span>
+      <span class="table-hdr-title">
+        <span>Listado de Pallets Procesados</span>
+      </span>
       <div class="spacer"></div>
     </div>
 
@@ -187,25 +210,34 @@
           <col class="col-hu">
           <col class="col-f1">
           <col class="col-f2">
+          <col class="col-pdf">
         </colgroup>
         <thead>
         <tr>
         <th>Pallet</th>
         <th>Origen</th>
         <th>Código HU</th>
-        <th>F1 - ZMOVEINBHU</th>
-        <th>F2 - ZMMTIJSEP</th>
+        <th><span class="th-with-icon"> F1 - ZMOVEINBHU</span></th>
+        <th><span class="th-with-icon"> F2 - ZMMTIJSEP</span></th>
+        <th><span class="th-with-icon"><i data-lucide="file-check-2"></i> PDF</span></th>
         </tr>
         </thead>
         <tbody id="queue-tbody">
           {% for pallet in pallets %}
             <tr class="pallet-sep" data-pallet-id="{{ pallet.id }}">
-              <td colspan="5" id="sep-{{ pallet.id }}">
-                -- Pallet P{{ pallet.id|stringformat:"02d" }}
-                {% if pallet.origin_code %}- {{ pallet.origin_code }}{% endif %}
-                - {{ pallet.items.count }} HU{% if pallet.items.count != 1 %}s{% endif %}
-                {% if pallet.processing_time_display %} - {{ pallet.processing_time_display }}{% endif %}
-                ---
+              <td colspan="6" id="sep-{{ pallet.id }}">
+                <div class="pallet-header">
+                  <span class="pallet-title">Pallet P{{ pallet.id|stringformat:"02d" }}</span>
+                  <span class="origin-badge pallet-origin">{{ pallet.origin_code|default:"Sin origen" }}</span>
+                  <span class="pallet-hu-count">
+                    {{ pallet.items.count }} HU{% if pallet.items.count != 1 %}s{% endif %}
+                  </span>
+                  {% if pallet.processing_time_display %}
+                    <span class="pallet-time">
+                      {{ pallet.processing_time_display }}
+                    </span>
+                  {% endif %}
+                </div>
               </td>
             </tr>
             {% for item in pallet.items.all %}
@@ -219,29 +251,40 @@
               <td style="font-family:var(--mono);font-size:8.5pt;">{{ item.hu_code }}</td>
               <td>
                 {% if item.status == 'ok' or item.status == 'duplicate' %}
-                  <span class="ok-cell">{{ item.f1_display }}</span>
+                  <span class="ok-cell"><i data-lucide="circle-check"></i>{{ item.f1_display }}</span>
                 {% elif item.status == 'error' or item.status == 'hu_not_found' %}
-                  <span style="color:var(--red)">{{ item.f1_display }}</span>
+                  <span class="error-cell"><i data-lucide="triangle-alert"></i>{{ item.f1_display }}</span>
                 {% else %}
-                  <span class="cell-status status-{{ item.status }}">{{ item.status_display }}</span>
+                  <span class="cell-status status-{{ item.status }}"><i data-lucide="clock-3"></i>{{ item.status_display }}</span>
                 {% endif %}
               </td>
               <td>
                 {% if item.status == 'ok' %}
-                  <span class="ok-cell">{{ item.f2_display }}</span>
+                  <span class="ok-cell"><i data-lucide="circle-check"></i>{{ item.f2_display }}</span>
                 {% elif item.status == 'error' and not item.phase2_msg %}
-                  <span style="color:var(--muted)">- omitido</span>
+                  <span class="muted-cell"><i data-lucide="circle-minus"></i> omitido</span>
                 {% elif item.status == 'error' %}
-                  <span style="color:var(--red)">{{ item.f2_display }}</span>
+                  <span class="error-cell"><i data-lucide="triangle-alert"></i>{{ item.f2_display }}</span>
                 {% else %}
-                  {{ item.f2_display }}
+                  <span class="cell-status status-{{ item.status }}"><i data-lucide="clock-3"></i>{{ item.f2_display|default:"Pendiente" }}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if item.pallet.pdf_status == 'ok' %}
+                  <span class="ok-cell"><i data-lucide="circle-check"></i>{{ item.pallet.pdf_display }}</span>
+                {% elif item.pallet.pdf_status == 'error' %}
+                  <span class="error-cell"><i data-lucide="triangle-alert"></i>{{ item.pallet.pdf_msg|default:"Error PDF" }}</span>
+                {% elif item.status == 'error' or item.status == 'hu_not_found' %}
+                  <span class="muted-cell"><i data-lucide="circle-minus"></i> omitido</span>
+                {% else %}
+                  <span class="cell-status status-pending"><i data-lucide="clock-3"></i>Pendiente</span>
                 {% endif %}
               </td>
             </tr>
             {% endfor %}
           {% empty %}
             <tr class="empty-row" id="empty-row">
-              <td colspan="5">Sin HUs en cola - escanea el primer código</td>
+              <td colspan="6">Sin HUs en cola - escanea el primer código</td>
             </tr>
           {% endfor %}
         </tbody>
@@ -258,12 +301,24 @@
      FOOTER BAR
       -->
 <div class="footer-bar">
-  <button class="btn-primary" id="btn-start" onclick="startProcess()">INICIAR PROCESO</button>
+  <button class="btn-primary" id="btn-start" onclick="startProcess()">
+    <i data-lucide="play"></i>
+    <span>INICIAR PROCESO</span>
+  </button>
   <span class="footer-status" id="footer-status">En espera.</span>
   <div style="flex:1"></div>
-  <button class="btn-danger" id="btn-stop" onclick="stopProcess()" disabled>DETENER</button>
-  <button class="btn-ghost" id="btn-reprocess" onclick="reprocess()" disabled>REPROCESAR</button>
-  <button class="btn-ghost" id="btn-clear" onclick="clearQueue()">LIMPIAR HUs</button>
+  <button class="btn-danger" id="btn-stop" onclick="stopProcess()" disabled>
+    <i data-lucide="square"></i>
+    <span>DETENER</span>
+  </button>
+  <button class="btn-ghost" id="btn-reprocess" onclick="reprocess()" disabled>
+    <i data-lucide="rotate-ccw"></i>
+    <span>REPROCESAR</span>
+  </button>
+  <button class="btn-ghost" id="btn-clear" onclick="clearQueue()">
+    <i data-lucide="trash-2"></i>
+    <span>LIMPIAR HUs</span>
+  </button>
 </div>
 
 <!-- 
@@ -274,15 +329,27 @@
 
 
 <div id="ctx-menu">
-  <div class="ctx-item danger" id="ctx-delete-hu" onclick="ctxDeleteHU()">Borrar HU</div>
+  <div class="ctx-item danger" id="ctx-delete-hu" onclick="ctxDeleteHU()">
+    <i data-lucide="trash-2"></i>
+    <span>Borrar HU</span>
+  </div>
   <div class="ctx-sep"></div>
-  <div class="ctx-item danger" id="ctx-delete-pal" onclick="ctxDeletePallet()">Borrar pallet completo</div>
+  <div class="ctx-item danger" id="ctx-delete-pal" onclick="ctxDeletePallet()">
+    <i data-lucide="package-x"></i>
+    <span>Borrar pallet completo</span>
+  </div>
 </div>
 
 <div id="reprocess-menu">
-  <div class="ctx-item" onclick="reprocessQueue('all')">Lista completa</div>
+  <div class="ctx-item" onclick="reprocessQueue('all')">
+    <i data-lucide="list-restart"></i>
+    <span>Lista completa</span>
+  </div>
   <div class="ctx-sep"></div>
-  <div class="ctx-item" onclick="reprocessQueue('errors')">Solo HUs con error</div>
+  <div class="ctx-item" onclick="reprocessQueue('errors')">
+    <i data-lucide="triangle-alert"></i>
+    <span>Solo HUs con error</span>
+  </div>
 </div>
 
 </body>
