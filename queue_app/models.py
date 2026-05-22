@@ -6,6 +6,7 @@ class Pallet(models.Model):
     """Pallet persistido en base de datos con timestamps de ciclo de vida."""
 
     STATUS_ACTIVE = 'active'
+    STATUS_READY = 'ready'
     STATUS_DONE = 'done'
     PDF_STATUS_OK = 'ok'
     PDF_STATUS_ERROR = 'error'

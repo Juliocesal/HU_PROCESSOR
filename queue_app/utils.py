@@ -11,9 +11,11 @@ QUEUE_UPDATES_GROUP = 'queue_updates'
 def calculate_queue_stats() -> dict:
     """Devuelve los KPIs compartidos por vistas HTTP y eventos WebSocket."""
     from queue_app.models import HUItem, Pallet
+    from queue_app.tasks import is_queue_locked
 
     items = HUItem.objects.all()
     pdf_pending = pallets_ready_for_pdf_queryset().count()
+    is_running = is_queue_locked() or items.filter(status=HUItem.STATUS_PROCESSING).exists()
     # FUTURA BD DE CONSULTA:
     # Estos filtros ya representan WHERE por estado para KPIs/reportes:
     # status OK/duplicate = procesados, status error/hu_not_found = problemas,
@@ -25,8 +27,9 @@ def calculate_queue_stats() -> dict:
             status__in=[HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
         ).count(),
         'pending': items.filter(status=HUItem.STATUS_PENDING).count(),
-        'pallets': Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).count(),
+        'pallets': Pallet.objects.exclude(status=Pallet.STATUS_DONE).count(),
         'pdf_pending': pdf_pending,
+        'is_running': is_running,
     }
 
 
@@ -49,7 +52,7 @@ def pallets_ready_for_pdf_queryset():
     return (
         Pallet.objects
         .filter(
-            status=Pallet.STATUS_ACTIVE,
+            status=Pallet.STATUS_READY,
             items__status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE],
             receipt_done_at__isnull=True,
         )
@@ -100,6 +103,35 @@ def emit_pallet_created(pallet):
         'pallet_id': pallet.pk,
         'origin_code': pallet.origin_code or '',
         'stats': calculate_queue_stats(),
+    })
+
+
+def emit_hu_deleted(hu_code, pallet_id, pallet_deleted=False, stats=None):
+    """Notifica que una HU desaparecio de la cola para sincronizar otras UIs."""
+    _send_group('hu_deleted', {
+        'type': 'hu_deleted',
+        'hu_code': hu_code,
+        'pallet_id': pallet_id,
+        'pallet_deleted': pallet_deleted,
+        'stats': stats or calculate_queue_stats(),
+    })
+
+
+def emit_pallet_deleted(pallet_id, stats=None):
+    """Notifica que un pallet completo fue eliminado de la cola."""
+    _send_group('pallet_deleted', {
+        'type': 'pallet_deleted',
+        'pallet_id': pallet_id,
+        'stats': stats or calculate_queue_stats(),
+    })
+
+
+def emit_queue_cleared(pallet_id, stats=None):
+    """Notifica limpieza total de cola y pallet inicial creado."""
+    _send_group('queue_cleared', {
+        'type': 'queue_cleared',
+        'pallet_id': pallet_id,
+        'stats': stats or calculate_queue_stats(),
     })
 
 

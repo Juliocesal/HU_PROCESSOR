@@ -34,6 +34,7 @@
   const initialStats = JSON.parse(
     document.getElementById('initial-stats').textContent || '{}'
   );
+  isRunning = Boolean(initialStats.is_running || false);
 
   let stats = {
     total:   Number(initialStats.total || 0),
@@ -132,6 +133,9 @@
         case 'stats_update':  handleStatsUpdate(msg);  break;
         case 'receipt_done':  handleReceiptDone(msg);  break;
         case 'pallet_created': handlePalletCreated(msg); break;
+        case 'hu_deleted':    handleHuDeleted(msg);    break;
+        case 'pallet_deleted': handlePalletDeleted(msg); break;
+        case 'queue_cleared': handleQueueCleared(msg); break;
         case 'queue_done':    handleQueueDone(msg);    break;
         case 'pallet_done':   handlePalletDone(msg);   break;
         case 'error':         handleError(msg);         break;
@@ -156,6 +160,7 @@
       tbody.innerHTML = emptyQueueRowHTML();
     }
     if (msg.stats) handleStatsUpdate(msg.stats);
+    if (isRunning) showRunningMode('Proceso activo. Puedes seguir escaneando HUs.');
     updateStickyPallet();
     refreshIcons();
   }
@@ -176,34 +181,61 @@
   }
 
   function handleStatsUpdate(msg) {
-  stats = {
-    total:   Number(msg.total || 0),
-    ok:      Number(msg.ok || 0),
-    errors:  Number(msg.errors || 0),
-    pending: Number(msg.pending || 0),
-    pallets: Number(msg.pallets || 0),
-    pdf_pending: Number(msg.pdf_pending || 0)
-  };
+    if (Object.prototype.hasOwnProperty.call(msg, 'is_running')) {
+      isRunning = Boolean(msg.is_running);
+    }
 
-  const kpiTotal = document.getElementById('kpi-total');
-  const kpiOk    = document.getElementById('kpi-ok');
-  const kpiErr   = document.getElementById('kpi-err');
-  const kpiPend  = document.getElementById('kpi-pend');
+    stats = {
+      total:   Number(msg.total || 0),
+      ok:      Number(msg.ok || 0),
+      errors:  Number(msg.errors || 0),
+      pending: Number(msg.pending || 0),
+      pallets: Number(msg.pallets || 0),
+      pdf_pending: Number(msg.pdf_pending || 0)
+    };
 
-  if (kpiTotal) kpiTotal.textContent = stats.total;
-  if (kpiOk)    kpiOk.textContent    = stats.ok;
-  if (kpiErr)   kpiErr.textContent   = stats.errors;
-  if (kpiPend)  kpiPend.textContent  = stats.pending;
+    const kpiTotal = document.getElementById('kpi-total');
+    const kpiOk    = document.getElementById('kpi-ok');
+    const kpiErr   = document.getElementById('kpi-err');
+    const kpiPend  = document.getElementById('kpi-pend');
 
-  const palLbl = document.getElementById('pal-lbl');
-  if (palLbl) palLbl.textContent = `Pallets activos: ${stats.pallets}`;
+    if (kpiTotal) kpiTotal.textContent = stats.total;
+    if (kpiOk)    kpiOk.textContent    = stats.ok;
+    if (kpiErr)   kpiErr.textContent   = stats.errors;
+    if (kpiPend)  kpiPend.textContent  = stats.pending;
 
-  const errCard = document.querySelector('.kpi-card.kpi-err');
-  if (errCard) errCard.classList.toggle('has-errors', stats.errors > 0);
+    const palLbl = document.getElementById('pal-lbl');
+    if (palLbl) palLbl.textContent = `Pallets activos: ${stats.pallets}`;
 
-  updateProgress();
-  updateButtons();
-}
+    const errCard = document.querySelector('.kpi-card.kpi-err');
+    if (errCard) errCard.classList.toggle('has-errors', stats.errors > 0);
+
+    updateProgress();
+    updateButtons();
+  }
+
+  function showRunningMode(message) {
+    setProgBadge('PROCESANDO', 'running');
+    setProgStatus(message || 'Proceso activo.', 'running');
+    setFooterStatus('Procesando...', 'running');
+    const bar = document.getElementById('prog-bar');
+    bar.classList.add('animated');
+    bar.classList.remove('done', 'error');
+  }
+
+  function handleAutoStartResult(data) {
+    if (data.auto_started) {
+      isRunning = true;
+      showRunningMode('Pallet cerrado. Proceso reactivado automaticamente.');
+      updateButtons();
+      flash('Proceso reactivado automaticamente.', 'green');
+      return;
+    }
+
+    if (data.auto_start_error) {
+      flash(`Pallet listo. No se pudo reactivar: ${data.auto_start_error}`, 'orange');
+    }
+  }
 
   function handleReceiptDone(msg) {
     updatePalletPdfCells(msg);
@@ -219,6 +251,45 @@
     updatePalletSep(msg.pallet_id);
     if (msg.stats) handleStatsUpdate(msg.stats);
     updateStickyPallet();
+    refreshIcons();
+  }
+
+  function handleHuDeleted(msg) {
+    const row = document.getElementById(`row-${msg.hu_code}`);
+    if (row) row.remove();
+
+    if (msg.pallet_deleted) {
+      removePalletRows(msg.pallet_id);
+    } else {
+      updatePalletSep(msg.pallet_id);
+    }
+
+    if (msg.stats) handleStatsUpdate(msg.stats);
+    updateStickyPallet();
+    ensureEmptyQueueMessage();
+    updateButtons();
+  }
+
+  function handlePalletDeleted(msg) {
+    removePalletRows(msg.pallet_id);
+    if (msg.stats) handleStatsUpdate(msg.stats);
+    updateStickyPallet();
+    ensureEmptyQueueMessage();
+    updateButtons();
+  }
+
+  function handleQueueCleared(msg) {
+    const tbody = document.getElementById('queue-tbody');
+    tbody.innerHTML = emptyQueueRowHTML();
+    Object.keys(palletSepRows).forEach(k => delete palletSepRows[k]);
+    _visibleSeps.clear();
+    if (stickyPallet) stickyPallet.classList.remove('visible');
+    isRunning = false;
+    handleStatsUpdate(msg.stats || { total:0, ok:0, errors:0, pending:0, pallets:0, pdf_pending:0 });
+    setProgBadge('EN ESPERA', '');
+    setProgStatus('Cola limpiada. Listo para escanear.', '');
+    setFooterStatus('En espera.', '');
+    document.getElementById('prog-bar').classList.remove('animated','done','error');
     refreshIcons();
   }
 
@@ -242,7 +313,6 @@
     setFooterStatus(msg.message, hasErrors ? 'error' : 'done');
     updateButtons();
     flash(msg.message, hasErrors ? 'orange' : 'green');
-    setTimeout(() => alert(msg.message), 200);
   }
 
   function handlePalletDone(msg) {
@@ -256,7 +326,7 @@
     document.getElementById('prog-bar').classList.add('error');
     setFooterStatus('Error:  Error en el proceso.', 'error');
     updateButtons();
-    setTimeout(() => alert(`Error SAP:\n\n${msg.message}`), 200);
+    flash(`Error SAP: ${msg.message}`, 'red');
   }
 
   // -- Tabla ---------------------------------------------------------------------
@@ -479,7 +549,7 @@
     document.getElementById('btn-clear').disabled     = isRunning;
     document.getElementById('btn-reprocess').disabled = isRunning || hasPending || !hasProcessed;
     const newPalletBtn = document.getElementById('btn-new-pallet');
-    if (newPalletBtn) newPalletBtn.disabled = isRunning;
+    if (newPalletBtn) newPalletBtn.disabled = false;
 
     // Deshabilitar checkboxes durante ejecución
     ['chk-f1','chk-f2','chk-auto'].forEach(id => {
@@ -495,6 +565,14 @@
       tbody.innerHTML = emptyQueueRowHTML();
       refreshIcons();
     }
+  }
+
+  function removePalletRows(palletId) {
+    const normalizedPalletId = String(palletId);
+    const sep = document.querySelector(`tr.pallet-sep[data-pallet-id="${normalizedPalletId}"]`);
+    document.querySelectorAll(`tr[data-pallet="${normalizedPalletId}"]`).forEach(row => row.remove());
+    if (sep) sep.remove();
+    delete palletSepRows[normalizedPalletId];
   }
 
   // -- Scan ----------------------------------------------------------------------
@@ -532,6 +610,7 @@
       setHint(`OK  ${raw}  ->  Pallet ${data.pallet_id}  [${data.origin}]`, 'ok');
       flash(`OK  ${raw}  ->  Pallet ${data.pallet_id}  [${data.origin}]`, 'green');
       if (data.stats) handleStatsUpdate(data.stats);
+      handleAutoStartResult(data);
       // Auto-start solo si chk-auto está activado Y el sistema está completamente inactivo
       if (!isRunning && document.getElementById('chk-auto').checked && (stats.pending > 0 || data.ok)) {
         // Auto-iniciar SOLO una vez después de agregar el primer HU
@@ -595,6 +674,7 @@
         if (data.ok) {
           okCount++;
           if (data.stats) handleStatsUpdate(data.stats);
+          handleAutoStartResult(data);
         } else {
           errorCount++;
           if (!firstError) firstError = `${code}: ${data.error || 'rechazado'}`;
@@ -650,19 +730,21 @@
 
   // -- Nuevo pallet --------------------------------------------------------------
   async function newPallet() {
-    if (isRunning) {
-      flash('No se puede crear pallet durante el proceso.', 'orange');
-      return;
-    }
     const res  = await fetch('/pallet/nuevo/', {
       method: 'POST',
-      headers: { ...csrfHeaders() }
+      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        run_f1: document.getElementById('chk-f1').checked,
+        run_f2: document.getElementById('chk-f2').checked,
+        run_pdf: true,
+      })
     });
     const data = await readJsonResponse(res);
     if (data.ok) {
       setHint(`OK ${data.message}`, 'ok');
       flash(`OK ${data.message}`, 'green');
       if (data.stats) handleStatsUpdate(data.stats);
+      handleAutoStartResult(data);
       ensurePalletSep(data.pallet_id, 'Sin origen');
       updatePalletSep(data.pallet_id);
       updateStickyPallet();
@@ -683,11 +765,7 @@
     if (!(await ensureSapReady())) return;
 
     isRunning = true;
-    setProgBadge('PROCESANDO', 'running');
-    setProgStatus('Enviando HUs a procesar...', 'running');
-    setFooterStatus('  Procesando…', 'running');
-    document.getElementById('prog-bar').classList.add('animated');
-    document.getElementById('prog-bar').classList.remove('done', 'error');
+    showRunningMode('Enviando HUs a procesar...');
     updateButtons();
 
     try {
@@ -869,11 +947,7 @@
 
       updateProgress();
       isRunning = true;
-      setProgBadge('PROCESANDO', 'running');
-      setProgStatus('Reprocesando HUs...', 'running');
-      setFooterStatus('Procesando reproceso...', 'running');
-      document.getElementById('prog-bar').classList.add('animated');
-      document.getElementById('prog-bar').classList.remove('done','error');
+      showRunningMode('Reprocesando HUs...');
       updateButtons();
     } else {
       flash('Error: ' + data.error, 'red');

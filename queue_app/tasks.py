@@ -9,7 +9,11 @@ log = logging.getLogger(__name__)
 
 QUEUE_LOCK_KEY = 'nexhus:queue_processing_lock'
 QUEUE_STOP_KEY = 'nexhus:queue_stop_requested'
+QUEUE_ACTIVE_PALLETS_KEY = 'nexhus:queue_active_pallets'
+QUEUE_CONTINUOUS_ARMED_KEY = 'nexhus:queue_continuous_armed'
 QUEUE_LOCK_TTL_SECONDS = 60 * 60 * 6
+QUEUE_DEFAULT_IDLE_TIMEOUT_SECONDS = 30
+QUEUE_IDLE_POLL_SECONDS = 2
 
 
 def _get_redis_lock_client():
@@ -28,6 +32,7 @@ def _acquire_queue_lock(owner: str) -> bool:
         acquired = bool(client.set(QUEUE_LOCK_KEY, owner, nx=True, ex=QUEUE_LOCK_TTL_SECONDS))
         if acquired:
             client.delete(QUEUE_STOP_KEY)
+            client.delete(QUEUE_ACTIVE_PALLETS_KEY)
         return acquired
     except Exception as e:
         log.error("queue_lock_acquire_failed owner=%s error=%s", owner, e)
@@ -41,6 +46,7 @@ def _release_queue_lock(owner: str) -> None:
         if current and current.decode('utf-8', errors='replace') == owner:
             client.delete(QUEUE_LOCK_KEY)
             client.delete(QUEUE_STOP_KEY)
+            client.delete(QUEUE_ACTIVE_PALLETS_KEY)
     except Exception as e:
         log.warning("queue_lock_release_failed owner=%s error=%s", owner, e)
 
@@ -52,6 +58,61 @@ def is_queue_locked() -> bool:
     except Exception as e:
         log.warning("queue_lock_status_failed error=%s", e)
         return False
+
+
+def arm_continuous_queue() -> None:
+    """Mantiene armado el modo continuo despues de un inicio manual."""
+    try:
+        _get_redis_lock_client().set(
+            QUEUE_CONTINUOUS_ARMED_KEY,
+            '1',
+            ex=QUEUE_LOCK_TTL_SECONDS,
+        )
+    except Exception as e:
+        log.warning("queue_continuous_arm_failed error=%s", e)
+
+
+def disarm_continuous_queue() -> None:
+    """Desactiva la reactivacion automatica al detener o limpiar la cola."""
+    try:
+        _get_redis_lock_client().delete(QUEUE_CONTINUOUS_ARMED_KEY)
+    except Exception as e:
+        log.warning("queue_continuous_disarm_failed error=%s", e)
+
+
+def is_continuous_queue_armed() -> bool:
+    """Indica si un cierre de pallet puede reactivar Celery automaticamente."""
+    try:
+        return bool(_get_redis_lock_client().exists(QUEUE_CONTINUOUS_ARMED_KEY))
+    except Exception as e:
+        log.warning("queue_continuous_arm_check_failed error=%s", e)
+        return False
+
+
+def _set_processing_pallet_ids(pallet_ids: list[int]) -> None:
+    """Guarda en Redis los pallets que pertenecen a la corrida Celery actual."""
+    try:
+        client = _get_redis_lock_client()
+        client.delete(QUEUE_ACTIVE_PALLETS_KEY)
+        if pallet_ids:
+            client.sadd(QUEUE_ACTIVE_PALLETS_KEY, *[str(pallet_id) for pallet_id in pallet_ids])
+            client.expire(QUEUE_ACTIVE_PALLETS_KEY, QUEUE_LOCK_TTL_SECONDS)
+    except Exception as e:
+        log.warning("queue_active_pallets_set_failed error=%s", e)
+
+
+def get_processing_pallet_ids() -> set[int]:
+    """Devuelve los IDs de pallets que el worker ya tomo para la corrida actual."""
+    try:
+        raw_ids = _get_redis_lock_client().smembers(QUEUE_ACTIVE_PALLETS_KEY)
+        return {
+            int(raw_id.decode('utf-8', errors='replace'))
+            for raw_id in raw_ids
+            if raw_id
+        }
+    except Exception as e:
+        log.warning("queue_active_pallets_read_failed error=%s", e)
+        return set()
 
 
 def request_queue_stop() -> bool:
@@ -90,8 +151,37 @@ def _stopped_result(pallets_processed: int, hus_processed: int, errors: int) -> 
     }
 
 
+def _collect_processable_pallet_ids(run_pdf: bool) -> tuple[list[int], set[int]]:
+    """Devuelve pallets cerrados/listos y separa cuáles solo esperan PDF."""
+    from queue_app.models import HUItem, Pallet
+    from queue_app.utils import pallets_ready_for_pdf_queryset
+
+    pending_pallet_ids = list(
+        Pallet.objects.filter(
+            status=Pallet.STATUS_READY,
+            items__status=HUItem.STATUS_PENDING,
+        )
+        .distinct()
+        .order_by('id')
+        .values_list('id', flat=True)
+    )
+    pdf_pallet_ids = set(
+        pallets_ready_for_pdf_queryset()
+        .order_by('id')
+        .values_list('id', flat=True)
+    ) if run_pdf else set()
+    return sorted(set(pending_pallet_ids) | pdf_pallet_ids), pdf_pallet_ids
+
+
 @shared_task(bind=True, max_retries=0)
-def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
+def process_queue_task(
+    self,
+    run_f1=True,
+    run_f2=True,
+    run_pdf=True,
+    continuous=False,
+    idle_timeout=None,
+):
     """
     Procesa toda la cola en orden deterministico:
     pallet -> todas sus HUs -> ZE16/PDF/impresion -> siguiente pallet.
@@ -114,130 +204,157 @@ def process_queue_task(self, run_f1=True, run_f2=True, run_pdf=True):
     pallets_processed = 0
     hus_processed = 0
     errors = 0
+    idle_deadline = None
+    idle_timeout = (
+        QUEUE_DEFAULT_IDLE_TIMEOUT_SECONDS
+        if continuous and idle_timeout is None
+        else float(idle_timeout or 0)
+    )
 
     try:
-        pending_pallet_ids = list(
-            Pallet.objects.filter(items__status=HUItem.STATUS_PENDING)
-            .distinct()
-            .order_by('id')
-            .values_list('id', flat=True)
-        )
-        pdf_pallet_ids = list(
-            pallets_ready_for_pdf_queryset()
-            .order_by('id')
-            .values_list('id', flat=True)
-        ) if run_pdf else []
-        pallet_ids = sorted(set(pending_pallet_ids) | set(pdf_pallet_ids))
-
-        if not pallet_ids:
-            result = {
-                'status': 'error',
-                'message': 'No pending HUs or PDF receipts to process.',
-                'pallets_processed': 0,
-                'hus_processed': 0,
-                'errors': 0,
-            }
-            emit_queue_done(result)
-            return result
-
-        log.info("process_queue_task start pallets=%s", pallet_ids)
-
-        for pallet_id in pallet_ids:
+        while True:
             if _stop_requested():
                 final = _stopped_result(pallets_processed, hus_processed, errors)
                 emit_queue_done(final)
                 return final
 
-            pallet = Pallet.objects.get(pk=pallet_id)
-            item_ids = list(
-                pallet.items.filter(status=HUItem.STATUS_PENDING)
-                .order_by('added_at', 'id')
-                .values_list('id', flat=True)
-            )
-
-            if not item_ids and pallet_id not in pdf_pallet_ids:
-                continue
-
-            log.info(
-                "process_queue_task pallet_start pallet=%s hu_count=%s",
-                pallet_id,
-                len(item_ids),
-            )
-
-            for item_id in item_ids:
-                if _stop_requested():
-                    final = _stopped_result(pallets_processed, hus_processed, errors)
-                    emit_queue_done(final)
-                    return final
-
-                item = _process_hu_item(
-                    item_id,
-                    run_f1=run_f1,
-                    run_f2=run_f2,
-                    run_pallet_boundary=False,
-                    emit_pallet_completion=False,
-                )
-                hus_processed += 1
-                if item and item.status in (HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND):
-                    errors += 1
-
-            pallet_errors = pallet.items.filter(
-                status__in=[HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
-            ).count()
-            if pallet_errors:
-                if run_pdf:
-                    result = {
-                        'status': 'error',
-                        'message': f'PDF omitido: {pallet_errors} HU(s) con error en pallet {pallet_id}',
-                        'marked': 0,
+            pallet_ids, pdf_ready_pallet_ids = _collect_processable_pallet_ids(run_pdf)
+            if not pallet_ids:
+                _set_processing_pallet_ids([])
+                if not continuous or idle_timeout <= 0 or (
+                    pallets_processed == 0 and hus_processed == 0 and errors == 0
+                ):
+                    final_status = 'ok' if errors == 0 else 'error'
+                    final_message = (
+                        'All pallets were processed and printed successfully'
+                        if errors == 0 and (pallets_processed or hus_processed)
+                        else (
+                            f'Queue finished with {errors} error(s)'
+                            if errors
+                            else 'No closed pallets ready to process.'
+                        )
+                    )
+                    final = {
+                        'status': final_status if (pallets_processed or hus_processed or errors) else 'error',
+                        'message': final_message,
+                        'pallets_processed': pallets_processed,
+                        'hus_processed': hus_processed,
+                        'errors': errors,
                     }
-                    _save_pdf_result(pallet, result, None)
-                    emit_receipt_done(pallet_id, result)
+                    emit_queue_done(final)
+                    log.info("process_queue_task done result=%s", final)
+                    return final
 
-                log.warning(
-                    "process_queue_task pallet_has_errors pallet=%s errors=%s",
-                    pallet_id,
-                    pallet_errors,
-                )
-                pallets_processed += 1
+                now = time.monotonic()
+                if idle_deadline is None:
+                    idle_deadline = now + idle_timeout
+                    log.info("process_queue_task idle_wait timeout=%ss", idle_timeout)
+
+                if now >= idle_deadline:
+                    final_status = 'ok' if errors == 0 else 'error'
+                    final_message = (
+                        'All pallets were processed and printed successfully'
+                        if errors == 0
+                        else f'Queue finished with {errors} error(s)'
+                    )
+                    final = {
+                        'status': final_status,
+                        'message': final_message,
+                        'pallets_processed': pallets_processed,
+                        'hus_processed': hus_processed,
+                        'errors': errors,
+                    }
+                    emit_queue_done(final)
+                    log.info("process_queue_task done result=%s", final)
+                    return final
+
+                time.sleep(QUEUE_IDLE_POLL_SECONDS)
                 continue
 
-            if run_pdf:
+            idle_deadline = None
+            _set_processing_pallet_ids(pallet_ids)
+            log.info("process_queue_task batch_start pallets=%s", pallet_ids)
+
+            for pallet_id in pallet_ids:
                 if _stop_requested():
                     final = _stopped_result(pallets_processed, hus_processed, errors)
                     emit_queue_done(final)
                     return final
 
-                result = _run_pallet_boundary(pallet_id, emit_completion=True)
-                if result and result.get('status') != 'ok':
-                    errors += 1
-                    log.error(
-                        "process_queue_task pallet_receipt_failed pallet=%s result=%s",
+                pallet = Pallet.objects.get(pk=pallet_id)
+                item_ids = list(
+                    pallet.items.filter(status=HUItem.STATUS_PENDING)
+                    .order_by('added_at', 'id')
+                    .values_list('id', flat=True)
+                )
+
+                if not item_ids:
+                    if pallet_id not in pdf_ready_pallet_ids:
+                        continue
+
+                log.info(
+                    "process_queue_task pallet_start pallet=%s hu_count=%s",
+                    pallet_id,
+                    len(item_ids),
+                )
+
+                for item_id in item_ids:
+                    if _stop_requested():
+                        final = _stopped_result(pallets_processed, hus_processed, errors)
+                        emit_queue_done(final)
+                        return final
+
+                    item = _process_hu_item(
+                        item_id,
+                        run_f1=run_f1,
+                        run_f2=run_f2,
+                        run_pallet_boundary=False,
+                        emit_pallet_completion=False,
+                    )
+                    hus_processed += 1
+                    if item and item.status in (HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND):
+                        errors += 1
+
+                pallet_errors = pallet.items.filter(
+                    status__in=[HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
+                ).count()
+                if pallet_errors:
+                    if run_pdf:
+                        result = {
+                            'status': 'error',
+                            'message': f'PDF omitido: {pallet_errors} HU(s) con error en pallet {pallet_id}',
+                            'marked': 0,
+                        }
+                        _save_pdf_result(pallet, result, None)
+                        emit_receipt_done(pallet_id, result)
+
+                    log.warning(
+                        "process_queue_task pallet_has_errors pallet=%s errors=%s",
                         pallet_id,
-                        result,
+                        pallet_errors,
                     )
                     pallets_processed += 1
                     continue
 
-            pallets_processed += 1
-            log.info("process_queue_task pallet_done pallet=%s", pallet_id)
+                if run_pdf:
+                    if _stop_requested():
+                        final = _stopped_result(pallets_processed, hus_processed, errors)
+                        emit_queue_done(final)
+                        return final
 
-        final_status = 'ok' if errors == 0 else 'error'
-        final_message = (
-            'All pallets were processed and printed successfully'
-            if errors == 0
-            else f'Queue finished with {errors} error(s)'
-        )
-        final = {
-            'status': final_status,
-            'message': final_message,
-            'pallets_processed': pallets_processed,
-            'hus_processed': hus_processed,
-            'errors': errors,
-        }
-        emit_queue_done(final)
-        log.info("process_queue_task done result=%s", final)
-        return final
+                    result = _run_pallet_boundary(pallet_id, emit_completion=True)
+                    if result and result.get('status') != 'ok':
+                        errors += 1
+                        log.error(
+                            "process_queue_task pallet_receipt_failed pallet=%s result=%s",
+                            pallet_id,
+                            result,
+                        )
+                        pallets_processed += 1
+                        continue
+
+                pallets_processed += 1
+                log.info("process_queue_task pallet_done pallet=%s", pallet_id)
 
     except Exception as e:
         log.exception("process_queue_task fatal_error")

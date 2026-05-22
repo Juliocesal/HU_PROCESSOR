@@ -61,6 +61,8 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'errors': event['errors'],
             'pending': event['pending'],
             'pallets': event['pallets'],
+            'pdf_pending': event.get('pdf_pending', 0),
+            'is_running': event.get('is_running', False),
         })
 
     async def receipt_done(self, event):
@@ -98,6 +100,29 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'type': 'pallet_created',
             'pallet_id': event['pallet_id'],
             'origin_code': event.get('origin_code', ''),
+            'stats': event.get('stats', {}),
+        })
+
+    async def hu_deleted(self, event):
+        await self._send_json({
+            'type': 'hu_deleted',
+            'hu_code': event['hu_code'],
+            'pallet_id': event['pallet_id'],
+            'pallet_deleted': event.get('pallet_deleted', False),
+            'stats': event.get('stats', {}),
+        })
+
+    async def pallet_deleted(self, event):
+        await self._send_json({
+            'type': 'pallet_deleted',
+            'pallet_id': event['pallet_id'],
+            'stats': event.get('stats', {}),
+        })
+
+    async def queue_cleared(self, event):
+        await self._send_json({
+            'type': 'queue_cleared',
+            'pallet_id': event['pallet_id'],
             'stats': event.get('stats', {}),
         })
 

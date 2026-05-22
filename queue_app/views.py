@@ -12,17 +12,29 @@ from django.shortcuts import render
 from core.hu_origins import detect_origin, is_pallet_separator
 
 from queue_app.models import HUItem, Pallet, ScanLog
-from queue_app.tasks import is_queue_locked, process_queue_task, request_queue_stop
+from queue_app.tasks import (
+    arm_continuous_queue,
+    disarm_continuous_queue,
+    get_processing_pallet_ids,
+    is_continuous_queue_armed,
+    is_queue_locked,
+    process_queue_task,
+    request_queue_stop,
+)
 from queue_app.utils import (
     calculate_queue_stats,
+    emit_hu_deleted,
     emit_item_update,
     emit_pallet_created,
+    emit_pallet_deleted,
+    emit_queue_cleared,
     emit_stats_update,
     pallets_ready_for_pdf_queryset,
 )
 
 log = logging.getLogger(__name__)
 
+QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS = 30
 HU_CODE_MIN_LENGTH = 10
 HU_CODE_MAX_LENGTH = 15
 REPROCESS_ERROR_STATUSES = [HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
@@ -72,12 +84,14 @@ def scan_hu(request):
     except (json.JSONDecodeError, ValueError, AttributeError):
         return JsonResponse({'ok': False, 'error': 'JSON inválido'}, status=400)
 
+    run_options = _run_options_from_payload(payload)
+
     if not raw:
         return JsonResponse({'ok': False, 'error': 'Código vacío'}, status=400)
 
     # ── Separador de pallet ───────────────────────────────────────────────────
     if is_pallet_separator(raw):
-        result = _new_pallet_logic()
+        result = _new_pallet_logic(**run_options)
         if result.get('ok'):
             result['stats'] = _get_stats()
         return JsonResponse(result)
@@ -112,6 +126,10 @@ def scan_hu(request):
         status      = HUItem.STATUS_PENDING,
     )
     ScanLog.objects.create(hu_code=raw, result='queued', message=f'Pallet {pallet.pk}')
+    auto_start_result = {}
+    if origin.auto_pallet:
+        _mark_pallet_ready(pallet)
+        auto_start_result = _auto_start_queue_after_pallet_close(**run_options)
 
     emit_item_update(item)
     emit_stats_update(item.pallet)
@@ -125,6 +143,7 @@ def scan_hu(request):
         'origin':    origin.label,
         'status':    item.status,
         'stats':     _get_stats(),
+        **auto_start_result,
     })
 
 
@@ -139,13 +158,14 @@ def new_pallet(request):
     Equivale a _new_pallet() en queue_window.py.
     Crea un nuevo pallet si el actual tiene HUs.
     """
-    result = _new_pallet_logic()
+    run_options = _run_options_from_payload(_parse_json_body(request))
+    result = _new_pallet_logic(**run_options)
     if result.get('ok'):
         result['stats'] = _get_stats()
     return JsonResponse(result)
 
 
-def _new_pallet_logic() -> dict:
+def _new_pallet_logic(run_f1=True, run_f2=True, run_pdf=True) -> dict:
     """Lógica compartida entre scan (separador) y botón nuevo pallet."""
     active = Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).order_by('-id').first()
 
@@ -158,7 +178,15 @@ def _new_pallet_logic() -> dict:
             'pallet_id': active.pk,
         }
 
+    if active:
+        _mark_pallet_ready(active)
+
     pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+    auto_start_result = _auto_start_queue_after_pallet_close(
+        run_f1=run_f1,
+        run_f2=run_f2,
+        run_pdf=run_pdf,
+    )
     emit_pallet_created(pallet)
     log.info("new_pallet created id=%s", pallet.pk)
 
@@ -166,6 +194,7 @@ def _new_pallet_logic() -> dict:
         'ok':        True,
         'pallet_id': pallet.pk,
         'message':   f'Nuevo pallet #{pallet.pk} iniciado.',
+        **auto_start_result,
     }
 
 
@@ -180,6 +209,10 @@ def delete_hu(request, hu_code):
     Equivale a _delete_hu_row() en queue_window.py.
     Solo permite borrar HUs en estado pending o error.
     """
+    queue_error = _queue_mutation_error('borrar HUs')
+    if queue_error:
+        return JsonResponse({'ok': False, 'error': queue_error, 'type': 'queue_running'}, status=409)
+
     try:
         item = HUItem.objects.get(hu_code=hu_code)
     except HUItem.DoesNotExist:
@@ -199,15 +232,19 @@ def delete_hu(request, hu_code):
     # Si el pallet quedó vacío y no es el único, borrarlo también
     if not pallet.items.exists() and Pallet.objects.count() > 1:
         pallet.delete()
+        stats = _get_stats()
+        emit_hu_deleted(hu_code, pallet.pk, pallet_deleted=True, stats=stats)
         emit_stats_update(None)
         return JsonResponse({
             'ok': True,
             'pallet_deleted': True,
-            'stats': _get_stats(),
+            'stats': stats,
         })
 
     for remaining_item in pallet.items.select_related('pallet'):
         emit_item_update(remaining_item)
+    stats = _get_stats()
+    emit_hu_deleted(hu_code, pallet.pk, stats=stats)
     emit_stats_update(pallet)
 
     return JsonResponse({
@@ -218,7 +255,7 @@ def delete_hu(request, hu_code):
         'pdf_status': pallet.pdf_status,
         'pdf_display': pallet.pdf_display,
         'pdf_msg': pallet.pdf_msg,
-        'stats': _get_stats(),
+        'stats': stats,
     })
 
 
@@ -239,7 +276,7 @@ def _recalculate_pallet_after_hu_delete(pallet: Pallet) -> bool:
         pallet.pdf_msg = ''
         pallet.pdf_ms = 0
         pallet.receipt_done_at = None
-        pallet.status = Pallet.STATUS_ACTIVE
+        pallet.status = Pallet.STATUS_READY
         pallet.save(update_fields=[
             'pdf_status',
             'pdf_msg',
@@ -259,6 +296,10 @@ def delete_pallet(request, pallet_id):
     Equivale a _delete_pallet() en queue_window.py.
     Borra el pallet y todos sus HUs si es seguro.
     """
+    queue_error = _queue_mutation_error('borrar pallets')
+    if queue_error:
+        return JsonResponse({'ok': False, 'error': queue_error, 'type': 'queue_running'}, status=409)
+
     try:
         pallet = Pallet.objects.get(pk=pallet_id)
     except Pallet.DoesNotExist:
@@ -272,9 +313,11 @@ def delete_pallet(request, pallet_id):
 
     count = pallet.items.count()
     pallet.delete()   # CASCADE elimina los HUItems
+    stats = _get_stats()
+    emit_pallet_deleted(pallet_id, stats=stats)
     log.info("delete_pallet id=%s hu_count=%s", pallet_id, count)
 
-    return JsonResponse({'ok': True, 'deleted_hus': count})
+    return JsonResponse({'ok': True, 'deleted_hus': count, 'stats': stats})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -298,14 +341,17 @@ def clear_queue(request):
             'error': 'Hay HUs procesando — detén el proceso antes de limpiar',
         }, status=409)
 
+    disarm_continuous_queue()
     deleted_items   = HUItem.objects.all().delete()
     deleted_pallets = Pallet.objects.all().delete()
     _reset_queue_sequences()
     # Crear pallet inicial vacío
     pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+    stats = _get_stats()
+    emit_queue_cleared(pallet.pk, stats=stats)
 
     log.info("clear_queue done reset_pallet_id=%s", pallet.pk)
-    return JsonResponse({'ok': True, 'pallet_id': pallet.pk})
+    return JsonResponse({'ok': True, 'pallet_id': pallet.pk, 'stats': stats})
 
 
 def _reset_queue_sequences():
@@ -324,10 +370,14 @@ def _reset_queue_sequences():
             cursor.execute(sql)
 
 
-def _sap_session_error_response():
+def _ensure_sap_session():
     from core.sap_client import SAPClient
 
-    connected, user, message = SAPClient.ensure_session_ready()
+    return SAPClient.ensure_session_ready()
+
+
+def _sap_session_error_response():
+    connected, user, message = _ensure_sap_session()
     if connected:
         return None
 
@@ -337,6 +387,113 @@ def _sap_session_error_response():
         'sap_connected': False,
         'sap_user': user,
     }, status=409)
+
+
+def _parse_json_body(request) -> dict:
+    """Lee JSON opcional sin fallar en endpoints que tambien aceptan body vacio."""
+    if not request.body:
+        return {}
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return {}
+
+    return payload if isinstance(payload, dict) else {}
+
+
+def _coerce_bool(value, default=True) -> bool:
+    if isinstance(value, bool):
+        return value
+
+    if value is None:
+        return default
+
+    if isinstance(value, str):
+        return value.strip().lower() not in {'0', 'false', 'no', 'off'}
+
+    return bool(value)
+
+
+def _run_options_from_payload(payload: dict) -> dict:
+    """Opciones F1/F2/PDF que deben respetarse si se reactiva Celery."""
+    return {
+        'run_f1': _coerce_bool(payload.get('run_f1'), True),
+        'run_f2': _coerce_bool(payload.get('run_f2'), True),
+        'run_pdf': _coerce_bool(payload.get('run_pdf'), True),
+    }
+
+
+def _has_ready_queue_work(run_pdf=True) -> bool:
+    has_pending = HUItem.objects.filter(
+        status=HUItem.STATUS_PENDING,
+        pallet__status=Pallet.STATUS_READY,
+    ).exists()
+    return has_pending or (run_pdf and pallets_ready_for_pdf_queryset().exists())
+
+
+def _dispatch_continuous_queue(run_f1=True, run_f2=True, run_pdf=True) -> None:
+    process_queue_task.delay(
+        run_f1=run_f1,
+        run_f2=run_f2,
+        run_pdf=run_pdf,
+        continuous=True,
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+    )
+    arm_continuous_queue()
+
+
+def _auto_start_queue_after_pallet_close(run_f1=True, run_f2=True, run_pdf=True) -> dict:
+    """
+    Reactiva Celery solo cuando el modo continuo ya fue armado manualmente.
+
+    Esto evita arrancar SAP por accidente durante la captura inicial, pero permite
+    que un pallet cerrado despues del timeout reactive la cola sin otro click.
+    """
+    if not is_continuous_queue_armed():
+        return {'auto_started': False, 'auto_start_reason': 'not_armed'}
+
+    if is_queue_locked() or HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
+        return {'auto_started': False, 'auto_start_reason': 'already_running'}
+
+    if not _has_ready_queue_work(run_pdf=run_pdf):
+        return {'auto_started': False, 'auto_start_reason': 'no_ready_work'}
+
+    connected, user, message = _ensure_sap_session()
+    if not connected:
+        return {
+            'auto_started': False,
+            'auto_start_reason': 'sap_unavailable',
+            'auto_start_error': message,
+            'sap_user': user,
+        }
+
+    try:
+        _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+    except Exception as e:
+        log.exception("auto_start_queue_after_pallet_close_failed")
+        return {
+            'auto_started': False,
+            'auto_start_reason': 'dispatch_failed',
+            'auto_start_error': f'No se pudo iniciar Celery/Redis: {e}',
+        }
+
+    emit_stats_update(None)
+    return {'auto_started': True, 'auto_start_reason': 'pallet_closed'}
+
+
+def _queue_mutation_error(action: str) -> str:
+    """
+    Protege la cola contra cambios destructivos mientras Celery/SAP procesa.
+
+    El escaneo sigue permitido para preparar el siguiente lote. Esta validación
+    evita desincronización si otro navegador o una llamada directa intenta
+    borrar datos mientras existe lock Redis o HUs en processing.
+    """
+    if is_queue_locked() or HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
+        return f'No se puede {action} mientras la cola está en procesamiento.'
+
+    return ''
 
 
 
@@ -404,7 +561,7 @@ def reprocess_queue(request):
         emit_item_update(item)
 
     Pallet.objects.filter(pk__in=affected_pallet_ids).update(
-        status      = Pallet.STATUS_ACTIVE,
+        status      = Pallet.STATUS_READY,
         f2_done_at  = None,
         receipt_done_at = None,
         pdf_status = '',
@@ -414,7 +571,7 @@ def reprocess_queue(request):
 
     emit_stats_update(None)
     try:
-        process_queue_task.delay()
+        _dispatch_continuous_queue()
     except Exception as e:
         log.exception("reprocess_queue celery_dispatch_failed")
         return JsonResponse({
@@ -437,27 +594,48 @@ def start_processing(request):
     Inicia el procesamiento de todos los HUs pendientes.
     Se llama desde el botón "Iniciar" en el frontend.
     """
-    pending_items = HUItem.objects.filter(status=HUItem.STATUS_PENDING)
-    count = pending_items.count()
-
-    if count == 0:
-        return JsonResponse({
-            'ok':    False,
-            'error': 'No hay HUs pendientes para procesar',
-        }, status=400)
-
     if is_queue_locked():
         return JsonResponse({
             'ok': False,
             'error': 'Ya hay una tarea de procesamiento activa',
         }, status=409)
 
+    active_has_items = Pallet.objects.filter(
+        status=Pallet.STATUS_ACTIVE,
+        items__isnull=False,
+    ).exists()
+    pending_candidates = HUItem.objects.filter(
+        status=HUItem.STATUS_PENDING,
+        pallet__status__in=[Pallet.STATUS_ACTIVE, Pallet.STATUS_READY],
+    ).count()
+    pdf_count = pallets_ready_for_pdf_queryset().count()
+
+    if pending_candidates == 0 and pdf_count == 0 and not active_has_items:
+        return JsonResponse({
+            'ok':    False,
+            'error': 'No hay HUs pendientes ni PDFs por imprimir',
+        }, status=400)
+
     sap_error = _sap_session_error_response()
     if sap_error:
         return sap_error
 
+    _close_active_pallet_for_processing()
+    pending_items = HUItem.objects.filter(
+        status=HUItem.STATUS_PENDING,
+        pallet__status=Pallet.STATUS_READY,
+    )
+    count = pending_items.count()
+    pdf_count = pallets_ready_for_pdf_queryset().count()
+
+    if count == 0 and pdf_count == 0:
+        return JsonResponse({
+            'ok':    False,
+            'error': 'No hay HUs pendientes ni PDFs por imprimir',
+        }, status=400)
+
     try:
-        process_queue_task.delay()
+        _dispatch_continuous_queue()
     except Exception as e:
         log.exception("start_processing celery_dispatch_failed")
         return JsonResponse({
@@ -469,6 +647,7 @@ def start_processing(request):
     return JsonResponse({
         'ok':    True,
         'count': count,
+        'pdf_count': pdf_count,
         'message': f'Iniciando procesamiento de {count} HU{"s" if count != 1 else ""}...',
     })
 
@@ -582,9 +761,17 @@ def _get_or_create_active_pallet(hu_code: str, origin) -> Pallet:
     Decide si el HU va al pallet activo o crea uno nuevo.
     """
     active = Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).order_by('-id').first()
+    queue_locked = is_queue_locked()
+    processing_pallet_ids = get_processing_pallet_ids() if queue_locked else set()
 
     # Sin pallets — crear el primero
     if not active:
+        return Pallet.objects.create(
+            status=Pallet.STATUS_ACTIVE,
+            origin_code=origin.code,
+        )
+
+    if active.pk in processing_pallet_ids:
         return Pallet.objects.create(
             status=Pallet.STATUS_ACTIVE,
             origin_code=origin.code,
@@ -598,6 +785,7 @@ def _get_or_create_active_pallet(hu_code: str, origin) -> Pallet:
 
     # Origen distinto o auto_pallet → pallet nuevo
     if active.origin_code != origin.code or origin.auto_pallet:
+        _mark_pallet_ready(active)
         return Pallet.objects.create(
             status=Pallet.STATUS_ACTIVE,
             origin_code=origin.code,
@@ -605,6 +793,21 @@ def _get_or_create_active_pallet(hu_code: str, origin) -> Pallet:
 
 
     return active
+
+
+def _mark_pallet_ready(pallet: Pallet) -> None:
+    """Cierra un pallet con HUs para que Celery pueda tomarlo."""
+    if pallet.status == Pallet.STATUS_ACTIVE and pallet.items.exists():
+        pallet.status = Pallet.STATUS_READY
+        pallet.save(update_fields=['status'])
+
+
+def _close_active_pallet_for_processing() -> None:
+    """Cierra el pallet abierto actual cuando el usuario inicia el proceso."""
+    active = Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).order_by('-id').first()
+    if active and active.items.exists():
+        _mark_pallet_ready(active)
+
 
 def iniciar_sap():
     """
@@ -642,6 +845,7 @@ def detener_queue(request):
     log.info("detener_queue stop_requested=%s", stopped)
     if not stopped:
         return JsonResponse({'ok': False, 'error': 'No hay proceso activo'}, status=409)
+    disarm_continuous_queue()
     return JsonResponse({'ok': True, 'message': 'Detencion solicitada. Esperando cierre seguro.'})
 
 
@@ -653,25 +857,42 @@ def procesar_pendientes(request):
     run_f2 = body.get('run_f2', True)
     run_pdf = body.get('run_pdf', True)
 
-    items = HUItem.objects.filter(status=HUItem.STATUS_PENDING)
-    count = items.count()
-    pdf_count = pallets_ready_for_pdf_queryset().count() if run_pdf else 0
-
-    if not count and not pdf_count:
-        return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes ni PDFs por imprimir'})
-
     if HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
         return JsonResponse({'ok': False, 'error': 'Ya hay HUs procesando'}, status=409)
 
     if is_queue_locked():
         return JsonResponse({'ok': False, 'error': 'Ya hay una tarea de procesamiento activa'}, status=409)
 
+    active_has_items = Pallet.objects.filter(
+        status=Pallet.STATUS_ACTIVE,
+        items__isnull=False,
+    ).exists()
+    pending_candidates = HUItem.objects.filter(
+        status=HUItem.STATUS_PENDING,
+        pallet__status__in=[Pallet.STATUS_ACTIVE, Pallet.STATUS_READY],
+    ).count()
+    pdf_count = pallets_ready_for_pdf_queryset().count() if run_pdf else 0
+
+    if not pending_candidates and not pdf_count and not active_has_items:
+        return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes ni PDFs por imprimir'})
+
     sap_error = _sap_session_error_response()
     if sap_error:
         return sap_error
 
+    _close_active_pallet_for_processing()
+    items = HUItem.objects.filter(
+        status=HUItem.STATUS_PENDING,
+        pallet__status=Pallet.STATUS_READY,
+    )
+    count = items.count()
+    pdf_count = pallets_ready_for_pdf_queryset().count() if run_pdf else 0
+
+    if not count and not pdf_count:
+        return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes ni PDFs por imprimir'})
+
     try:
-        process_queue_task.delay(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+        _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
     except Exception as e:
         log.exception("procesar_pendientes celery_dispatch_failed")
         return JsonResponse({
