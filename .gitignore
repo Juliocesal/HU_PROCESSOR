@@ -1,1 +1,19 @@
+.env
+venv/
+__pycache__/
+*.pyc
+*.pyo
 
+# Bases SQLite locales y archivos temporales; la BD se migrará a SQL Server.
+db.sqlite3
+db_dev.sqlite3
+*.sqlite3-journal*
+*.sqlite3-shm
+*.sqlite3-wal
+sqlite-backup-*/
+sqlite-repair-*/
+sqlite-manual-migration-*/
+sqlite-wal-repair-*/
+
+logs/
+staticfiles/
