@@ -1,4 +1,4 @@
-import os
+﻿import os
 import time
 import logging
 import pythoncom
@@ -59,6 +59,17 @@ ALV_ERROR_KEYWORDS = [
     "missing",
 ]
 
+SAP_DISCONNECTED_KEYWORDS = [
+    "connection reset",
+    "connection to partner",
+    "connection broken",
+    "wsaeconnreset",
+    "partner",
+    "broken",
+    "desconect",
+    "conexi",
+]
+
 
 # -- TypedDicts para retornos estructurados ------------------------------------
 
@@ -116,7 +127,10 @@ class SAPClient:
             for i_sess in range(int(conn.Children.Count)):
                 sess = conn.Children(i_sess)
                 try:
-                    if sess.Info.SystemName.upper().strip() == sistema.upper():
+                    if (
+                        sess.Info.SystemName.upper().strip() == sistema.upper()
+                        and self._session_is_alive(sess)
+                    ):
                         self._session = sess
                         self._usuario = sess.Info.User
                         log.info("sap_connected system=%s user=%s", sistema, self._usuario)
@@ -143,6 +157,43 @@ class SAPClient:
             return session.findById(element_id)
         except Exception:
             return None
+
+    @staticmethod
+    def _window_text(session, window_id: str) -> str:
+        try:
+            window = session.findById(window_id)
+            return str(getattr(window, 'Text', '') or '')
+        except Exception:
+            return ''
+
+    @classmethod
+    def _session_is_alive(cls, session) -> bool:
+        """
+        Fuerza una lectura activa de SAP GUI.
+
+        SAP puede conservar objetos COM aunque la conexion LUP ya este rota; al
+        leer ventana/barra de estado detectamos el popup "connection reset" antes
+        de mandar trabajo a Celery.
+        """
+        try:
+            _ = session.Info.SystemName
+            _ = session.Info.User
+            active_title = str(getattr(session.ActiveWindow, 'Text', '') or '')
+            wnd0_title = cls._window_text(session, "wnd[0]")
+            wnd1_title = cls._window_text(session, "wnd[1]")
+            sbar = cls._find_on_session(session, "wnd[0]/sbar")
+            sbar_text = str(getattr(sbar, 'Text', '') or '') if sbar else ''
+            combined = " ".join([active_title, wnd0_title, wnd1_title, sbar_text]).lower()
+
+            if any(keyword in combined for keyword in SAP_DISCONNECTED_KEYWORDS):
+                log.warning("sap_session_disconnected_dialog text=%s", combined[:300])
+                return False
+
+            _ = session.Busy
+            return True
+        except Exception as e:
+            log.warning("sap_session_not_alive error=%s", e)
+            return False
 
     @staticmethod
     def _handle_multiple_logon(session) -> None:
@@ -632,9 +683,13 @@ class SAPClient:
                     for i_sess in range(int(conn.Children.Count)):
                         sess = conn.Children(i_sess)
                         try:
-                            if sess.Info.SystemName.upper().strip() == sistema.upper():
+                            if (
+                                sess.Info.SystemName.upper().strip() == sistema.upper()
+                                and SAPClient._session_is_alive(sess)
+                            ):
                                 return True, sess.Info.User
-                        except Exception:
+                        except Exception as e:
+                            log.debug("sap_check_session_skip error=%s", e)
                             continue
             finally:
                 pythoncom.CoUninitialize()

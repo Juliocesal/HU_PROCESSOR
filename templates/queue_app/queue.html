@@ -224,7 +224,12 @@
         </thead>
         <tbody id="queue-tbody">
           {% for pallet in pallets %}
-            <tr class="pallet-sep" data-pallet-id="{{ pallet.id }}">
+            <tr class="pallet-sep"
+                data-pallet-id="{{ pallet.id }}"
+                data-origin="{{ pallet.origin_code|default:'Sin origen' }}"
+                data-processing-time="{{ pallet.processing_time_display }}"
+                data-processing-started-at="{{ pallet.processing_started_at|date:'c' }}"
+                data-receipt-done-at="{{ pallet.receipt_done_at|date:'c' }}">
               <td colspan="6" id="sep-{{ pallet.id }}">
                 <div class="pallet-header">
                   <span class="pallet-title">Pallet P{{ pallet.id|stringformat:"02d" }}</span>
@@ -233,7 +238,7 @@
                     {{ pallet.items.count }} HU{% if pallet.items.count != 1 %}s{% endif %}
                   </span>
                   {% if pallet.processing_time_display %}
-                    <span class="pallet-time">
+                    <span class="pallet-time" data-pallet-timer-label="{{ pallet.id }}">
                       {{ pallet.processing_time_display }}
                     </span>
                   {% endif %}

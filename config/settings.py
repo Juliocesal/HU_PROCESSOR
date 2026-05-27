@@ -55,7 +55,25 @@ TEMPLATES = [{
 # Punto de entrada Channels para trafico HTTP y WebSocket.
 ASGI_APPLICATION = 'config.asgi.application'
 
-# SQLite es el valor local por defecto. Sobrescribe este bloque en produccion.
+# Migracion planificada a SQL Server:
+# 1. El DBA debe crear una base vacia para NEXHUS y un usuario con permisos de
+#    lectura/escritura sobre las tablas que Django creara con `manage.py migrate`.
+# 2. El servidor Windows donde corra Django/Celery necesita el driver ODBC de
+#    SQL Server instalado. Recomendado: "ODBC Driver 18 for SQL Server".
+# 3. Antes de cambiar este bloque, instalar en el entorno Python:
+#    `mssql-django` y `pyodbc`, y agregarlos a requirements.txt.
+# 4. Las variables esperadas para produccion seran:
+#    DB_ENGINE=mssql
+#    DB_NAME=<base_sql_server>
+#    DB_USER=<usuario_sql_server>
+#    DB_PASSWORD=<password_sql_server>
+#    DB_HOST=<host_o_ip_sql_server>
+#    DB_PORT=1433
+#    DB_DRIVER=ODBC Driver 18 for SQL Server
+# 5. Despues de configurar SQL Server, ejecutar `manage.py migrate` para crear
+#    estructura y migrar los datos actuales desde db.sqlite3 con un proceso
+#    controlado. No borrar db.sqlite3 hasta validar conteos de pallets, HUs y logs.
+# SQLite queda como valor local por defecto mientras se completa la migracion.
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',

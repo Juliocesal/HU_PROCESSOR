@@ -12,7 +12,7 @@ QUEUE_STOP_KEY = 'nexhus:queue_stop_requested'
 QUEUE_ACTIVE_PALLETS_KEY = 'nexhus:queue_active_pallets'
 QUEUE_CONTINUOUS_ARMED_KEY = 'nexhus:queue_continuous_armed'
 QUEUE_LOCK_TTL_SECONDS = 60 * 60 * 6
-QUEUE_DEFAULT_IDLE_TIMEOUT_SECONDS = 30
+QUEUE_DEFAULT_IDLE_TIMEOUT_SECONDS = 3
 QUEUE_IDLE_POLL_SECONDS = 2
 
 
@@ -173,6 +173,22 @@ def _collect_processable_pallet_ids(run_pdf: bool) -> tuple[list[int], set[int]]
     return sorted(set(pending_pallet_ids) | pdf_pallet_ids), pdf_pallet_ids
 
 
+def _mark_pallet_processing_started(pallet) -> None:
+    """Marca el inicio del ciclo F1->PDF la primera vez que Celery toma el pallet."""
+    if pallet.processing_started_at:
+        return
+
+    pallet.processing_started_at = timezone.now()
+    pallet.save(update_fields=['processing_started_at'])
+
+
+def _calculate_elapsed_ms(started_at) -> int:
+    """Convierte un timestamp de inicio en milisegundos transcurridos."""
+    if not started_at:
+        return 0
+    return max(0, int((timezone.now() - started_at).total_seconds() * 1000))
+
+
 @shared_task(bind=True, max_retries=0)
 def process_queue_task(
     self,
@@ -291,6 +307,8 @@ def process_queue_task(
                 if not item_ids:
                     if pallet_id not in pdf_ready_pallet_ids:
                         continue
+                else:
+                    _mark_pallet_processing_started(pallet)
 
                 log.info(
                     "process_queue_task pallet_start pallet=%s hu_count=%s",
@@ -422,7 +440,19 @@ def _process_hu_item(
         origin = detect_origin(item.hu_code)
 
         item.status = HUItem.STATUS_PROCESSING
-        item.save(update_fields=['status'])
+        item.processing_started_at = timezone.now()
+        item.error_msg = ''
+        item.pdf_status = ''
+        item.pdf_msg = ''
+        item.pdf_ms = 0
+        item.save(update_fields=[
+            'status',
+            'processing_started_at',
+            'error_msg',
+            'pdf_status',
+            'pdf_msg',
+            'pdf_ms',
+        ])
         emit_item_update(item)
         emit_stats_update(item.pallet)
 
@@ -445,7 +475,16 @@ def _process_hu_item(
                     else HUItem.STATUS_ERROR
                 )
                 item.processed_at = timezone.now()
-                item.save(update_fields=['status', 'phase1_msg', 'f1_done_at', 'processed_at'])
+                item.processing_ms = _calculate_elapsed_ms(item.processing_started_at)
+                item.error_msg = res1['message']
+                item.save(update_fields=[
+                    'status',
+                    'phase1_msg',
+                    'f1_done_at',
+                    'processed_at',
+                    'processing_ms',
+                    'error_msg',
+                ])
                 emit_item_update(item)
                 emit_stats_update(item.pallet)
                 log.warning(
@@ -481,17 +520,25 @@ def _process_hu_item(
                 )
             else:
                 item.status = HUItem.STATUS_ERROR
+                item.error_msg = res2['message']
         else:
             item.status = HUItem.STATUS_OK
 
         item.processed_at = timezone.now()
+        item.processing_ms = _calculate_elapsed_ms(item.processing_started_at)
+        if item.status in (HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE):
+            item.error_msg = ''
+        elif not item.error_msg:
+            item.error_msg = item.phase2_msg or item.phase1_msg or 'Error de procesamiento'
         item.save(update_fields=[
             'status',
             'phase1_msg',
             'phase2_msg',
             'phase2_ms',
+            'error_msg',
             'f1_done_at',
             'processed_at',
+            'processing_ms',
         ])
         emit_item_update(item)
         emit_stats_update(item.pallet)
@@ -696,14 +743,29 @@ def _save_pdf_result(pallet, result: dict, started_at: float | None) -> dict:
         completed_at = timezone.now()
         pallet.receipt_done_at = completed_at
         update_fields.append('receipt_done_at')
-        pallet.items.filter(
-            status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE]
-        ).update(receipt_done_at=completed_at)
+    else:
+        completed_at = None
+
+    item_updates = {
+        'pdf_status': pallet.pdf_status,
+        'pdf_msg': pallet.pdf_msg,
+        'pdf_ms': pdf_ms,
+    }
+    if completed_at:
+        item_updates['receipt_done_at'] = completed_at
+    pallet.items.all().update(**item_updates)
 
     pallet.save(update_fields=update_fields)
     result['pdf_status'] = pallet.pdf_status
     result['pdf_display'] = pallet.pdf_display
     result['pdf_msg'] = pallet.pdf_msg
+    result['processing_time_display'] = pallet.processing_time_display
+    result['processing_started_at'] = (
+        pallet.processing_started_at.isoformat()
+        if pallet.processing_started_at
+        else ''
+    )
+    result['receipt_done_at'] = pallet.receipt_done_at.isoformat() if pallet.receipt_done_at else ''
     return result
 
 
@@ -713,10 +775,21 @@ def _mark_item_error(hu_item_id: int, message: str):
 
     try:
         item = HUItem.objects.select_related('pallet').get(pk=hu_item_id)
+        if not item.processing_started_at:
+            item.processing_started_at = timezone.now()
         item.status = HUItem.STATUS_ERROR
         item.phase1_msg = message
+        item.error_msg = message
         item.processed_at = timezone.now()
-        item.save(update_fields=['status', 'phase1_msg', 'processed_at'])
+        item.processing_ms = _calculate_elapsed_ms(item.processing_started_at)
+        item.save(update_fields=[
+            'status',
+            'phase1_msg',
+            'error_msg',
+            'processing_started_at',
+            'processed_at',
+            'processing_ms',
+        ])
         emit_item_update(item)
         emit_stats_update(item.pallet)
         return item

@@ -24,6 +24,8 @@
   let isRunning   = false;
   let flashTimer  = null;
   let palletSepRows = {}; // pallet_id -> tr element
+  const palletTimers = new Map();
+  let palletTimerFrame = null;
   const _visibleSeps = new Set();
   let _stickyObserver = null;
   const tableWrap = document.getElementById('table-wrap');
@@ -82,7 +84,7 @@
     const origin = originCode || 'Sin origen';
     const huLabel = `${count} HU${count !== 1 ? 's' : ''}`;
     const timeHTML = processingTime
-      ? `<span class="pallet-time">${processingTime}</span>`
+      ? `<span class="pallet-time" data-pallet-timer-label="${palletId}">${processingTime}</span>`
       : '';
 
     return `
@@ -93,6 +95,69 @@
         ${timeHTML}
       </div>
     `;
+  }
+
+  function parseServerDate(value) {
+    if (!value) return null;
+    const normalized = String(value).includes('T')
+      ? String(value)
+      : String(value).replace(' ', 'T');
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function formatElapsedFromMs(ms) {
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    if (totalSeconds < 60) return `${totalSeconds}s`;
+
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return seconds === 0 ? `${minutes}min` : `${minutes}min ${seconds}s`;
+  }
+
+  function ensurePalletTimerLoop() {
+    if (palletTimerFrame) return;
+
+    const tick = () => {
+      palletTimerFrame = null;
+      const now = Date.now();
+
+      palletTimers.forEach((timer, palletId) => {
+        const endMs = timer.endMs || now;
+        const text = formatElapsedFromMs(endMs - timer.startMs);
+        if (text === timer.lastText) return;
+
+        timer.lastText = text;
+        document
+          .querySelectorAll(`[data-pallet-timer-label="${palletId}"]`)
+          .forEach(el => { el.textContent = text; });
+
+        const sep = palletSepRows[palletId] ||
+          document.querySelector(`tr.pallet-sep[data-pallet-id="${palletId}"]`);
+        if (sep) sep.dataset.processingTime = text;
+      });
+
+      if ([...palletTimers.values()].some(timer => !timer.endMs)) {
+        palletTimerFrame = requestAnimationFrame(tick);
+      }
+    };
+
+    palletTimerFrame = requestAnimationFrame(tick);
+  }
+
+  function syncPalletTimer(palletId, startedAt, receiptDoneAt, displayValue = '') {
+    const start = parseServerDate(startedAt);
+    if (!start) return;
+
+    const done = parseServerDate(receiptDoneAt);
+    palletTimers.set(String(palletId), {
+      startMs: start.getTime(),
+      endMs: done ? done.getTime() : null,
+      lastText: '',
+    });
+
+    setPalletProcessingTime(palletId, displayValue || formatElapsedFromMs((done || new Date()) - start));
+    ensurePalletTimerLoop();
   }
 
   // -- Reloj ---------------------------------------------------------------------
@@ -414,8 +479,22 @@
       existing.cells[5].innerHTML = pdfCellHTML(item.status, item.pdf_status, item.pdf_display, item.pdf_msg);
     }
 
+    syncPalletTimer(
+      item.pallet_id,
+      item.processing_started_at,
+      item.receipt_done_at,
+      item.processing_time_display
+    );
     updatePalletSep(item.pallet_id);
     refreshIcons();
+  }
+
+  function setPalletProcessingTime(palletId, processingTime) {
+    if (!processingTime) return;
+
+    const sep = palletSepRows[palletId] ||
+      document.querySelector(`tr.pallet-sep[data-pallet-id="${palletId}"]`);
+    if (sep) sep.dataset.processingTime = processingTime;
   }
 
   function updatePalletPdfCells(msg) {
@@ -429,6 +508,15 @@
         msg.pdf_msg || msg.message || ''
       );
     });
+    if (msg.processing_time_display || msg.processing_started_at) {
+      syncPalletTimer(
+        msg.pallet_id,
+        msg.processing_started_at,
+        msg.receipt_done_at,
+        msg.processing_time_display
+      );
+      updatePalletSep(msg.pallet_id);
+    }
     refreshIcons();
   }
 
@@ -439,6 +527,7 @@
     sep.className = 'pallet-sep';
     sep.dataset.palletId = palletId;
     sep.dataset.origin = originCode || 'Sin origen';
+    sep.dataset.processingTime = '';
     sep.innerHTML = `<td colspan="${QUEUE_TABLE_COLSPAN}" id="sep-${palletId}">${palletHeaderHTML(palletId, originCode || 'Sin origen', 0)}</td>`;
     palletSepRows[palletId] = sep;
     tbody.appendChild(sep);
@@ -465,7 +554,8 @@
       sep.dataset.origin = originCode;
     }
 
-    td.innerHTML = palletHeaderHTML(palletId, originCode, count);
+    const processingTime = sep.dataset.processingTime || '';
+    td.innerHTML = palletHeaderHTML(palletId, originCode, count, processingTime);
     refreshIcons();
   }
 
@@ -500,7 +590,8 @@
       const rows = document.querySelectorAll(`tr[data-pallet="${lastHiddenSep.pid}"]`);
       const count = rows.length;
       const originCode = lastHiddenSep.sep.dataset.origin || 'Sin origen';
-      stickyPallet.innerHTML = palletHeaderHTML(lastHiddenSep.pid, originCode, count);
+      const processingTime = lastHiddenSep.sep.dataset.processingTime || '';
+      stickyPallet.innerHTML = palletHeaderHTML(lastHiddenSep.pid, originCode, count, processingTime);
       stickyPallet.classList.add('visible');
       refreshIcons();
     } else {
@@ -1069,7 +1160,9 @@
       document.getElementById('conn-label').textContent = data.connected
         ? `CONECTADO${data.user ? ' - ' + data.user : ''}`
         : 'Sin sesión SAP';
+      return Boolean(data.connected);
     } catch { /* silencioso */ }
+    return false;
   }
   setInterval(checkSAP, 5000);
 
@@ -1332,7 +1425,8 @@
     const count = rows.length;
     const sep = palletSepRows[pid];
     const originCode = sep ? (sep.dataset.origin || 'Sin origen') : 'Sin origen';
-    sticky.innerHTML = palletHeaderHTML(pid, originCode, count);
+    const processingTime = sep ? (sep.dataset.processingTime || '') : '';
+    sticky.innerHTML = palletHeaderHTML(pid, originCode, count, processingTime);
     sticky.classList.add('visible');
     refreshIcons();
   }
@@ -1352,7 +1446,15 @@
   function initializeQueueUI() {
     document.querySelectorAll('tr.pallet-sep').forEach(sep => {
       const pid = parseInt(sep.dataset.palletId);
-      if (pid) palletSepRows[pid] = sep;
+      if (pid) {
+        palletSepRows[pid] = sep;
+        syncPalletTimer(
+          pid,
+          sep.dataset.processingStartedAt,
+          sep.dataset.receiptDoneAt,
+          sep.dataset.processingTime || ''
+        );
+      }
     });
 
     initializePhaseToggleCards();

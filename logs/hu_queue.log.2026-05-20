@@ -1,0 +1,641 @@
+06:09:08 [INFO] queue_app.consumers — ws_connected channel=specific.18522dc801ad4b9d93b67bc4b30f8bfa!a9600e4790d34ab59ba7e1ed9903ac71
+06:18:36 [INFO] daphne.server — Killed 1 pending application instances
+06:18:41 [INFO] daphne.cli — Starting server at tcp:port=8000:interface=127.0.0.1
+06:18:41 [INFO] daphne.server — HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+06:18:41 [INFO] daphne.server — Configuring endpoint tcp:port=8000:interface=127.0.0.1
+06:18:41 [INFO] daphne.server — Listening on TCP address 127.0.0.1:8000
+06:18:42 [INFO] queue_app.consumers — ws_connected channel=specific.19bc186efd064295b34ff495b184d19b!4cd51b3029ef48099f980a95ad5a9548
+06:18:47 [INFO] queue_app.consumers — ws_disconnected channel=specific.19bc186efd064295b34ff495b184d19b!4cd51b3029ef48099f980a95ad5a9548 code=1001
+06:18:47 [INFO] queue_app.consumers — ws_connected channel=specific.19bc186efd064295b34ff495b184d19b!b18639c016c347b5a48bed3cdd44827d
+06:21:58 [INFO] queue_app.views — clear_queue done reset_pallet_id=1
+06:42:28 [WARNING] django.request — Conflict: /cola/limpiar/
+06:42:28 [WARNING] django.request — Conflict: /cola/limpiar/
+06:42:28 [INFO] queue_app.views — clear_queue done reset_pallet_id=1
+06:42:28 [INFO] queue_app.views — new_pallet created id=2
+06:42:28 [INFO] queue_app.views — reprocess_queue mode=all count=3
+06:42:28 [INFO] queue_app.views — reprocess_queue mode=errors count=2
+06:42:28 [WARNING] django.request — Conflict: /cola/reprocesar/
+06:42:28 [INFO] queue_app.tasks — process_queue_task start pallets=[1, 2]
+06:42:28 [INFO] queue_app.tasks — process_queue_task pallet_start pallet=1 hu_count=1
+06:42:28 [WARNING] queue_app.tasks — process_queue_task pallet_has_errors pallet=1 errors=1
+06:42:28 [INFO] queue_app.tasks — process_queue_task pallet_start pallet=2 hu_count=1
+06:42:28 [INFO] queue_app.tasks — process_queue_task pallet_done pallet=2
+06:42:28 [INFO] queue_app.tasks — process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+06:42:28 [INFO] queue_app.tasks — process_queue_task start pallets=[1, 2]
+06:42:28 [INFO] queue_app.tasks — process_queue_task pallet_start pallet=1 hu_count=2
+06:42:28 [INFO] queue_app.tasks — process_queue_task pallet_done pallet=1
+06:42:28 [INFO] queue_app.tasks — process_queue_task pallet_start pallet=2 hu_count=1
+06:42:28 [INFO] queue_app.tasks — process_queue_task pallet_done pallet=2
+06:42:28 [INFO] queue_app.tasks — process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+06:42:28 [WARNING] django.request — Conflict: /api/procesar/
+06:42:28 [WARNING] django.request — Conflict: /api/procesar/
+06:42:28 [INFO] queue_app.views — detener_queue stop_requested=True
+06:43:30 [WARNING] django.request — Conflict: /cola/limpiar/
+06:43:30 [WARNING] django.request — Conflict: /cola/limpiar/
+06:43:30 [INFO] queue_app.views — clear_queue done reset_pallet_id=1
+06:43:30 [INFO] queue_app.views — new_pallet created id=2
+06:43:30 [INFO] queue_app.views — reprocess_queue mode=all count=3
+06:43:30 [INFO] queue_app.views — reprocess_queue mode=errors count=2
+06:43:30 [WARNING] django.request — Conflict: /cola/reprocesar/
+06:43:30 [INFO] queue_app.tasks — process_queue_task start pallets=[1, 2]
+06:43:30 [INFO] queue_app.tasks — process_queue_task pallet_start pallet=1 hu_count=1
+06:43:30 [WARNING] queue_app.tasks — process_queue_task pallet_has_errors pallet=1 errors=1
+06:43:30 [INFO] queue_app.tasks — process_queue_task pallet_start pallet=2 hu_count=1
+06:43:30 [INFO] queue_app.tasks — process_queue_task pallet_done pallet=2
+06:43:30 [INFO] queue_app.tasks — process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+06:43:30 [INFO] queue_app.tasks — process_queue_task start pallets=[1, 2]
+06:43:30 [INFO] queue_app.tasks — process_queue_task pallet_start pallet=1 hu_count=2
+06:43:30 [INFO] queue_app.tasks — process_queue_task pallet_done pallet=1
+06:43:30 [INFO] queue_app.tasks — process_queue_task pallet_start pallet=2 hu_count=1
+06:43:30 [INFO] queue_app.tasks — process_queue_task pallet_done pallet=2
+06:43:30 [INFO] queue_app.tasks — process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+06:43:30 [WARNING] django.request — Conflict: /api/procesar/
+06:43:30 [WARNING] django.request — Conflict: /api/procesar/
+06:43:30 [INFO] queue_app.views — detener_queue stop_requested=True
+06:44:23 [INFO] queue_app.views — clear_queue done reset_pallet_id=1
+06:44:30 [WARNING] django.security.csrf — Forbidden (CSRF cookie not set.): /
+06:44:30 [WARNING] django.request — Not Found: /:undefined
+06:44:31 [WARNING] django.security.csrf — Forbidden (CSRF cookie not set.): /
+06:44:31 [WARNING] django.security.csrf — Forbidden (CSRF cookie not set.): /
+06:44:31 [WARNING] django.security.csrf — Forbidden (CSRF cookie not set.): /
+06:50:33 [INFO] queue_app.views — scan_hu hu=TH0000296804 pallet=1 origin=THA
+06:50:47 [INFO] queue_app.consumers — ws_disconnected channel=specific.19bc186efd064295b34ff495b184d19b!b18639c016c347b5a48bed3cdd44827d code=1001
+06:50:47 [INFO] queue_app.consumers — ws_connected channel=specific.19bc186efd064295b34ff495b184d19b!953d21da54bf4ea19ff03d7ea3c2fbe2
+06:51:01 [INFO] queue_app.views — clear_queue done reset_pallet_id=1
+06:51:07 [INFO] queue_app.views — scan_hu hu=TH0000296804 pallet=1 origin=THA
+06:54:53 [INFO] queue_app.views — procesar_pendientes disparada task secuencial count=1
+06:55:50 [INFO] queue_app.views — clear_queue done reset_pallet_id=1
+07:03:49 [WARNING] django.request - Conflict: /cola/limpiar/
+07:03:49 [WARNING] django.request - Conflict: /cola/limpiar/
+07:03:49 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:03:49 [INFO] queue_app.views - new_pallet created id=2
+07:03:49 [INFO] queue_app.views - reprocess_queue mode=all count=3
+07:03:50 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+07:03:50 [WARNING] django.request - Conflict: /cola/reprocesar/
+07:03:50 [INFO] queue_app.tasks - process_queue_task start pallets=[1, 2]
+07:03:50 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+07:03:50 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+07:03:50 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+07:03:50 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+07:03:50 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+07:03:50 [INFO] queue_app.tasks - process_queue_task start pallets=[1, 2]
+07:03:50 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+07:03:50 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+07:03:50 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+07:03:50 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+07:03:50 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+07:03:50 [WARNING] django.request - Conflict: /api/procesar/
+07:03:50 [WARNING] django.request - Conflict: /api/procesar/
+07:03:50 [INFO] queue_app.views - detener_queue stop_requested=True
+07:13:13 [WARNING] django.request - Conflict: /cola/limpiar/
+07:13:13 [WARNING] django.request - Conflict: /cola/limpiar/
+07:13:13 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:13:13 [INFO] queue_app.views - new_pallet created id=2
+07:13:13 [INFO] queue_app.views - reprocess_queue mode=all count=3
+07:13:13 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+07:13:13 [WARNING] django.request - Conflict: /cola/reprocesar/
+07:13:13 [INFO] queue_app.tasks - process_queue_task start pallets=[1, 2]
+07:13:13 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+07:13:13 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+07:13:13 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+07:13:13 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+07:13:13 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+07:13:13 [INFO] queue_app.tasks - process_queue_task start pallets=[1, 2]
+07:13:13 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+07:13:13 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+07:13:13 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+07:13:13 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+07:13:13 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+07:13:13 [WARNING] django.request - Conflict: /api/procesar/
+07:13:13 [WARNING] django.request - Conflict: /api/procesar/
+07:13:13 [INFO] queue_app.views - detener_queue stop_requested=True
+07:15:24 [INFO] daphne.server — Killed 1 pending application instances
+07:15:29 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:15:29 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:15:29 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:15:29 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:15:33 [INFO] queue_app.consumers - ws_connected channel=specific.3feda85b91d6495186c3be3a85fc750b!c246c10ab385431e899589d780b9d2e8
+07:15:33 [INFO] queue_app.consumers - ws_disconnected channel=specific.3feda85b91d6495186c3be3a85fc750b!c246c10ab385431e899589d780b9d2e8 code=1001
+07:15:34 [INFO] queue_app.consumers - ws_connected channel=specific.3feda85b91d6495186c3be3a85fc750b!cbf11c7e6fd4419b9a01e9d208194564
+07:15:36 [INFO] queue_app.consumers - ws_disconnected channel=specific.3feda85b91d6495186c3be3a85fc750b!cbf11c7e6fd4419b9a01e9d208194564 code=1001
+07:15:37 [INFO] queue_app.consumers - ws_connected channel=specific.3feda85b91d6495186c3be3a85fc750b!160b28ac8d2a4089896eea1f200d4bc3
+07:15:54 [INFO] queue_app.views - scan_hu hu=C1012089481 pallet=1 origin=BRA/ATL
+07:15:57 [INFO] queue_app.views - scan_hu hu=C1012089473 pallet=1 origin=BRA/ATL
+07:15:59 [INFO] queue_app.views - scan_hu hu=C1012089470 pallet=1 origin=BRA/ATL
+07:16:02 [INFO] queue_app.views - scan_hu hu=C1012089486 pallet=1 origin=BRA/ATL
+07:16:05 [INFO] queue_app.views - scan_hu hu=C1012089477 pallet=1 origin=BRA/ATL
+07:16:08 [INFO] queue_app.views - scan_hu hu=C1012089480 pallet=1 origin=BRA/ATL
+07:16:12 [INFO] queue_app.views - scan_hu hu=C1012089488 pallet=1 origin=BRA/ATL
+07:16:15 [INFO] queue_app.views - scan_hu hu=C1012089482 pallet=1 origin=BRA/ATL
+07:16:17 [INFO] queue_app.views - scan_hu hu=C1012089471 pallet=1 origin=BRA/ATL
+07:16:21 [INFO] queue_app.views - scan_hu hu=C1012089474 pallet=1 origin=BRA/ATL
+07:16:24 [INFO] queue_app.views - scan_hu hu=C1012089476 pallet=1 origin=BRA/ATL
+07:16:29 [INFO] queue_app.views - scan_hu hu=C1012089475 pallet=1 origin=BRA/ATL
+07:16:33 [INFO] queue_app.views - scan_hu hu=C1012089472 pallet=1 origin=BRA/ATL
+07:16:36 [INFO] queue_app.views - scan_hu hu=C1012089483 pallet=1 origin=BRA/ATL
+07:16:39 [WARNING] django.request - Conflict: /scan/
+07:16:42 [INFO] queue_app.views - scan_hu hu=C1012089479 pallet=1 origin=BRA/ATL
+07:21:32 [WARNING] django.request - Conflict: /cola/limpiar/
+07:21:32 [WARNING] django.request - Conflict: /cola/limpiar/
+07:21:32 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:21:32 [INFO] queue_app.views - new_pallet created id=2
+07:21:32 [INFO] queue_app.views - reprocess_queue mode=all count=3
+07:21:32 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+07:21:32 [WARNING] django.request - Conflict: /cola/reprocesar/
+07:21:32 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+07:21:32 [INFO] queue_app.tasks - process_queue_task start pallets=[1, 2]
+07:21:32 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+07:21:32 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+07:21:32 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+07:21:32 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+07:21:32 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+07:21:32 [INFO] queue_app.tasks - process_queue_task start pallets=[1, 2]
+07:21:33 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+07:21:33 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+07:21:33 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+07:21:33 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+07:21:33 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+07:21:33 [WARNING] django.request - Conflict: /api/procesar/
+07:21:33 [WARNING] django.request - Conflict: /api/procesar/
+07:21:33 [INFO] queue_app.views - detener_queue stop_requested=True
+07:23:00 [INFO] daphne.server - Killed 1 pending application instances
+07:23:02 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:23:02 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:23:02 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:23:02 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:23:02 [INFO] queue_app.consumers - ws_connected channel=specific.9e723afd686347749eaed20f1f4182dd!f49e97b8510f472ea27a6b148d286fdf
+07:23:04 [INFO] queue_app.consumers - ws_disconnected channel=specific.9e723afd686347749eaed20f1f4182dd!f49e97b8510f472ea27a6b148d286fdf code=1001
+07:23:04 [INFO] queue_app.consumers - ws_connected channel=specific.9e723afd686347749eaed20f1f4182dd!f811d0c8511a43319f7f1ecf8a973cbb
+07:23:07 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:23:09 [INFO] queue_app.consumers - ws_disconnected channel=specific.9e723afd686347749eaed20f1f4182dd!f811d0c8511a43319f7f1ecf8a973cbb code=1001
+07:23:09 [INFO] queue_app.consumers - ws_connected channel=specific.9e723afd686347749eaed20f1f4182dd!6686d65c4af44e2086bcbec9a1a5d917
+07:23:12 [INFO] queue_app.consumers - ws_disconnected channel=specific.9e723afd686347749eaed20f1f4182dd!6686d65c4af44e2086bcbec9a1a5d917 code=1001
+07:23:12 [INFO] queue_app.consumers - ws_connected channel=specific.9e723afd686347749eaed20f1f4182dd!e0ed0c6395b84689a81ab1597bf840b6
+07:23:24 [INFO] queue_app.views - scan_hu hu=TH0000268036 pallet=1 origin=THA
+07:23:31 [INFO] queue_app.consumers - ws_disconnected channel=specific.9e723afd686347749eaed20f1f4182dd!e0ed0c6395b84689a81ab1597bf840b6 code=1001
+07:23:37 [INFO] daphne.server - Killed 0 pending application instances
+07:23:54 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:23:54 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:23:54 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:23:54 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:24:13 [INFO] queue_app.consumers - ws_connected channel=specific.3d2fa35928014e01a99dfaefaa8c57d3!dd8f51f248754e668984648753b2e409
+07:24:17 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:24:19 [INFO] queue_app.consumers - ws_disconnected channel=specific.3d2fa35928014e01a99dfaefaa8c57d3!dd8f51f248754e668984648753b2e409 code=1001
+07:24:20 [INFO] queue_app.consumers - ws_connected channel=specific.3d2fa35928014e01a99dfaefaa8c57d3!998bdaf3b7df4e30bd62e7ef50e4852e
+07:24:26 [INFO] queue_app.views - scan_hu hu=TH0000268115 pallet=1 origin=THA
+07:29:30 [INFO] daphne.server - Killed 1 pending application instances
+07:29:34 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:29:34 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:29:34 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:29:34 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:29:37 [INFO] queue_app.consumers - ws_connected channel=specific.2f4de66bc09b47a3b2e5d3381597b58b!95767dfe83a64284bf32b199583f3302
+07:29:43 [INFO] queue_app.consumers - ws_disconnected channel=specific.2f4de66bc09b47a3b2e5d3381597b58b!95767dfe83a64284bf32b199583f3302 code=1001
+07:29:47 [INFO] queue_app.consumers - ws_connected channel=specific.2f4de66bc09b47a3b2e5d3381597b58b!416a7cfed61c445f9b3d49195ab51bd2
+07:29:51 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:30:05 [INFO] queue_app.consumers - ws_disconnected channel=specific.2f4de66bc09b47a3b2e5d3381597b58b!416a7cfed61c445f9b3d49195ab51bd2 code=1001
+07:30:05 [INFO] queue_app.consumers - ws_connected channel=specific.2f4de66bc09b47a3b2e5d3381597b58b!02c047b367a64cf3a602e0d643300989
+07:30:10 [INFO] queue_app.views - scan_hu hu=TH0000268090 pallet=1 origin=THA
+07:30:20 [WARNING] django.request - Not Found: /.well-known/appspecific/com.chrome.devtools.json
+07:35:43 [INFO] queue_app.consumers - ws_disconnected channel=specific.2f4de66bc09b47a3b2e5d3381597b58b!02c047b367a64cf3a602e0d643300989 code=1001
+07:35:43 [WARNING] django.request - Not Found: /.well-known/appspecific/com.chrome.devtools.json
+07:35:43 [INFO] queue_app.consumers - ws_connected channel=specific.2f4de66bc09b47a3b2e5d3381597b58b!bd0333bed10d455b967a16811480accc
+07:35:49 [INFO] queue_app.consumers - ws_disconnected channel=specific.2f4de66bc09b47a3b2e5d3381597b58b!bd0333bed10d455b967a16811480accc code=1001
+07:35:49 [WARNING] django.request - Not Found: /.well-known/appspecific/com.chrome.devtools.json
+07:35:50 [INFO] queue_app.consumers - ws_connected channel=specific.2f4de66bc09b47a3b2e5d3381597b58b!3e4f1e54191548469c27fc872640ff0a
+07:35:56 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:42:07 [INFO] daphne.server - Killed 1 pending application instances
+07:42:10 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:42:10 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:42:10 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:42:10 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:42:10 [INFO] queue_app.consumers - ws_connected channel=specific.79c771f4048046b79bb02b36d9e6bfc3!dade87d446154047b32bf2b2ddae78c1
+07:42:15 [INFO] queue_app.consumers - ws_disconnected channel=specific.79c771f4048046b79bb02b36d9e6bfc3!dade87d446154047b32bf2b2ddae78c1 code=1001
+07:42:15 [WARNING] django.request - Not Found: /.well-known/appspecific/com.chrome.devtools.json
+07:42:15 [INFO] queue_app.consumers - ws_connected channel=specific.79c771f4048046b79bb02b36d9e6bfc3!17c3d95a68614af2b1cae55f3310670c
+07:42:24 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:42:31 [WARNING] django.request - Not Found: /.well-known/appspecific/com.chrome.devtools.json
+07:42:38 [INFO] queue_app.views - scan_hu hu=TH0000268006 pallet=1 origin=THA
+07:44:53 [INFO] daphne.server - Killed 1 pending application instances
+07:44:57 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:44:57 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:44:57 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:44:57 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:44:59 [INFO] queue_app.consumers - ws_connected channel=specific.24c51328347948799f99542b5eee1ad6!da138c1cdbab4869bd8580607a856039
+07:45:00 [INFO] queue_app.consumers - ws_disconnected channel=specific.24c51328347948799f99542b5eee1ad6!da138c1cdbab4869bd8580607a856039 code=1001
+07:45:01 [INFO] queue_app.consumers - ws_connected channel=specific.24c51328347948799f99542b5eee1ad6!a3068b4657364ec1a516c6c9013c7085
+07:45:24 [INFO] daphne.server - Killed 1 pending application instances
+07:45:27 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:45:27 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:45:27 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:45:27 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:45:27 [INFO] queue_app.consumers - ws_connected channel=specific.ceef79a1e10149b0b8a6d048e66e97ac!14590283d88e4e2485d5fd1b0d5f871d
+07:45:29 [INFO] queue_app.consumers - ws_disconnected channel=specific.ceef79a1e10149b0b8a6d048e66e97ac!14590283d88e4e2485d5fd1b0d5f871d code=1001
+07:45:29 [INFO] queue_app.consumers - ws_connected channel=specific.ceef79a1e10149b0b8a6d048e66e97ac!ae92bc760f3248b38604a79e263677d1
+07:46:30 [INFO] daphne.server - Killed 1 pending application instances
+07:46:33 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:46:33 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:46:33 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:46:33 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:46:33 [INFO] queue_app.consumers - ws_connected channel=specific.c01c3b7c8c74424d96b452279556ee57!2ad2964cf8da4e358d0e397b0a7dd63e
+07:46:36 [INFO] queue_app.consumers - ws_disconnected channel=specific.c01c3b7c8c74424d96b452279556ee57!2ad2964cf8da4e358d0e397b0a7dd63e code=1001
+07:46:36 [INFO] queue_app.consumers - ws_connected channel=specific.c01c3b7c8c74424d96b452279556ee57!04b85b9e81bb42f18161182b14d99389
+07:46:54 [INFO] daphne.server - Killed 1 pending application instances
+07:46:56 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:46:56 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:46:56 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:46:56 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:46:56 [INFO] queue_app.consumers - ws_connected channel=specific.9955218754a041d6a08428756c11fe22!6259d4fa43f94490b873910ff908101b
+07:46:59 [INFO] queue_app.consumers - ws_disconnected channel=specific.9955218754a041d6a08428756c11fe22!6259d4fa43f94490b873910ff908101b code=1001
+07:47:00 [INFO] queue_app.consumers - ws_connected channel=specific.9955218754a041d6a08428756c11fe22!c31b4bd110044fa4b96ab44b99a658dc
+07:47:09 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:47:23 [INFO] queue_app.consumers - ws_disconnected channel=specific.9955218754a041d6a08428756c11fe22!c31b4bd110044fa4b96ab44b99a658dc code=1001
+07:47:23 [INFO] queue_app.consumers - ws_connected channel=specific.9955218754a041d6a08428756c11fe22!156812263e5549998e1e1949e5ba76fb
+07:47:32 [INFO] daphne.server - Killed 1 pending application instances
+07:47:34 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:47:34 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:47:34 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:47:34 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:47:35 [INFO] queue_app.consumers - ws_connected channel=specific.e1ed4910113b4ccda04192775b10180f!4a69703b7538488bad8d8b5728f9fa8b
+07:47:37 [INFO] queue_app.consumers - ws_disconnected channel=specific.e1ed4910113b4ccda04192775b10180f!4a69703b7538488bad8d8b5728f9fa8b code=1001
+07:47:37 [INFO] queue_app.consumers - ws_connected channel=specific.e1ed4910113b4ccda04192775b10180f!a415baeb8fca4f0eb65eff7ea7571d05
+07:47:41 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:48:13 [INFO] daphne.server - Killed 1 pending application instances
+07:48:15 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:48:15 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:48:15 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:48:15 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:48:16 [INFO] queue_app.consumers - ws_connected channel=specific.2d490a83635245818baabbe756c608f6!0146739eaf194b45a14e3f1f08afb57f
+07:48:19 [INFO] queue_app.consumers - ws_disconnected channel=specific.2d490a83635245818baabbe756c608f6!0146739eaf194b45a14e3f1f08afb57f code=1001
+07:48:19 [INFO] queue_app.consumers - ws_connected channel=specific.2d490a83635245818baabbe756c608f6!51f0b5d9b6d347979e4d83d476aa46d6
+07:48:22 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:48:25 [INFO] queue_app.consumers - ws_disconnected channel=specific.2d490a83635245818baabbe756c608f6!51f0b5d9b6d347979e4d83d476aa46d6 code=1001
+07:48:25 [INFO] queue_app.consumers - ws_connected channel=specific.2d490a83635245818baabbe756c608f6!896c9fa140d44522b669bf3814a242cc
+07:48:28 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:48:42 [INFO] daphne.server - Killed 1 pending application instances
+07:48:45 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+07:48:45 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+07:48:45 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+07:48:45 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+07:48:45 [INFO] queue_app.consumers - ws_connected channel=specific.3066f801d2a1474bbd84605a5a7dfe8a!f533aeaf34b642e098b6f31d0231453d
+07:48:49 [INFO] queue_app.consumers - ws_disconnected channel=specific.3066f801d2a1474bbd84605a5a7dfe8a!f533aeaf34b642e098b6f31d0231453d code=1001
+07:48:49 [INFO] queue_app.consumers - ws_connected channel=specific.3066f801d2a1474bbd84605a5a7dfe8a!eb8278eac8534eca9ad9668b5cac2bf9
+07:48:51 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+07:48:58 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:02:10 [INFO] queue_app.consumers - ws_disconnected channel=specific.3066f801d2a1474bbd84605a5a7dfe8a!eb8278eac8534eca9ad9668b5cac2bf9 code=1001
+08:02:10 [INFO] queue_app.consumers - ws_connected channel=specific.3066f801d2a1474bbd84605a5a7dfe8a!d1ce97b3b9b74258b61aa17d994a9ebc
+08:02:22 [INFO] queue_app.views - scan_hu hu=TH0000268037 pallet=1 origin=THA
+08:02:25 [INFO] queue_app.views - scan_hu hu=TH0000268090 pallet=1 origin=THA
+08:02:28 [INFO] queue_app.views - scan_hu hu=TH0000267998 pallet=1 origin=THA
+08:02:31 [INFO] queue_app.views - scan_hu hu=TH0000268006 pallet=1 origin=THA
+08:02:34 [INFO] queue_app.views - scan_hu hu=TH0000268114 pallet=1 origin=THA
+08:02:37 [INFO] queue_app.views - scan_hu hu=TH0000268036 pallet=1 origin=THA
+08:02:40 [INFO] queue_app.views - scan_hu hu=TH0000268111 pallet=1 origin=THA
+08:02:43 [INFO] queue_app.views - scan_hu hu=TH0000268021 pallet=1 origin=THA
+08:02:46 [INFO] queue_app.views - scan_hu hu=TH0000267996 pallet=1 origin=THA
+08:02:49 [INFO] queue_app.views - scan_hu hu=TH0000267997 pallet=1 origin=THA
+08:02:53 [INFO] queue_app.views - scan_hu hu=TH0000268115 pallet=1 origin=THA
+08:02:57 [INFO] queue_app.views - scan_hu hu=TH0000268007 pallet=1 origin=THA
+08:03:00 [INFO] queue_app.views - scan_hu hu=TH0000268010 pallet=1 origin=THA
+08:03:04 [INFO] queue_app.views - scan_hu hu=TH0000268054 pallet=1 origin=THA
+08:03:07 [INFO] queue_app.views - scan_hu hu=TH0000268011 pallet=1 origin=THA
+08:05:05 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=15
+08:05:15 [INFO] queue_app.views - detener_queue stop_requested=True
+08:05:23 [INFO] queue_app.consumers - ws_disconnected channel=specific.3066f801d2a1474bbd84605a5a7dfe8a!d1ce97b3b9b74258b61aa17d994a9ebc code=1001
+08:05:23 [INFO] queue_app.consumers - ws_connected channel=specific.3066f801d2a1474bbd84605a5a7dfe8a!3c645e3a347441adb70a259b7a1103cc
+08:06:05 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=12
+08:06:07 [INFO] queue_app.views - detener_queue stop_requested=True
+08:06:30 [INFO] daphne.server - Killed 1 pending application instances
+08:06:34 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+08:06:34 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+08:06:34 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+08:06:34 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+08:06:49 [INFO] queue_app.consumers - ws_connected channel=specific.58add563041e41d7a646c465a3eefe6e!1d39f1f0eb5f48d18d57d2e8b785fca5
+08:06:49 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:06:49 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:06:50 [INFO] queue_app.consumers - ws_disconnected channel=specific.58add563041e41d7a646c465a3eefe6e!1d39f1f0eb5f48d18d57d2e8b785fca5 code=1001
+08:06:50 [INFO] queue_app.consumers - ws_connected channel=specific.58add563041e41d7a646c465a3eefe6e!4cca819f972d42859de8c4a29794ef2f
+08:06:56 [INFO] queue_app.views - scan_hu hu=TH0000268037 pallet=1 origin=THA
+08:06:59 [INFO] queue_app.views - scan_hu hu=TH0000268090 pallet=1 origin=THA
+08:07:03 [INFO] queue_app.views - scan_hu hu=TH0000267998 pallet=1 origin=THA
+08:07:06 [INFO] queue_app.views - scan_hu hu=TH0000268006 pallet=1 origin=THA
+08:07:09 [INFO] queue_app.views - scan_hu hu=TH0000268114 pallet=1 origin=THA
+08:07:12 [INFO] queue_app.views - scan_hu hu=TH0000268036 pallet=1 origin=THA
+08:07:15 [INFO] queue_app.views - scan_hu hu=TH0000268111 pallet=1 origin=THA
+08:07:17 [INFO] queue_app.views - scan_hu hu=TH0000268021 pallet=1 origin=THA
+08:07:21 [INFO] queue_app.views - scan_hu hu=TH0000267997 pallet=1 origin=THA
+08:07:23 [INFO] queue_app.views - scan_hu hu=TH0000267996 pallet=1 origin=THA
+08:07:28 [INFO] queue_app.views - scan_hu hu=TH0000268115 pallet=1 origin=THA
+08:07:32 [INFO] queue_app.views - scan_hu hu=TH0000268007 pallet=1 origin=THA
+08:07:36 [INFO] queue_app.views - scan_hu hu=TH0000268010 pallet=1 origin=THA
+08:07:41 [INFO] queue_app.views - scan_hu hu=TH0000268054 pallet=1 origin=THA
+08:07:45 [INFO] queue_app.views - scan_hu hu=TH0000268011 pallet=1 origin=THA
+08:07:49 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=15
+09:03:01 [INFO] queue_app.consumers - ws_disconnected channel=specific.58add563041e41d7a646c465a3eefe6e!4cca819f972d42859de8c4a29794ef2f code=1001
+09:03:01 [INFO] queue_app.consumers - ws_connected channel=specific.58add563041e41d7a646c465a3eefe6e!03ae658f64e044dd934dec264e49044f
+09:03:04 [INFO] queue_app.consumers - ws_disconnected channel=specific.58add563041e41d7a646c465a3eefe6e!03ae658f64e044dd934dec264e49044f code=1001
+09:03:04 [INFO] queue_app.consumers - ws_connected channel=specific.58add563041e41d7a646c465a3eefe6e!212a25ee5ac54ab192fea729ae21b8cb
+09:03:06 [INFO] queue_app.consumers - ws_disconnected channel=specific.58add563041e41d7a646c465a3eefe6e!212a25ee5ac54ab192fea729ae21b8cb code=1001
+09:03:06 [INFO] queue_app.consumers - ws_connected channel=specific.58add563041e41d7a646c465a3eefe6e!60332fbd21f74362911dd2496035fc4c
+09:15:55 [INFO] queue_app.consumers - ws_disconnected channel=specific.58add563041e41d7a646c465a3eefe6e!60332fbd21f74362911dd2496035fc4c code=1006
+09:15:56 [INFO] queue_app.consumers - ws_connected channel=specific.58add563041e41d7a646c465a3eefe6e!a3e28c02c0114d6f9f48c7a158c0fb30
+10:02:29 [WARNING] daphne.server - Application instance <Task pending name='Task-1410' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<Future pending cb=[Task.task_wakeup()]>> for connection <WebSocketProtocol client=['127.0.0.1', 64645] path=b'/ws/queue/'> took too long to shut down and was killed.
+10:11:46 [INFO] queue_app.consumers - ws_connected channel=specific.58add563041e41d7a646c465a3eefe6e!ee2c11ec8a274a34854896104b823c98
+10:12:02 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+10:13:30 [INFO] daphne.server - Killed 1 pending application instances
+10:13:35 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+10:13:35 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+10:13:35 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+10:13:35 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+10:13:36 [INFO] queue_app.consumers - ws_connected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!d0f9b1d778c94b3ea70407bbe7a6252c
+10:13:40 [INFO] queue_app.consumers - ws_disconnected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!d0f9b1d778c94b3ea70407bbe7a6252c code=1001
+10:13:41 [INFO] queue_app.consumers - ws_connected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!f53a466804704aa3b346b01efd34e13d
+10:13:44 [INFO] queue_app.views - scan_hu hu=TH0000268006 pallet=1 origin=THA
+10:13:57 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=1
+10:19:23 [INFO] queue_app.consumers - ws_disconnected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!f53a466804704aa3b346b01efd34e13d code=1001
+10:19:27 [INFO] queue_app.consumers - ws_connected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!3bcf2a2a6e5a4fd2b9d65df1f9688b22
+10:25:36 [INFO] queue_app.views - scan_hu hu=TH0000296804 pallet=2 origin=THA
+10:25:39 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=1
+10:25:50 [INFO] queue_app.consumers - ws_disconnected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!3bcf2a2a6e5a4fd2b9d65df1f9688b22 code=1001
+10:25:50 [INFO] queue_app.consumers - ws_connected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!ea1955a770ef4c34874ae0a1044c15c2
+10:36:23 [INFO] queue_app.views - reprocess_queue mode=errors count=1
+10:51:15 [ERROR] daphne.server - Exception inside application: Error while reading from localhost:6379 : (10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None)
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 543, in read_response
+    response = await self._parser.read_response(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        disable_decoding=disable_decoding
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\_parsers\resp2.py", line 82, in read_response
+    response = await self._read_response(disable_decoding=disable_decoding)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\_parsers\resp2.py", line 90, in _read_response
+    raw = await self._readline()
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\_parsers\base.py", line 219, in _readline
+    data = await self._stream.readline()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 562, in readline
+    line = await self.readuntil(sep)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 677, in readuntil
+    await self._wait_for_data('readuntil')
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 539, in _wait_for_data
+    await self._waiter
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\selector_events.py", line 1005, in _read_ready__data_received
+    data = self._sock.recv(self.max_size)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 57, in await_many_dispatch
+    await task
+redis.exceptions.ConnectionError: Error while reading from localhost:6379 : (10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None)
+10:51:21 [ERROR] daphne.server - Exception inside application: 'NoneType' object has no attribute '_add_writer'
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 275, in connect
+    await self.retry.call_with_retry(
+        lambda: self._connect(), lambda error: self.disconnect()
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 691, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **self._connection_arguments()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        lambda: protocol, host, port, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1169, in create_connection
+    raise OSError('Multiple exceptions: {}'.format(
+        ', '.join(str(exc) for exc in exceptions)))
+OSError: Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 73, in dispatch
+    await handler(message)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\generic\websocket.py", line 179, in websocket_connect
+    await self.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\consumers.py", line 18, in connect
+    await self.channel_layer.group_add(self.GROUP_NAME, self.channel_name)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 504, in group_add
+    await connection.zadd(group_key, {channel: time.time()})
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 611, in execute_command
+    conn = self.connection or await pool.get_connection(command_name, **options)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1058, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1091, in ensure_connection
+    await connection.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 283, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 57, in await_many_dispatch
+    await task
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 353, in receive
+    message_channel, message = await self.receive_single(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        real_channel
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 408, in receive_single
+    content = await self._brpop_with_clean(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        index, channel_key, timeout=self.brpop_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 244, in _brpop_with_clean
+    await connection.eval(cleanup_script, 0, channel, backup_queue)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 616, in execute_command
+    return await conn.retry.call_with_retry(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 589, in _send_command_parse_response
+    await conn.send_command(*args)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 499, in send_command
+    await self.send_packed_command(
+        self.pack_command(*args), check_health=kwargs.get("check_health", True)
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 474, in send_packed_command
+    self._writer.writelines(command)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 343, in writelines
+    self._transport.writelines(data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\selector_events.py", line 1177, in writelines
+    self._loop._add_writer(self._sock_fd, self._write_ready)
+    ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute '_add_writer'
+10:51:28 [ERROR] daphne.server - Exception inside application: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 275, in connect
+    await self.retry.call_with_retry(
+        lambda: self._connect(), lambda error: self.disconnect()
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 691, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **self._connection_arguments()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        lambda: protocol, host, port, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1169, in create_connection
+    raise OSError('Multiple exceptions: {}'.format(
+        ', '.join(str(exc) for exc in exceptions)))
+OSError: Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 73, in dispatch
+    await handler(message)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\generic\websocket.py", line 179, in websocket_connect
+    await self.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\consumers.py", line 18, in connect
+    await self.channel_layer.group_add(self.GROUP_NAME, self.channel_name)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 504, in group_add
+    await connection.zadd(group_key, {channel: time.time()})
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 611, in execute_command
+    conn = self.connection or await pool.get_connection(command_name, **options)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1058, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1091, in ensure_connection
+    await connection.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 283, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+10:51:32 [INFO] queue_app.consumers - ws_connected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!ecf3877c7157475aae71b35eabacbe2f
+10:58:55 [INFO] queue_app.consumers - ws_disconnected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!ecf3877c7157475aae71b35eabacbe2f code=1006
+10:58:56 [INFO] queue_app.consumers - ws_connected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!2d7bd7c70b0b4784869b406f925ce4ac
+10:59:00 [INFO] queue_app.consumers - ws_disconnected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!2d7bd7c70b0b4784869b406f925ce4ac code=1006
+10:59:08 [INFO] queue_app.consumers - ws_connected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!4910557ab98d47f7b57bd4154c2c1b33
+10:59:13 [INFO] queue_app.consumers - ws_disconnected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!4910557ab98d47f7b57bd4154c2c1b33 code=1006
+11:13:46 [INFO] queue_app.consumers - ws_connected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!a7e4851e445e461b8fef9a90a059acba
+11:14:52 [INFO] queue_app.consumers - ws_disconnected channel=specific.ef324fb3f3ab42ec900895fe4be5259e!a7e4851e445e461b8fef9a90a059acba code=1001

@@ -11,10 +11,23 @@ class Pallet(models.Model):
     PDF_STATUS_OK = 'ok'
     PDF_STATUS_ERROR = 'error'
 
-    # Variables para futura BD de consulta historica de pallets:
-    # WHERE sugeridos: id/pallet, origin_code, status, created_at,
-    # f2_done_at, receipt_done_at, pdf_status y rangos por duracion PDF.
+    # SQL Server / historico operacional:
+    # Esta tabla representa la entidad padre del proceso. El DBA debe conservar
+    # `id` como identificador del pallet y usarlo para relacionar HUs, tiempos
+    # F1/F2/PDF y consultas de auditoria.
+    # Campos principales para reporte:
+    # - id: numero interno de pallet usado por la UI como P01, P02, etc.
+    # - origin_code: origen del pallet (THA, BRA/ATL, ITA, FHR, CNA, desconocido).
+    # - status: estado general del pallet dentro de la cola.
+    # - created_at: hora en que se creo el pallet.
+    # - processing_started_at: hora real de inicio del proceso F1.
+    # - f2_done_at: hora en que termino F2/Separazione.
+    # - receipt_done_at: hora de generacion/confirmacion de impresion PDF.
+    # - pdf_status, pdf_msg, pdf_ms: resultado, mensaje y duracion del PDF.
+    # WHERE recomendados: id, origin_code, status, created_at__range,
+    # processing_started_at__range, receipt_done_at__range y pdf_status.
     created_at = models.DateTimeField(default=timezone.now)
+    processing_started_at = models.DateTimeField(null=True, blank=True)
     f2_done_at = models.DateTimeField(null=True, blank=True)
     receipt_done_at = models.DateTimeField(
         null=True,
@@ -36,9 +49,12 @@ class Pallet(models.Model):
 
     @property
     def processing_time_display(self) -> str:
-        """Duracion legible desde creacion del pallet hasta recibo terminado."""
-        end = self.receipt_done_at or self.f2_done_at or timezone.now()
-        total_seconds = int((end - self.created_at).total_seconds())
+        """Duracion legible desde el inicio real de F1 hasta finalizar impresion."""
+        if not self.processing_started_at:
+            return ''
+
+        end = self.receipt_done_at or timezone.now()
+        total_seconds = max(0, int((end - self.processing_started_at).total_seconds()))
         if total_seconds < 60:
             return f"{total_seconds}s"
 
@@ -104,14 +120,29 @@ class HUItem(models.Model):
         (STATUS_HU_NOT_FOUND, 'HU no existe'),
     ]
 
-    # Variables para futura BD de consulta historica de HUs:
-    # hu_code=HU, pallet_id=Pallet, origin_code=Origen, status=Estado general,
-    # phase1_msg=Estado/mensaje F1, phase2_msg=Estado/mensaje F2,
-    # phase2_ms=tiempo F2, added_at=hora escaneo, processed_at=hora final,
-    # f1_done_at=hora F1, receipt_done_at=hora ZE16/PDF.
-    # Datos PDF por HU se consultan via pallet.pdf_status/pdf_msg/pdf_ms.
-    # WHERE sugeridos: hu_code, pallet_id, origin_code, status,
-    # processed_at__range, added_at__range, f1_done_at__range.
+    # SQL Server / historico por HU:
+    # Esta tabla es la fuente principal para consultar que HUs se procesaron,
+    # cuales fallaron y en que momento cambio su estado. El DBA debe mantener
+    # la relacion `pallet_id` para unir cada HU con `Pallet`.
+    # Campos principales para reporte:
+    # - hu_code: codigo HU escaneado por el operador.
+    # - pallet_id: pallet al que pertenece el HU.
+    # - origin_code: origen detectado para reglas de agrupacion.
+    # - status: estado final o actual del HU (pending, processing, ok, error, etc.).
+    # - phase1_msg: resultado/mensaje del paso F1 Acknowledge.
+    # - phase2_msg: resultado/mensaje del paso F2 Separazione.
+    # - phase2_ms: tiempo medido para F2.
+    # - error_msg: problema presentado cuando el estado final no fue exitoso.
+    # - processing_started_at: hora en que Celery tomo el HU para SAP.
+    # - processing_ms: duracion total F1/F2 medida para el HU.
+    # - added_at: hora de captura/escaneo en UI.
+    # - f1_done_at: hora en que termino F1.
+    # - processed_at: hora final del procesamiento del HU.
+    # - receipt_done_at: hora de recibo ZE16/PDF cuando aplica al HU.
+    # - pdf_status, pdf_msg, pdf_ms: resultado PDF copiado al HU para consulta directa.
+    # WHERE recomendados: hu_code, pallet_id, origin_code, status,
+    # added_at__range, f1_done_at__range, processed_at__range,
+    # pdf_status y processing_ms.
     hu_code = models.CharField(max_length=50, unique=True)
     pallet = models.ForeignKey(
         Pallet,
@@ -129,7 +160,10 @@ class HUItem(models.Model):
     phase1_msg = models.CharField(max_length=255, blank=True, default='')
     phase2_msg = models.CharField(max_length=255, blank=True, default='')
     phase2_ms = models.IntegerField(default=0)
+    error_msg = models.CharField(max_length=255, blank=True, default='')
 
+    processing_started_at = models.DateTimeField(null=True, blank=True)
+    processing_ms = models.IntegerField(default=0)
     processed_at = models.DateTimeField(null=True, blank=True)
     f1_done_at = models.DateTimeField(null=True, blank=True)
     receipt_done_at = models.DateTimeField(
@@ -138,6 +172,9 @@ class HUItem(models.Model):
         db_column='sp01_done_at',
         help_text='Timestamp de recibo ZE16/PDF para esta HU.',
     )
+    pdf_status = models.CharField(max_length=20, blank=True, default='')
+    pdf_msg = models.CharField(max_length=255, blank=True, default='')
+    pdf_ms = models.IntegerField(default=0)
 
     class Meta:
         ordering = ['added_at']
@@ -169,12 +206,24 @@ class HUItem(models.Model):
             return self.phase2_msg or ''
         return self.phase2_msg or ''
 
+    @property
+    def processing_duration_display(self) -> str:
+        """Duracion legible del procesamiento SAP de esta HU."""
+        if self.processing_ms <= 0:
+            return ''
+        if self.processing_ms < 1000:
+            return f'{self.processing_ms}ms'
+        seconds = self.processing_ms / 1000
+        return f'{seconds:.1f}s'.replace('.0s', 's')
+
 
 class ScanLog(models.Model):
     """Registro de auditoria por cada escaneo, incluyendo duplicados y errores."""
 
-    # Variables para auditoria de captura:
-    # WHERE sugeridos: hu_code, result, scanned_at__range.
+    # SQL Server / auditoria de captura:
+    # Esta tabla permite reconstruir intentos de escaneo, duplicados, errores de
+    # validacion y eventos que no siempre llegan a convertirse en HUItem.
+    # WHERE recomendados: hu_code, result y scanned_at__range.
     hu_code = models.CharField(max_length=50)
     scanned_at = models.DateTimeField(default=timezone.now)
     result = models.CharField(max_length=20)

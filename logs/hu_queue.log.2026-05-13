@@ -1,0 +1,5 @@
+12:55:52 [INFO] django.utils.autoreload — Watching for file changes with StatReloader
+12:55:57 [WARNING] django.request — Not Found: /favicon.ico
+12:56:07 [WARNING] django.request — Not Found: /favicon.ico
+13:00:00 [INFO] django.utils.autoreload — C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\models.py changed, reloading.
+13:00:01 [INFO] django.utils.autoreload — Watching for file changes with StatReloader

@@ -85,6 +85,9 @@ def emit_item_update(item):
         'pdf_display': pallet.pdf_display,
         'pdf_msg': pallet.pdf_msg,
         'pdf_ms': pallet.pdf_ms,
+        'processing_time_display': pallet.processing_time_display,
+        'processing_started_at': pallet.processing_started_at.isoformat() if pallet.processing_started_at else '',
+        'receipt_done_at': pallet.receipt_done_at.isoformat() if pallet.receipt_done_at else '',
     })
 
 
@@ -147,6 +150,9 @@ def emit_receipt_done(pallet_id, result):
         'pdf_display': result.get('pdf_display', ''),
         'pdf_msg': result.get('pdf_msg', result.get('message', '')),
         'pdf_ms': result.get('pdf_ms', 0),
+        'processing_time_display': result.get('processing_time_display', ''),
+        'processing_started_at': result.get('processing_started_at', ''),
+        'receipt_done_at': result.get('receipt_done_at', ''),
     })
 
 

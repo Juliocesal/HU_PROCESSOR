@@ -51,6 +51,9 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'pdf_display': event.get('pdf_display', ''),
             'pdf_msg': event.get('pdf_msg', ''),
             'pdf_ms': event.get('pdf_ms', 0),
+            'processing_time_display': event.get('processing_time_display', ''),
+            'processing_started_at': event.get('processing_started_at', ''),
+            'receipt_done_at': event.get('receipt_done_at', ''),
         })
 
     async def stats_update(self, event):
@@ -76,6 +79,9 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'pdf_display': event.get('pdf_display', ''),
             'pdf_msg': event.get('pdf_msg', event['message']),
             'pdf_ms': event.get('pdf_ms', 0),
+            'processing_time_display': event.get('processing_time_display', ''),
+            'processing_started_at': event.get('processing_started_at', ''),
+            'receipt_done_at': event.get('receipt_done_at', ''),
         })
 
     async def queue_done(self, event):
@@ -165,6 +171,17 @@ class QueueConsumer(AsyncWebsocketConsumer):
                 'pdf_display': item.pallet.pdf_display,
                 'pdf_msg': item.pallet.pdf_msg,
                 'pdf_ms': item.pallet.pdf_ms,
+                'processing_time_display': item.pallet.processing_time_display,
+                'processing_started_at': (
+                    item.pallet.processing_started_at.isoformat()
+                    if item.pallet.processing_started_at
+                    else ''
+                ),
+                'receipt_done_at': (
+                    item.pallet.receipt_done_at.isoformat()
+                    if item.pallet.receipt_done_at
+                    else ''
+                ),
             } for item in items],
             'stats': calculate_queue_stats(),
         }

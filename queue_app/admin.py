@@ -5,9 +5,18 @@ from .models import HUItem, Pallet, ScanLog
 
 @admin.register(HUItem)
 class HUItemAdmin(admin.ModelAdmin):
-    list_display = ['hu_code', 'pallet', 'origin_code', 'status', 'added_at', 'phase2_ms']
-    list_filter = ['status', 'origin_code']
-    search_fields = ['hu_code']
+    list_display = [
+        'hu_code',
+        'pallet',
+        'origin_code',
+        'status',
+        'processing_ms',
+        'pdf_status',
+        'added_at',
+        'processed_at',
+    ]
+    list_filter = ['status', 'origin_code', 'pdf_status']
+    search_fields = ['hu_code', 'phase1_msg', 'phase2_msg', 'pdf_msg', 'error_msg']
 
 
 @admin.register(Pallet)

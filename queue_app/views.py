@@ -34,7 +34,7 @@ from queue_app.utils import (
 
 log = logging.getLogger(__name__)
 
-QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS = 30
+QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS = 3
 HU_CODE_MIN_LENGTH = 10
 HU_CODE_MAX_LENGTH = 15
 REPROCESS_ERROR_STATUSES = [HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
@@ -546,22 +546,35 @@ def reprocess_queue(request):
         item.phase1_msg = ''
         item.phase2_msg = ''
         item.phase2_ms = 0
+        item.error_msg = ''
+        item.processing_started_at = None
+        item.processing_ms = 0
         item.processed_at = None
         item.f1_done_at = None
         item.receipt_done_at = None
+        item.pdf_status = ''
+        item.pdf_msg = ''
+        item.pdf_ms = 0
         item.save(update_fields=[
             'status',
             'phase1_msg',
             'phase2_msg',
             'phase2_ms',
+            'error_msg',
+            'processing_started_at',
+            'processing_ms',
             'processed_at',
             'f1_done_at',
             'receipt_done_at',
+            'pdf_status',
+            'pdf_msg',
+            'pdf_ms',
         ])
         emit_item_update(item)
 
     Pallet.objects.filter(pk__in=affected_pallet_ids).update(
         status      = Pallet.STATUS_READY,
+        processing_started_at = None,
         f2_done_at  = None,
         receipt_done_at = None,
         pdf_status = '',
@@ -668,7 +681,8 @@ def export_csv(request):
         'Pallet', 'Origen', 'Código HU', 'Estado',
         'F1', 'F1 msg', 'F2', 'F2 msg', 'F2 ms',
         'PDF', 'PDF msg', 'PDF ms',
-        'Agregada', 'Procesada',
+        'Problema', 'Tiempo procesamiento ms',
+        'Agregada', 'Inicio procesamiento', 'Procesada',
     ])
 
     # FUTURA BD DE CONSULTA:
@@ -685,10 +699,13 @@ def export_csv(request):
             'ZMOVEINBHU', item.phase1_msg or '',
             'ZMMTIJSEP',  item.phase2_msg or '',
             item.phase2_ms or '',
-            item.pallet.pdf_display,
-            item.pallet.pdf_msg or '',
-            item.pallet.pdf_ms or '',
+            item.pdf_status or item.pallet.pdf_status,
+            item.pdf_msg or item.pallet.pdf_msg or '',
+            item.pdf_ms or item.pallet.pdf_ms or '',
+            item.error_msg or '',
+            item.processing_ms or '',
             item.added_at.strftime('%d/%m/%Y %H:%M:%S')   if item.added_at   else '',
+            item.processing_started_at.strftime('%d/%m/%Y %H:%M:%S') if item.processing_started_at else '',
             item.processed_at.strftime('%d/%m/%Y %H:%M:%S') if item.processed_at else '',
         ])
 
@@ -733,7 +750,11 @@ def sap_status(request):
     from core.sap_client import SAPClient
     try:
         ok, user = SAPClient.check_session()
-        return JsonResponse({'connected': ok, 'user': user})
+        return JsonResponse({
+            'connected': ok,
+            'user': user,
+            'message': 'Sesion SAP activa' if ok else 'Sesion SAP desconectada o no valida',
+        })
     except Exception as e:
         return JsonResponse({'connected': False, 'user': '', 'error': str(e)})
 

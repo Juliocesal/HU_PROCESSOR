@@ -1,11 +1,58 @@
-from asgiref.sync import async_to_sync
-from django.test import TestCase
+from datetime import timedelta
 from unittest.mock import patch
 
+from asgiref.sync import async_to_sync
+from django.test import TestCase
+from django.utils import timezone
+
+from core.sap_client import SAPClient
 from core.ze16_client import ZE16Client
 from queue_app.consumers import QueueConsumer
 from queue_app.models import HUItem, Pallet
 from queue_app.tasks import process_queue_task
+
+
+class PalletTimingTests(TestCase):
+    def test_processing_time_uses_f1_start_not_pallet_creation(self):
+        now = timezone.now()
+        pallet = Pallet.objects.create(
+            created_at=now - timedelta(hours=2),
+            processing_started_at=now - timedelta(seconds=65),
+            receipt_done_at=now,
+        )
+
+        self.assertEqual(pallet.processing_time_display, '1min 5s')
+
+    def test_processing_time_is_empty_before_processing_starts(self):
+        pallet = Pallet.objects.create()
+
+        self.assertEqual(pallet.processing_time_display, '')
+
+
+class SAPSessionValidationTests(TestCase):
+    def test_session_is_alive_rejects_connection_reset_dialog(self):
+        class Info:
+            SystemName = 'LUP'
+            User = 'TEST'
+
+        class Window:
+            Text = 'SAP GUI for Windows 770'
+
+        class StatusBar:
+            Text = 'WSAECONNRESET: Connection reset by peer'
+
+        class Session:
+            def __init__(self):
+                self.Info = Info()
+                self.ActiveWindow = Window()
+                self.Busy = False
+
+            def findById(self, element_id):
+                if element_id == 'wnd[0]/sbar':
+                    return StatusBar()
+                return Window()
+
+        self.assertFalse(SAPClient._session_is_alive(Session()))
 
 
 class ClearQueueTests(TestCase):
@@ -369,7 +416,7 @@ class NewPalletTests(TestCase):
             run_f2=True,
             run_pdf=True,
             continuous=True,
-            idle_timeout=30,
+            idle_timeout=3,
         )
         arm.assert_called_once()
 
