@@ -128,6 +128,10 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = config(
     default=not DEBUG,
     cast=bool,
 )
+CSRF_TRUSTED_ORIGINS = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default=""
+).split(",")
 SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=not DEBUG, cast=bool)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

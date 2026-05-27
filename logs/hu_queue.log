@@ -4759,3 +4759,50 @@ AttributeError: 'NoneType' object has no attribute '_add_writer'
 09:03:06 [INFO] queue_app.views - new_pallet created id=8
 09:04:02 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
 09:17:36 [INFO] queue_app.consumers - ws_disconnected channel=specific.79cd0267a376462caf9a80f7cae69af3!3fbb513d80d14cc2ab787be490c5d6bc code=1006
+10:02:41 [INFO] queue_app.consumers - ws_connected channel=specific.79cd0267a376462caf9a80f7cae69af3!914a89fcf35347afbfd7c59058e79220
+10:36:31 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+10:36:31 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+10:36:31 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+10:36:31 [CRITICAL] daphne.server - Listen failure: Couldn't listen on 127.0.0.1:8000: [WinError 10048] Only one usage of each socket address (protocol/network address/port) is normally permitted.
+10:36:42 [INFO] queue_app.consumers - ws_disconnected channel=specific.79cd0267a376462caf9a80f7cae69af3!914a89fcf35347afbfd7c59058e79220 code=1001
+10:36:43 [INFO] queue_app.consumers - ws_connected channel=specific.79cd0267a376462caf9a80f7cae69af3!0af5d9d8ef9e4a3f9f9c9687c86691b0
+10:36:55 [INFO] queue_app.views - scan_hu hu=TH10123123 pallet=8 origin=THA
+10:37:15 [INFO] core.sap_client - sap_multi_logon_option_selected
+10:37:15 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=LOPEZHJC
+10:37:16 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=1 pdf_count=0
+10:49:32 [INFO] queue_app.consumers - ws_disconnected channel=specific.79cd0267a376462caf9a80f7cae69af3!0af5d9d8ef9e4a3f9f9c9687c86691b0 code=1006
+11:05:02 [INFO] queue_app.consumers - ws_connected channel=specific.79cd0267a376462caf9a80f7cae69af3!a7ee597351e04568beaa7c0fd2e39871
+11:06:08 [INFO] queue_app.consumers - ws_disconnected channel=specific.79cd0267a376462caf9a80f7cae69af3!a7ee597351e04568beaa7c0fd2e39871 code=1006
+11:31:17 [INFO] queue_app.consumers - ws_connected channel=specific.79cd0267a376462caf9a80f7cae69af3!4e0961eb8d44422eacb0b80f7bfec35d
+11:31:24 [INFO] queue_app.consumers - ws_disconnected channel=specific.79cd0267a376462caf9a80f7cae69af3!4e0961eb8d44422eacb0b80f7bfec35d code=1001
+11:31:24 [INFO] queue_app.consumers - ws_connected channel=specific.79cd0267a376462caf9a80f7cae69af3!073ec6f60eb546ca9807fbe3b6417ac4
+11:31:26 [WARNING] django.request - Not Found: /favicon.ico
+11:32:09 [INFO] daphne.server - Killed 1 pending application instances
+11:33:50 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+11:33:50 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+11:33:50 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+11:33:50 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+11:33:58 [INFO] queue_app.consumers - ws_connected channel=specific.ceb326884d9b4d6ebb8d3873616b9079!5bb5d21042a345d1b79926a0dcf2d81d
+11:35:44 [INFO] daphne.server - Killed 1 pending application instances
+11:35:47 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+11:35:47 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+11:35:47 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+11:35:47 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+11:35:48 [INFO] queue_app.consumers - ws_connected channel=specific.15252b04ccaf47e28bc26f5e46ffec0d!1af730dfdf4a47838abbc3eff65b2098
+11:43:18 [INFO] daphne.server - Killed 1 pending application instances
+11:43:22 [INFO] daphne.cli - Starting server at tcp:port=8080:interface=0.0.0.0
+11:43:22 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+11:43:22 [INFO] daphne.server - Configuring endpoint tcp:port=8080:interface=0.0.0.0
+11:43:22 [CRITICAL] daphne.server - Listen failure: Couldn't listen on 0.0.0.0:8080: [WinError 10048] Only one usage of each socket address (protocol/network address/port) is normally permitted.
+11:48:00 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+11:48:00 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+11:48:00 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+11:48:00 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+11:48:26 [INFO] queue_app.consumers - ws_connected channel=specific.66f04eae0b594be6a0af46eda57bad17!d9198739654247ebaf89e0b337ec884b
+11:50:23 [INFO] queue_app.consumers - ws_disconnected channel=specific.66f04eae0b594be6a0af46eda57bad17!d9198739654247ebaf89e0b337ec884b code=1006
+11:51:04 [INFO] queue_app.consumers - ws_connected channel=specific.66f04eae0b594be6a0af46eda57bad17!e062313164be4f0997f08172329f9e30
+11:52:26 [INFO] daphne.server - Killed 1 pending application instances
+11:52:31 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+11:52:31 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+11:52:31 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+11:52:31 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
