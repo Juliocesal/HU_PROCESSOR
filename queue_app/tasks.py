@@ -179,7 +179,17 @@ def _mark_pallet_processing_started(pallet) -> None:
         return
 
     pallet.processing_started_at = timezone.now()
-    pallet.save(update_fields=['processing_started_at'])
+    pallet.processing_finished_at = None
+    pallet.save(update_fields=['processing_started_at', 'processing_finished_at'])
+
+
+def _mark_pallet_processing_finished(pallet) -> None:
+    """Marca fin de ciclo cuando el pallet termina sin pasar por PDF."""
+    if not pallet.processing_started_at or pallet.processing_finished_at:
+        return
+
+    pallet.processing_finished_at = timezone.now()
+    pallet.save(update_fields=['processing_finished_at'])
 
 
 def _calculate_elapsed_ms(started_at) -> int:
@@ -187,6 +197,20 @@ def _calculate_elapsed_ms(started_at) -> int:
     if not started_at:
         return 0
     return max(0, int((timezone.now() - started_at).total_seconds() * 1000))
+
+
+def _close_sap_after_queue_idle() -> None:
+    """Cierra SAP al finalizar la corrida para evitar sesiones zombie por inactividad."""
+    if not getattr(settings, 'SAP_CLOSE_WHEN_QUEUE_IDLE', True):
+        return
+
+    try:
+        from core.sap_client import SAPClient
+
+        closed = SAPClient.close_sessions()
+        log.info("process_queue_task sap_idle_close closed=%s", closed)
+    except Exception as e:
+        log.warning("process_queue_task sap_idle_close_failed error=%s", e)
 
 
 @shared_task(bind=True, max_retries=0)
@@ -345,6 +369,8 @@ def process_queue_task(
                         }
                         _save_pdf_result(pallet, result, None)
                         emit_receipt_done(pallet_id, result)
+                    else:
+                        _mark_pallet_processing_finished(pallet)
 
                     log.warning(
                         "process_queue_task pallet_has_errors pallet=%s errors=%s",
@@ -370,6 +396,8 @@ def process_queue_task(
                         )
                         pallets_processed += 1
                         continue
+                else:
+                    _mark_pallet_processing_finished(pallet)
 
                 pallets_processed += 1
                 log.info("process_queue_task pallet_done pallet=%s", pallet_id)
@@ -386,6 +414,7 @@ def process_queue_task(
         emit_queue_done(final)
         return final
     finally:
+        _close_sap_after_queue_idle()
         _release_queue_lock(owner)
 
 
@@ -737,14 +766,13 @@ def _save_pdf_result(pallet, result: dict, started_at: float | None) -> dict:
     )
     pallet.pdf_msg = (result.get('message') or '')[:255]
     pallet.pdf_ms = pdf_ms
+    completed_at = timezone.now()
+    pallet.processing_finished_at = completed_at
 
-    update_fields = ['pdf_status', 'pdf_msg', 'pdf_ms']
+    update_fields = ['pdf_status', 'pdf_msg', 'pdf_ms', 'processing_finished_at']
     if result.get('status') == 'ok':
-        completed_at = timezone.now()
         pallet.receipt_done_at = completed_at
         update_fields.append('receipt_done_at')
-    else:
-        completed_at = None
 
     item_updates = {
         'pdf_status': pallet.pdf_status,
@@ -763,6 +791,11 @@ def _save_pdf_result(pallet, result: dict, started_at: float | None) -> dict:
     result['processing_started_at'] = (
         pallet.processing_started_at.isoformat()
         if pallet.processing_started_at
+        else ''
+    )
+    result['processing_finished_at'] = (
+        pallet.processing_finished_at.isoformat()
+        if pallet.processing_finished_at
         else ''
     )
     result['receipt_done_at'] = pallet.receipt_done_at.isoformat() if pallet.receipt_done_at else ''

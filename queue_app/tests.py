@@ -10,6 +10,7 @@ from core.ze16_client import ZE16Client
 from queue_app.consumers import QueueConsumer
 from queue_app.models import HUItem, Pallet
 from queue_app.tasks import process_queue_task
+from queue_app.utils import emit_queue_done
 
 
 class PalletTimingTests(TestCase):
@@ -18,7 +19,19 @@ class PalletTimingTests(TestCase):
         pallet = Pallet.objects.create(
             created_at=now - timedelta(hours=2),
             processing_started_at=now - timedelta(seconds=65),
+            processing_finished_at=now,
             receipt_done_at=now,
+        )
+
+        self.assertEqual(pallet.processing_time_display, '1min 5s')
+
+    def test_processing_time_stops_on_error_without_receipt(self):
+        now = timezone.now()
+        pallet = Pallet.objects.create(
+            processing_started_at=now - timedelta(seconds=65),
+            processing_finished_at=now,
+            pdf_status=Pallet.PDF_STATUS_ERROR,
+            pdf_msg='PDF omitido: HU con error',
         )
 
         self.assertEqual(pallet.processing_time_display, '1min 5s')
@@ -30,6 +43,27 @@ class PalletTimingTests(TestCase):
 
 
 class SAPSessionValidationTests(TestCase):
+    def test_wait_for_sap_app_retries_until_scripting_engine_is_ready(self):
+        class App:
+            pass
+
+        attempts = {'count': 0}
+
+        def get_sap_app():
+            attempts['count'] += 1
+            if attempts['count'] == 1:
+                raise RuntimeError('SAP GUI no listo')
+            return App()
+
+        with (
+            patch.object(SAPClient, '_get_sap_app', side_effect=get_sap_app),
+            patch('core.sap_client.time.sleep'),
+        ):
+            app = SAPClient._wait_for_sap_app(timeout=2)
+
+        self.assertIsInstance(app, App)
+        self.assertEqual(attempts['count'], 2)
+
     def test_session_is_alive_rejects_connection_reset_dialog(self):
         class Info:
             SystemName = 'LUP'
@@ -53,6 +87,20 @@ class SAPSessionValidationTests(TestCase):
                 return Window()
 
         self.assertFalse(SAPClient._session_is_alive(Session()))
+
+
+class QueueEventTests(TestCase):
+    def test_queue_done_forces_running_state_off(self):
+        sent_events = []
+
+        with (
+            patch('queue_app.utils.calculate_queue_stats', return_value={'is_running': True}),
+            patch('queue_app.utils._send_group', side_effect=lambda _event, data: sent_events.append(data)),
+        ):
+            emit_queue_done({'status': 'error', 'message': 'Queue finished with 1 error(s)'})
+
+        self.assertEqual(sent_events[0]['type'], 'queue_done')
+        self.assertFalse(sent_events[0]['stats']['is_running'])
 
 
 class ClearQueueTests(TestCase):
@@ -176,6 +224,45 @@ class ReprocessQueueTests(TestCase):
         pallet.refresh_from_db()
         self.assertEqual(pallet.status, Pallet.STATUS_ACTIVE)
 
+    def test_reprocess_does_not_open_sap_without_target_hus(self):
+        with (
+            patch('queue_app.views.is_queue_locked', return_value=False),
+            patch('core.sap_client.SAPClient.ensure_session_ready') as ensure_session_ready,
+            patch('queue_app.views.process_queue_task.delay') as delay,
+        ):
+            response = self.client.post(
+                '/cola/reprocesar/',
+                data='{"mode": "all"}',
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['ok'])
+        ensure_session_ready.assert_not_called()
+        delay.assert_not_called()
+
+    def test_reprocess_closes_sap_if_celery_dispatch_fails(self):
+        pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+        HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_ERROR)
+
+        with (
+            patch('queue_app.views.is_queue_locked', return_value=False),
+            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
+            patch('queue_app.views.process_queue_task.delay', side_effect=RuntimeError('Redis down')),
+            patch('core.sap_client.SAPClient.close_sessions') as close_sessions,
+            patch('queue_app.views.emit_item_update'),
+            patch('queue_app.views.emit_stats_update'),
+        ):
+            response = self.client.post(
+                '/cola/reprocesar/',
+                data='{"mode": "all"}',
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()['ok'])
+        close_sessions.assert_called_once()
+
 
 class StartProcessingTests(TestCase):
     def test_start_processing_is_blocked_without_sap_session(self):
@@ -206,6 +293,65 @@ class StartProcessingTests(TestCase):
         self.assertEqual(response.status_code, 409)
         ensure_session_ready.assert_not_called()
         delay.assert_not_called()
+
+    def test_start_processing_does_not_open_sap_without_work(self):
+        Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+
+        with (
+            patch('queue_app.views.is_queue_locked', return_value=False),
+            patch('core.sap_client.SAPClient.ensure_session_ready') as ensure_session_ready,
+            patch('core.sap_client.SAPClient.close_sessions') as close_sessions,
+            patch('queue_app.views.process_queue_task.delay') as delay,
+        ):
+            response = self.client.post('/api/procesar/', data='{}', content_type='application/json')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()['ok'])
+        ensure_session_ready.assert_not_called()
+        close_sessions.assert_called_once()
+        delay.assert_not_called()
+
+    def test_sap_start_endpoint_does_not_open_sap_without_work(self):
+        with (
+            patch('core.sap_client.SAPClient.ensure_session_ready') as ensure_session_ready,
+            patch('core.sap_client.SAPClient.close_sessions') as close_sessions,
+        ):
+            response = self.client.post('/api/sap/iniciar/')
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(response.json()['ok'])
+        ensure_session_ready.assert_not_called()
+        close_sessions.assert_called_once()
+
+    def test_sap_start_endpoint_allows_active_hus(self):
+        pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+        HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_PENDING)
+
+        with patch(
+            'core.sap_client.SAPClient.ensure_session_ready',
+            return_value=(True, 'TEST', 'OK'),
+        ) as ensure_session_ready:
+            response = self.client.post('/api/sap/iniciar/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+        ensure_session_ready.assert_called_once()
+
+    def test_start_processing_closes_sap_if_celery_dispatch_fails(self):
+        pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+        HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_PENDING)
+
+        with (
+            patch('queue_app.views.is_queue_locked', return_value=False),
+            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
+            patch('queue_app.views.process_queue_task.delay', side_effect=RuntimeError('Redis down')),
+            patch('core.sap_client.SAPClient.close_sessions') as close_sessions,
+        ):
+            response = self.client.post('/api/procesar/', data='{}', content_type='application/json')
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(response.json()['ok'])
+        close_sessions.assert_called_once()
 
     def test_stop_requests_worker_cancellation(self):
         with patch('queue_app.views.request_queue_stop', return_value=True) as stop:
@@ -475,6 +621,29 @@ class QueueConsumerTests(TestCase):
 
         self.assertEqual(sent_payloads[0]['pdf_pending'], 3)
         self.assertTrue(sent_payloads[0]['is_running'])
+
+    def test_queue_done_includes_fresh_stats(self):
+        consumer = QueueConsumer()
+        sent_payloads = []
+
+        async def fake_send_json(payload):
+            sent_payloads.append(payload)
+
+        consumer._send_json = fake_send_json
+
+        async_to_sync(consumer.queue_done)({
+            'type': 'queue_done',
+            'status': 'ok',
+            'message': 'done',
+            'pallets_processed': 1,
+            'hus_processed': 2,
+            'errors': 0,
+            'stats': {'pending': 0, 'pdf_pending': 0},
+        })
+
+        self.assertEqual(sent_payloads[0]['type'], 'queue_done')
+        self.assertEqual(sent_payloads[0]['stats']['pending'], 0)
+        self.assertEqual(sent_payloads[0]['stats']['pdf_pending'], 0)
 
     def test_delete_and_clear_events_forward_sync_payloads(self):
         consumer = QueueConsumer()

@@ -229,6 +229,7 @@
                 data-origin="{{ pallet.origin_code|default:'Sin origen' }}"
                 data-processing-time="{{ pallet.processing_time_display }}"
                 data-processing-started-at="{{ pallet.processing_started_at|date:'c' }}"
+                data-processing-finished-at="{{ pallet.processing_finished_at|date:'c' }}"
                 data-receipt-done-at="{{ pallet.receipt_done_at|date:'c' }}">
               <td colspan="6" id="sep-{{ pallet.id }}">
                 <div class="pallet-header">

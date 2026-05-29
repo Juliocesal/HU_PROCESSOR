@@ -2,6 +2,7 @@ import csv
 import json
 import logging
 from datetime import datetime
+from django.conf import settings
 from django.core.management.color import no_style
 from django.db import connection
 from django.http import JsonResponse, HttpResponse
@@ -34,7 +35,7 @@ from queue_app.utils import (
 
 log = logging.getLogger(__name__)
 
-QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS = 3
+QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS = 30
 HU_CODE_MIN_LENGTH = 10
 HU_CODE_MAX_LENGTH = 15
 REPROCESS_ERROR_STATUSES = [HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
@@ -276,12 +277,14 @@ def _recalculate_pallet_after_hu_delete(pallet: Pallet) -> bool:
         pallet.pdf_msg = ''
         pallet.pdf_ms = 0
         pallet.receipt_done_at = None
+        pallet.processing_finished_at = None
         pallet.status = Pallet.STATUS_READY
         pallet.save(update_fields=[
             'pdf_status',
             'pdf_msg',
             'pdf_ms',
             'receipt_done_at',
+            'processing_finished_at',
             'status',
         ])
         return True
@@ -387,6 +390,38 @@ def _sap_session_error_response():
         'sap_connected': False,
         'sap_user': user,
     }, status=409)
+
+
+def _close_sap_session_if_idle() -> None:
+    """Cierra SAP si se abrio pero no se pudo despachar una tarea Celery."""
+    if not getattr(settings, 'SAP_CLOSE_WHEN_QUEUE_IDLE', True):
+        return
+
+    try:
+        from core.sap_client import SAPClient
+
+        SAPClient.close_sessions()
+    except Exception as e:
+        log.warning("close_sap_session_if_idle_failed error=%s", e)
+
+
+def _has_potential_queue_work(run_pdf=True) -> bool:
+    """
+    Indica si hay trabajo que justifique abrir SAP.
+
+    Incluye pallets activos con HUs porque el endpoint de procesamiento los
+    cierra justo antes de despachar Celery.
+    """
+    has_active_items = Pallet.objects.filter(
+        status=Pallet.STATUS_ACTIVE,
+        items__isnull=False,
+    ).exists()
+    has_pending = HUItem.objects.filter(
+        status=HUItem.STATUS_PENDING,
+        pallet__status__in=[Pallet.STATUS_ACTIVE, Pallet.STATUS_READY],
+    ).exists()
+    has_pdf = run_pdf and pallets_ready_for_pdf_queryset().exists()
+    return has_active_items or has_pending or has_pdf
 
 
 def _parse_json_body(request) -> dict:
@@ -515,10 +550,6 @@ def reprocess_queue(request):
             'error': 'Hay una tarea de procesamiento activa. Espera a que termine antes de reprocesar.',
         }, status=409)
 
-    sap_error = _sap_session_error_response()
-    if sap_error:
-        return sap_error
-
     try:
         payload = json.loads(request.body.decode('utf-8') or '{}')
     except json.JSONDecodeError:
@@ -539,6 +570,10 @@ def reprocess_queue(request):
 
     if count == 0:
         return JsonResponse({'ok': False, 'error': 'No hay HUs para reprocesar'}, status=400)
+
+    sap_error = _sap_session_error_response()
+    if sap_error:
+        return sap_error
 
     affected_pallet_ids = {item.pallet_id for item in items}
     for item in items:
@@ -575,6 +610,7 @@ def reprocess_queue(request):
     Pallet.objects.filter(pk__in=affected_pallet_ids).update(
         status      = Pallet.STATUS_READY,
         processing_started_at = None,
+        processing_finished_at = None,
         f2_done_at  = None,
         receipt_done_at = None,
         pdf_status = '',
@@ -586,6 +622,7 @@ def reprocess_queue(request):
     try:
         _dispatch_continuous_queue()
     except Exception as e:
+        _close_sap_session_if_idle()
         log.exception("reprocess_queue celery_dispatch_failed")
         return JsonResponse({
             'ok': False,
@@ -613,26 +650,6 @@ def start_processing(request):
             'error': 'Ya hay una tarea de procesamiento activa',
         }, status=409)
 
-    active_has_items = Pallet.objects.filter(
-        status=Pallet.STATUS_ACTIVE,
-        items__isnull=False,
-    ).exists()
-    pending_candidates = HUItem.objects.filter(
-        status=HUItem.STATUS_PENDING,
-        pallet__status__in=[Pallet.STATUS_ACTIVE, Pallet.STATUS_READY],
-    ).count()
-    pdf_count = pallets_ready_for_pdf_queryset().count()
-
-    if pending_candidates == 0 and pdf_count == 0 and not active_has_items:
-        return JsonResponse({
-            'ok':    False,
-            'error': 'No hay HUs pendientes ni PDFs por imprimir',
-        }, status=400)
-
-    sap_error = _sap_session_error_response()
-    if sap_error:
-        return sap_error
-
     _close_active_pallet_for_processing()
     pending_items = HUItem.objects.filter(
         status=HUItem.STATUS_PENDING,
@@ -642,14 +659,20 @@ def start_processing(request):
     pdf_count = pallets_ready_for_pdf_queryset().count()
 
     if count == 0 and pdf_count == 0:
+        _close_sap_session_if_idle()
         return JsonResponse({
             'ok':    False,
             'error': 'No hay HUs pendientes ni PDFs por imprimir',
         }, status=400)
 
+    sap_error = _sap_session_error_response()
+    if sap_error:
+        return sap_error
+
     try:
         _dispatch_continuous_queue()
     except Exception as e:
+        _close_sap_session_if_idle()
         log.exception("start_processing celery_dispatch_failed")
         return JsonResponse({
             'ok': False,
@@ -727,6 +750,13 @@ def iniciar_sap_endpoint(request):
         JSON con status ok=True si la conexión fue exitosa.
     """
     from core.sap_client import SAPClient
+
+    if not _has_potential_queue_work(run_pdf=True):
+        _close_sap_session_if_idle()
+        return JsonResponse({
+            'ok': False,
+            'error': 'No hay HUs pendientes ni PDFs por imprimir',
+        }, status=400)
 
     connected, user, message = SAPClient.ensure_session_ready()
     if connected:
@@ -884,23 +914,6 @@ def procesar_pendientes(request):
     if is_queue_locked():
         return JsonResponse({'ok': False, 'error': 'Ya hay una tarea de procesamiento activa'}, status=409)
 
-    active_has_items = Pallet.objects.filter(
-        status=Pallet.STATUS_ACTIVE,
-        items__isnull=False,
-    ).exists()
-    pending_candidates = HUItem.objects.filter(
-        status=HUItem.STATUS_PENDING,
-        pallet__status__in=[Pallet.STATUS_ACTIVE, Pallet.STATUS_READY],
-    ).count()
-    pdf_count = pallets_ready_for_pdf_queryset().count() if run_pdf else 0
-
-    if not pending_candidates and not pdf_count and not active_has_items:
-        return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes ni PDFs por imprimir'})
-
-    sap_error = _sap_session_error_response()
-    if sap_error:
-        return sap_error
-
     _close_active_pallet_for_processing()
     items = HUItem.objects.filter(
         status=HUItem.STATUS_PENDING,
@@ -910,11 +923,17 @@ def procesar_pendientes(request):
     pdf_count = pallets_ready_for_pdf_queryset().count() if run_pdf else 0
 
     if not count and not pdf_count:
+        _close_sap_session_if_idle()
         return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes ni PDFs por imprimir'})
+
+    sap_error = _sap_session_error_response()
+    if sap_error:
+        return sap_error
 
     try:
         _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
     except Exception as e:
+        _close_sap_session_if_idle()
         log.exception("procesar_pendientes celery_dispatch_failed")
         return JsonResponse({
             'ok': False,

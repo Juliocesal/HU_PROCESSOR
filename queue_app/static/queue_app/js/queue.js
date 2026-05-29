@@ -359,7 +359,14 @@
   }
 
   function handleQueueDone(msg) {
+    if (msg.stats) {
+      handleStatsUpdate({ ...msg.stats, is_running: false });
+    } else {
+      stats.pending = 0;
+      stats.pdf_pending = 0;
+    }
     isRunning = false;
+
     if (msg.status === 'stopped') {
       setProgStatus(msg.message, '');
       setProgBadge('Detenido', '');
@@ -482,7 +489,7 @@
     syncPalletTimer(
       item.pallet_id,
       item.processing_started_at,
-      item.receipt_done_at,
+      item.processing_finished_at || item.receipt_done_at,
       item.processing_time_display
     );
     updatePalletSep(item.pallet_id);
@@ -512,7 +519,7 @@
       syncPalletTimer(
         msg.pallet_id,
         msg.processing_started_at,
-        msg.receipt_done_at,
+        msg.processing_finished_at || msg.receipt_done_at,
         msg.processing_time_display
       );
       updatePalletSep(msg.pallet_id);
@@ -853,8 +860,6 @@
       return;
     }
 
-    if (!(await ensureSapReady())) return;
-
     isRunning = true;
     showRunningMode('Enviando HUs a procesar...');
     updateButtons();
@@ -997,8 +1002,6 @@
   async function reprocessQueue(mode) {
     hideReprocessMenu();
     if (isRunning) return;
-
-    if (!(await ensureSapReady())) return;
 
     const isErrorsOnly = mode === 'errors';
     const message = isErrorsOnly
@@ -1451,7 +1454,7 @@
         syncPalletTimer(
           pid,
           sep.dataset.processingStartedAt,
-          sep.dataset.receiptDoneAt,
+          sep.dataset.processingFinishedAt || sep.dataset.receiptDoneAt,
           sep.dataset.processingTime || ''
         );
       }

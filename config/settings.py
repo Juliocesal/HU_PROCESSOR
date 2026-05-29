@@ -113,6 +113,10 @@ SAP_LOGON_EXE = config(
 SAP_LOGIN_USER = config('SAP_LOGIN_USER', default='')
 SAP_LOGIN_PASSWORD = config('SAP_LOGIN_PASSWORD', default='')
 SAP_LOGIN_LANGUAGE = config('SAP_LOGIN_LANGUAGE', default='EN')
+SAP_PROBE_BEFORE_WORK = config('SAP_PROBE_BEFORE_WORK', default=True, cast=bool)
+SAP_CLOSE_WHEN_QUEUE_IDLE = config('SAP_CLOSE_WHEN_QUEUE_IDLE', default=True, cast=bool)
+SAP_STARTUP_TIMEOUT_SECONDS = config('SAP_STARTUP_TIMEOUT_SECONDS', default=30, cast=float)
+SAP_STARTUP_POLL_SECONDS = config('SAP_STARTUP_POLL_SECONDS', default=1, cast=float)
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
@@ -131,7 +135,12 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = config(
 CSRF_TRUSTED_ORIGINS = config(
     "CSRF_TRUSTED_ORIGINS",
     default=""
-).split(",")
+)
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in CSRF_TRUSTED_ORIGINS.split(",")
+    if origin.strip()
+]
 SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=not DEBUG, cast=bool)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

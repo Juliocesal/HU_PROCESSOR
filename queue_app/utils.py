@@ -87,6 +87,7 @@ def emit_item_update(item):
         'pdf_ms': pallet.pdf_ms,
         'processing_time_display': pallet.processing_time_display,
         'processing_started_at': pallet.processing_started_at.isoformat() if pallet.processing_started_at else '',
+        'processing_finished_at': pallet.processing_finished_at.isoformat() if pallet.processing_finished_at else '',
         'receipt_done_at': pallet.receipt_done_at.isoformat() if pallet.receipt_done_at else '',
     })
 
@@ -152,12 +153,17 @@ def emit_receipt_done(pallet_id, result):
         'pdf_ms': result.get('pdf_ms', 0),
         'processing_time_display': result.get('processing_time_display', ''),
         'processing_started_at': result.get('processing_started_at', ''),
+        'processing_finished_at': result.get('processing_finished_at', ''),
         'receipt_done_at': result.get('receipt_done_at', ''),
     })
 
 
 def emit_queue_done(result):
     """Emite el unico evento final de una corrida de cola."""
+    stats = calculate_queue_stats()
+    # El evento final se emite justo antes de liberar el lock de Celery; para la
+    # UI ya no debe considerarse una corrida activa.
+    stats['is_running'] = False
     _send_group('queue_done', {
         'type': 'queue_done',
         'status': result.get('status', 'error'),
@@ -165,6 +171,7 @@ def emit_queue_done(result):
         'pallets_processed': result.get('pallets_processed', 0),
         'hus_processed': result.get('hus_processed', 0),
         'errors': result.get('errors', 0),
+        'stats': stats,
     })
 
 

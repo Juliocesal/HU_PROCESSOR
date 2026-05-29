@@ -21,13 +21,16 @@ class Pallet(models.Model):
     # - status: estado general del pallet dentro de la cola.
     # - created_at: hora en que se creo el pallet.
     # - processing_started_at: hora real de inicio del proceso F1.
+    # - processing_finished_at: hora en que el pallet termina, con exito o error.
     # - f2_done_at: hora en que termino F2/Separazione.
     # - receipt_done_at: hora de generacion/confirmacion de impresion PDF.
     # - pdf_status, pdf_msg, pdf_ms: resultado, mensaje y duracion del PDF.
     # WHERE recomendados: id, origin_code, status, created_at__range,
-    # processing_started_at__range, receipt_done_at__range y pdf_status.
+    # processing_started_at__range, processing_finished_at__range,
+    # receipt_done_at__range y pdf_status.
     created_at = models.DateTimeField(default=timezone.now)
     processing_started_at = models.DateTimeField(null=True, blank=True)
+    processing_finished_at = models.DateTimeField(null=True, blank=True)
     f2_done_at = models.DateTimeField(null=True, blank=True)
     receipt_done_at = models.DateTimeField(
         null=True,
@@ -53,7 +56,7 @@ class Pallet(models.Model):
         if not self.processing_started_at:
             return ''
 
-        end = self.receipt_done_at or timezone.now()
+        end = self.processing_finished_at or self.receipt_done_at or timezone.now()
         total_seconds = max(0, int((end - self.processing_started_at).total_seconds()))
         if total_seconds < 60:
             return f"{total_seconds}s"

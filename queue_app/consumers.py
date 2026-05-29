@@ -53,6 +53,7 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'pdf_ms': event.get('pdf_ms', 0),
             'processing_time_display': event.get('processing_time_display', ''),
             'processing_started_at': event.get('processing_started_at', ''),
+            'processing_finished_at': event.get('processing_finished_at', ''),
             'receipt_done_at': event.get('receipt_done_at', ''),
         })
 
@@ -81,6 +82,7 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'pdf_ms': event.get('pdf_ms', 0),
             'processing_time_display': event.get('processing_time_display', ''),
             'processing_started_at': event.get('processing_started_at', ''),
+            'processing_finished_at': event.get('processing_finished_at', ''),
             'receipt_done_at': event.get('receipt_done_at', ''),
         })
 
@@ -92,6 +94,7 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'pallets_processed': event['pallets_processed'],
             'hus_processed': event['hus_processed'],
             'errors': event['errors'],
+            'stats': event.get('stats', {}),
         })
 
     async def pallet_done(self, event):
@@ -175,6 +178,11 @@ class QueueConsumer(AsyncWebsocketConsumer):
                 'processing_started_at': (
                     item.pallet.processing_started_at.isoformat()
                     if item.pallet.processing_started_at
+                    else ''
+                ),
+                'processing_finished_at': (
+                    item.pallet.processing_finished_at.isoformat()
+                    if item.pallet.processing_finished_at
                     else ''
                 ),
                 'receipt_done_at': (

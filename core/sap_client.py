@@ -22,6 +22,9 @@ SAP_LOGON_EXE = getattr(
 SAP_LOGIN_USER = getattr(settings, 'SAP_LOGIN_USER', '')
 SAP_LOGIN_PASSWORD = getattr(settings, 'SAP_LOGIN_PASSWORD', '')
 SAP_LOGIN_LANGUAGE = getattr(settings, 'SAP_LOGIN_LANGUAGE', 'EN')
+SAP_PROBE_BEFORE_WORK = getattr(settings, 'SAP_PROBE_BEFORE_WORK', True)
+SAP_STARTUP_TIMEOUT_SECONDS = float(getattr(settings, 'SAP_STARTUP_TIMEOUT_SECONDS', 30))
+SAP_STARTUP_POLL_SECONDS = max(float(getattr(settings, 'SAP_STARTUP_POLL_SECONDS', 1)), 0.1)
 NODE_MOVEINBHU = "F00098"
 NODE_TIJSEP    = "F00097"
 
@@ -111,32 +114,33 @@ class SAPClient:
 
     # -- Conexion --------------------------------------------------------------
 
-    def connect(self, sistema: str = SISTEMA_SAP) -> bool:
+    def connect(self, sistema: str = SISTEMA_SAP, auto_login: bool = True) -> bool:
         pythoncom.CoInitialize()
-        try:
-            sap_gui = win32com.client.GetObject("SAPGUI")
-            app = sap_gui.GetScriptingEngine
-        except Exception as e:
-            raise SAPConnectionError(f"No se pudo obtener SAPGUI: {e}")
-
-        if int(app.Children.Count) == 0:
-            raise SAPConnectionError("No hay conexiones activas en SAP GUI")
-
-        for i_conn in range(int(app.Children.Count)):
-            conn = app.Children(i_conn)
-            for i_sess in range(int(conn.Children.Count)):
-                sess = conn.Children(i_sess)
-                try:
-                    if (
-                        sess.Info.SystemName.upper().strip() == sistema.upper()
-                        and self._session_is_alive(sess)
-                    ):
-                        self._session = sess
-                        self._usuario = sess.Info.User
-                        log.info("sap_connected system=%s user=%s", sistema, self._usuario)
-                        return True
-                except Exception:
+        for attempt in range(2 if auto_login else 1):
+            try:
+                app = self._get_sap_app()
+            except Exception as e:
+                if auto_login and attempt == 0:
+                    ok, _, message = self.open_and_login(sistema=sistema)
+                    if not ok:
+                        raise SAPConnectionError(message)
                     continue
+                raise SAPConnectionError(f"No se pudo obtener SAPGUI: {e}")
+
+            session = self._find_ready_session(app, sistema, probe=SAP_PROBE_BEFORE_WORK)
+            if session is not None:
+                self._session = session
+                self._usuario = session.Info.User
+                log.info("sap_connected system=%s user=%s", sistema, self._usuario)
+                return True
+
+            if auto_login and attempt == 0:
+                log.warning("sap_no_ready_session system=%s - restarting SAP session", sistema)
+                self.close_sessions(sistema=sistema)
+                ok, _, message = self.open_and_login(sistema=sistema)
+                if not ok:
+                    raise SAPConnectionError(message)
+                continue
 
         raise SAPConnectionError(f"No se encontro sesion {sistema} activa")
 
@@ -159,6 +163,36 @@ class SAPClient:
             return None
 
     @staticmethod
+    def _get_sap_app():
+        sap_gui = win32com.client.GetObject("SAPGUI")
+        return sap_gui.GetScriptingEngine
+
+    @classmethod
+    def _wait_for_sap_app(cls, timeout: float | None = None):
+        """
+        Espera a que SAP Logon publique el ScriptingEngine de COM.
+
+        Despues de reiniciar SAP, `saplogon.exe` puede estar abierto pero
+        `GetObject("SAPGUI")` aun no estar disponible. Reintentar evita que el
+        inicio automatico falle por una condicion de arranque de Windows/SAP.
+        """
+        timeout = SAP_STARTUP_TIMEOUT_SECONDS if timeout is None else timeout
+        deadline = time.time() + timeout
+        last_error = None
+
+        while time.time() <= deadline:
+            try:
+                return cls._get_sap_app()
+            except Exception as exc:
+                last_error = exc
+                log.debug("sap_scripting_engine_not_ready error=%s", exc)
+                time.sleep(SAP_STARTUP_POLL_SECONDS)
+
+        raise SAPConnectionError(
+            f"SAP GUI no expuso ScriptingEngine despues de {timeout:.0f}s: {last_error}"
+        )
+
+    @staticmethod
     def _window_text(session, window_id: str) -> str:
         try:
             window = session.findById(window_id)
@@ -167,7 +201,73 @@ class SAPClient:
             return ''
 
     @classmethod
-    def _session_is_alive(cls, session) -> bool:
+    def _session_text_snapshot(cls, session) -> str:
+        active_title = str(getattr(session.ActiveWindow, 'Text', '') or '')
+        wnd0_title = cls._window_text(session, "wnd[0]")
+        wnd1_title = cls._window_text(session, "wnd[1]")
+        sbar = cls._find_on_session(session, "wnd[0]/sbar")
+        sbar_text = str(getattr(sbar, 'Text', '') or '') if sbar else ''
+        return " ".join([active_title, wnd0_title, wnd1_title, sbar_text]).lower()
+
+    @classmethod
+    def _has_disconnected_dialog(cls, session) -> bool:
+        combined = cls._session_text_snapshot(session)
+        if any(keyword in combined for keyword in SAP_DISCONNECTED_KEYWORDS):
+            log.warning("sap_session_disconnected_dialog text=%s", combined[:300])
+            return True
+        return False
+
+    @classmethod
+    def _is_login_screen(cls, session) -> bool:
+        return bool(
+            cls._find_on_session(session, FIELD_LOGIN_USER)
+            or cls._find_on_session(session, FIELD_LOGIN_PASSWORD)
+        )
+
+    @staticmethod
+    def _wait_session_idle(session, timeout: float = 5.0) -> bool:
+        deadline = time.time() + timeout
+        while time.time() <= deadline:
+            try:
+                if not session.Busy:
+                    return True
+            except Exception:
+                return False
+            time.sleep(POLL_INTERVAL)
+        return False
+
+    @classmethod
+    def _probe_session_for_work(cls, session) -> bool:
+        """
+        Ejecuta una navegacion inocua a SAP Easy Access.
+
+        Leer propiedades COM no siempre dispara el popup de desconexion. Enviar
+        `/n` obliga a SAP GUI a confirmar que la sesion sigue utilizable antes
+        de que Celery capture un HU.
+        """
+        try:
+            ok_code = cls._find_on_session(session, "wnd[0]/tbar[0]/okcd")
+            wnd = cls._find_on_session(session, "wnd[0]")
+            if ok_code is None or wnd is None:
+                return False
+
+            ok_code.Text = "/n"
+            wnd.sendVKey(0)
+            cls._wait_session_idle(session, timeout=5.0)
+            time.sleep(0.3)
+
+            if cls._has_disconnected_dialog(session) or cls._is_login_screen(session):
+                return False
+
+            _ = session.Info.User
+            _ = session.Info.SystemName
+            return True
+        except Exception as e:
+            log.warning("sap_session_probe_failed error=%s", e)
+            return False
+
+    @classmethod
+    def _session_is_alive(cls, session, probe: bool = False) -> bool:
         """
         Fuerza una lectura activa de SAP GUI.
 
@@ -178,22 +278,69 @@ class SAPClient:
         try:
             _ = session.Info.SystemName
             _ = session.Info.User
-            active_title = str(getattr(session.ActiveWindow, 'Text', '') or '')
-            wnd0_title = cls._window_text(session, "wnd[0]")
-            wnd1_title = cls._window_text(session, "wnd[1]")
-            sbar = cls._find_on_session(session, "wnd[0]/sbar")
-            sbar_text = str(getattr(sbar, 'Text', '') or '') if sbar else ''
-            combined = " ".join([active_title, wnd0_title, wnd1_title, sbar_text]).lower()
-
-            if any(keyword in combined for keyword in SAP_DISCONNECTED_KEYWORDS):
-                log.warning("sap_session_disconnected_dialog text=%s", combined[:300])
+            if cls._has_disconnected_dialog(session) or cls._is_login_screen(session):
                 return False
 
             _ = session.Busy
-            return True
+            return cls._probe_session_for_work(session) if probe else True
         except Exception as e:
             log.warning("sap_session_not_alive error=%s", e)
             return False
+
+    @classmethod
+    def _find_ready_session(cls, app, sistema: str, probe: bool = False):
+        if int(app.Children.Count) == 0:
+            return None
+
+        for i_conn in range(int(app.Children.Count)):
+            conn = app.Children(i_conn)
+            for i_sess in range(int(conn.Children.Count)):
+                sess = conn.Children(i_sess)
+                try:
+                    if (
+                        sess.Info.SystemName.upper().strip() == sistema.upper()
+                        and cls._session_is_alive(sess, probe=probe)
+                    ):
+                        return sess
+                except Exception as e:
+                    log.debug("sap_find_ready_session_skip error=%s", e)
+                    continue
+        return None
+
+    @classmethod
+    def close_sessions(cls, sistema: str = SISTEMA_SAP) -> int:
+        """Cierra sesiones SAP del sistema indicado para limpiar estados zombie."""
+        closed = 0
+        try:
+            pythoncom.CoInitialize()
+            try:
+                app = cls._get_sap_app()
+                for i_conn in reversed(range(int(app.Children.Count))):
+                    conn = app.Children(i_conn)
+                    for i_sess in reversed(range(int(conn.Children.Count))):
+                        sess = conn.Children(i_sess)
+                        try:
+                            if sess.Info.SystemName.upper().strip() != sistema.upper():
+                                continue
+                            wnd = cls._find_on_session(sess, "wnd[0]")
+                            if wnd is None:
+                                continue
+                            wnd.Close()
+                            time.sleep(0.5)
+                            yes_button = cls._find_on_session(sess, "wnd[1]/usr/btnSPOP-OPTION1")
+                            if yes_button:
+                                yes_button.press()
+                            closed += 1
+                        except Exception as e:
+                            log.debug("sap_close_session_skip error=%s", e)
+            finally:
+                pythoncom.CoUninitialize()
+        except Exception as e:
+            log.warning("sap_close_sessions_failed error=%s", e)
+
+        if closed:
+            log.info("sap_sessions_closed system=%s count=%s", sistema, closed)
+        return closed
 
     @staticmethod
     def _handle_multiple_logon(session) -> None:
@@ -216,10 +363,11 @@ class SAPClient:
         Verifica una sesion SAP activa. Si no existe, abre SAP Logon y autentica
         con las credenciales configuradas en .env.
         """
-        connected, user = cls.check_session(sistema)
+        connected, user = cls.check_session(sistema, probe=SAP_PROBE_BEFORE_WORK)
         if connected:
             return True, user, 'Sesion SAP activa'
 
+        cls.close_sessions(sistema=sistema)
         return cls.open_and_login(sistema=sistema)
 
     @classmethod
@@ -230,12 +378,10 @@ class SAPClient:
 
         try:
             os.startfile(SAP_LOGON_EXE)
-            time.sleep(5)
 
             pythoncom.CoInitialize()
             try:
-                sap_gui = win32com.client.GetObject("SAPGUI")
-                app = sap_gui.GetScriptingEngine
+                app = cls._wait_for_sap_app()
                 connection = app.OpenConnection(SAP_CONNECTION_NAME, True)
                 time.sleep(2)
 
@@ -263,7 +409,7 @@ class SAPClient:
             finally:
                 pythoncom.CoUninitialize()
 
-            connected, user = cls.check_session(sistema)
+            connected, user = cls.check_session(sistema, probe=SAP_PROBE_BEFORE_WORK)
             if connected:
                 return True, user, 'SAP inicializado y autenticado correctamente'
             return False, '', f'No se encontro sesion {sistema} despues del login SAP'
@@ -305,6 +451,10 @@ class SAPClient:
             return obj.Text if obj else ""
         except Exception:
             return ""
+
+    def _raise_if_session_invalid(self, context: str) -> None:
+        if not self._session_is_alive(self.session):
+            raise SAPConnectionError(f"Sesion SAP desconectada durante {context}")
 
     def _get_popup(self):
         return self._find("wnd[1]")
@@ -402,6 +552,7 @@ class SAPClient:
         self._wait_idle()
         time.sleep(wait_tree)
         self._wait_idle()
+        self._raise_if_session_invalid(f"abrir transaccion {tx_code}")
         log.info("tx_opened code=%s current_tx=%s", tx_code, self._session.Info.Transaction)
 
     def _navegar_nodo(self, node_id: str, origin: Origin | None = None) -> bool:
@@ -471,6 +622,7 @@ class SAPClient:
                 self.setup_phase1(origin=origin)
                 campo_hu = self._find(FIELD_F1_HU)
                 if campo_hu is None:
+                    self._raise_if_session_invalid("F1")
                     sbar = self._get_sbar_text()
                     return Phase1Result(
                         status="error",
@@ -607,6 +759,7 @@ class SAPClient:
                 self.setup_phase2(origin=origin)
                 campo_hu = self._find(FIELD_F2_HU)
                 if campo_hu is None:
+                    self._raise_if_session_invalid("F2")
                     sbar = self._get_sbar_text()
                     return Phase2Result(
                         status="error",
@@ -672,25 +825,14 @@ class SAPClient:
     # -- Verificacion estatica -------------------------------------------------
 
     @staticmethod
-    def check_session(sistema: str = SISTEMA_SAP) -> tuple[bool, str]:
+    def check_session(sistema: str = SISTEMA_SAP, probe: bool = False) -> tuple[bool, str]:
         try:
             pythoncom.CoInitialize()
             try:
-                sap_gui = win32com.client.GetObject("SAPGUI")
-                app     = sap_gui.GetScriptingEngine
-                for i_conn in range(int(app.Children.Count)):
-                    conn = app.Children(i_conn)
-                    for i_sess in range(int(conn.Children.Count)):
-                        sess = conn.Children(i_sess)
-                        try:
-                            if (
-                                sess.Info.SystemName.upper().strip() == sistema.upper()
-                                and SAPClient._session_is_alive(sess)
-                            ):
-                                return True, sess.Info.User
-                        except Exception as e:
-                            log.debug("sap_check_session_skip error=%s", e)
-                            continue
+                app = SAPClient._get_sap_app()
+                sess = SAPClient._find_ready_session(app, sistema, probe=probe)
+                if sess is not None:
+                    return True, sess.Info.User
             finally:
                 pythoncom.CoUninitialize()
         except Exception:

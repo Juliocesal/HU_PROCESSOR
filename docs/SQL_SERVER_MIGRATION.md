@@ -119,6 +119,7 @@ Campos importantes:
 | `id` | Identificador interno del pallet. En UI se muestra como P01, P02, etc. |
 | `created_at` | Hora de creacion del pallet. |
 | `processing_started_at` | Inicio real del ciclo F1 a PDF del pallet. |
+| `processing_finished_at` | Fin del ciclo del pallet, tanto en exito como en error. |
 | `f2_done_at` | Hora en que termino F2/Separazione para el pallet. |
 | `receipt_done_at` | Hora en que termino generacion/impresion PDF. |
 | `pdf_status` | Resultado PDF: `ok` o `error`. |
@@ -134,6 +135,7 @@ WHERE id = ?
 WHERE origin_code = ?
 WHERE status = ?
 WHERE created_at BETWEEN ? AND ?
+WHERE processing_finished_at BETWEEN ? AND ?
 WHERE receipt_done_at BETWEEN ? AND ?
 WHERE pdf_status = ?
 ```
