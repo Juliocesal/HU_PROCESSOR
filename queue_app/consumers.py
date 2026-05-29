@@ -86,6 +86,19 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'receipt_done_at': event.get('receipt_done_at', ''),
         })
 
+    async def queue_status(self, event):
+        await self._send_json({
+            'type': 'queue_status',
+            'message': event.get('message', ''),
+            'badge': event.get('badge', 'INFO'),
+            'mode': event.get('mode', 'running'),
+            'footer': event.get('footer', ''),
+            'active_pallet_id': event.get('active_pallet_id'),
+            'active_hu_count': event.get('active_hu_count', 0),
+            'remaining_seconds': event.get('remaining_seconds'),
+            'stats': event.get('stats', {}),
+        })
+
     async def queue_done(self, event):
         await self._send_json({
             'type': 'queue_done',
@@ -151,12 +164,13 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'type': 'initial_state',
             'items': state['items'],
             'stats': state['stats'],
+            'queue_status': state['queue_status'],
         })
 
     @database_sync_to_async
     def _get_initial_state(self):
         from queue_app.models import HUItem
-        from queue_app.utils import calculate_queue_stats
+        from queue_app.utils import calculate_queue_operational_status, calculate_queue_stats
 
         items = HUItem.objects.select_related('pallet').order_by('added_at')
         return {
@@ -192,4 +206,5 @@ class QueueConsumer(AsyncWebsocketConsumer):
                 ),
             } for item in items],
             'stats': calculate_queue_stats(),
+            'queue_status': calculate_queue_operational_status(),
         }

@@ -11,6 +11,7 @@ QUEUE_LOCK_KEY = 'nexhus:queue_processing_lock'
 QUEUE_STOP_KEY = 'nexhus:queue_stop_requested'
 QUEUE_ACTIVE_PALLETS_KEY = 'nexhus:queue_active_pallets'
 QUEUE_CONTINUOUS_ARMED_KEY = 'nexhus:queue_continuous_armed'
+QUEUE_IDLE_DEADLINE_KEY = 'nexhus:queue_idle_deadline'
 QUEUE_LOCK_TTL_SECONDS = 60 * 60 * 6
 QUEUE_DEFAULT_IDLE_TIMEOUT_SECONDS = 3
 QUEUE_IDLE_POLL_SECONDS = 2
@@ -33,6 +34,7 @@ def _acquire_queue_lock(owner: str) -> bool:
         if acquired:
             client.delete(QUEUE_STOP_KEY)
             client.delete(QUEUE_ACTIVE_PALLETS_KEY)
+            client.delete(QUEUE_IDLE_DEADLINE_KEY)
         return acquired
     except Exception as e:
         log.error("queue_lock_acquire_failed owner=%s error=%s", owner, e)
@@ -47,6 +49,7 @@ def _release_queue_lock(owner: str) -> None:
             client.delete(QUEUE_LOCK_KEY)
             client.delete(QUEUE_STOP_KEY)
             client.delete(QUEUE_ACTIVE_PALLETS_KEY)
+            client.delete(QUEUE_IDLE_DEADLINE_KEY)
     except Exception as e:
         log.warning("queue_lock_release_failed owner=%s error=%s", owner, e)
 
@@ -76,6 +79,7 @@ def disarm_continuous_queue() -> None:
     """Desactiva la reactivacion automatica al detener o limpiar la cola."""
     try:
         _get_redis_lock_client().delete(QUEUE_CONTINUOUS_ARMED_KEY)
+        _get_redis_lock_client().delete(QUEUE_IDLE_DEADLINE_KEY)
     except Exception as e:
         log.warning("queue_continuous_disarm_failed error=%s", e)
 
@@ -113,6 +117,42 @@ def get_processing_pallet_ids() -> set[int]:
     except Exception as e:
         log.warning("queue_active_pallets_read_failed error=%s", e)
         return set()
+
+
+def _set_queue_idle_deadline(timeout_seconds: float) -> None:
+    """Guarda hasta cuando el worker esperara otro pallet antes de cerrar SAP."""
+    try:
+        deadline = time.time() + max(0, float(timeout_seconds))
+        client = _get_redis_lock_client()
+        client.set(
+            QUEUE_IDLE_DEADLINE_KEY,
+            str(deadline),
+            ex=QUEUE_LOCK_TTL_SECONDS,
+        )
+    except Exception as e:
+        log.warning("queue_idle_deadline_set_failed error=%s", e)
+
+
+def _clear_queue_idle_deadline() -> None:
+    """Limpia la marca de espera cuando el worker vuelve a trabajar o termina."""
+    try:
+        _get_redis_lock_client().delete(QUEUE_IDLE_DEADLINE_KEY)
+    except Exception as e:
+        log.warning("queue_idle_deadline_clear_failed error=%s", e)
+
+
+def get_queue_idle_remaining_seconds() -> int | None:
+    """Devuelve segundos restantes de espera continua, si existe esa ventana."""
+    try:
+        raw_deadline = _get_redis_lock_client().get(QUEUE_IDLE_DEADLINE_KEY)
+        if not raw_deadline:
+            return None
+
+        deadline = float(raw_deadline.decode('utf-8', errors='replace'))
+        return max(0, int(deadline - time.time()))
+    except Exception as e:
+        log.warning("queue_idle_deadline_read_failed error=%s", e)
+        return None
 
 
 def request_queue_stop() -> bool:
@@ -173,6 +213,49 @@ def _collect_processable_pallet_ids(run_pdf: bool) -> tuple[list[int], set[int]]
     return sorted(set(pending_pallet_ids) | pdf_pallet_ids), pdf_pallet_ids
 
 
+def _active_pallet_wait_context() -> dict:
+    """Describe el pallet abierto cuando el worker continuo espera accion humana."""
+    from queue_app.models import HUItem, Pallet
+
+    active = (
+        Pallet.objects
+        .filter(status=Pallet.STATUS_ACTIVE)
+        .order_by('-id')
+        .first()
+    )
+    if not active:
+        return {
+            'message': 'Modo continuo activo. Escanea HUs para preparar el siguiente pallet.',
+            'footer': 'Esperando nuevos HUs.',
+            'active_pallet_id': None,
+            'active_hu_count': 0,
+        }
+
+    hu_count = active.items.count()
+    pending_count = active.items.filter(status=HUItem.STATUS_PENDING).count()
+    pallet_label = f'P{active.pk:02d}'
+    if hu_count:
+        return {
+            'message': (
+                f'Pallet {pallet_label} abierto con {hu_count} HU(s). '
+                'Cierra el pallet para continuar el proceso.'
+            ),
+            'footer': (
+                f'Esperando cierre de {pallet_label}. '
+                'Usa Nuevo pallet o escanea PALLET.'
+            ),
+            'active_pallet_id': active.pk,
+            'active_hu_count': pending_count,
+        }
+
+    return {
+        'message': f'Pallet {pallet_label} abierto sin HUs. Escanea para continuar.',
+        'footer': f'Esperando HUs en {pallet_label}.',
+        'active_pallet_id': active.pk,
+        'active_hu_count': 0,
+    }
+
+
 def _mark_pallet_processing_started(pallet) -> None:
     """Marca el inicio del ciclo F1->PDF la primera vez que Celery toma el pallet."""
     if pallet.processing_started_at:
@@ -230,6 +313,7 @@ def process_queue_task(
     from queue_app.utils import (
         emit_error,
         emit_queue_done,
+        emit_queue_status,
         emit_receipt_done,
         pallets_ready_for_pdf_queryset,
     )
@@ -245,6 +329,7 @@ def process_queue_task(
     hus_processed = 0
     errors = 0
     idle_deadline = None
+    idle_status_sent = False
     idle_timeout = (
         QUEUE_DEFAULT_IDLE_TIMEOUT_SECONDS
         if continuous and idle_timeout is None
@@ -288,9 +373,31 @@ def process_queue_task(
                 now = time.monotonic()
                 if idle_deadline is None:
                     idle_deadline = now + idle_timeout
+                    _set_queue_idle_deadline(idle_timeout)
+                    idle_status_sent = False
                     log.info("process_queue_task idle_wait timeout=%ss", idle_timeout)
 
+                if not idle_status_sent:
+                    context = _active_pallet_wait_context()
+                    emit_queue_status(
+                        context['message'],
+                        badge='EN ESPERA',
+                        mode='waiting',
+                        footer=context['footer'],
+                        active_pallet_id=context['active_pallet_id'],
+                        active_hu_count=context['active_hu_count'],
+                        remaining_seconds=max(0, int(idle_deadline - now)),
+                    )
+                    idle_status_sent = True
+
                 if now >= idle_deadline:
+                    emit_queue_status(
+                        'Tiempo de espera agotado. Cerrando sesion SAP hasta el siguiente inicio.',
+                        badge='SAP',
+                        mode='waiting',
+                        footer='El worker no encontro otro pallet cerrado dentro de la ventana de espera.',
+                        remaining_seconds=0,
+                    )
                     final_status = 'ok' if errors == 0 else 'error'
                     final_message = (
                         'All pallets were processed and printed successfully'
@@ -312,6 +419,8 @@ def process_queue_task(
                 continue
 
             idle_deadline = None
+            idle_status_sent = False
+            _clear_queue_idle_deadline()
             _set_processing_pallet_ids(pallet_ids)
             log.info("process_queue_task batch_start pallets=%s", pallet_ids)
 
@@ -372,6 +481,12 @@ def process_queue_task(
                     else:
                         _mark_pallet_processing_finished(pallet)
 
+                    emit_queue_status(
+                        f'Pallet P{pallet_id:02d} requiere revision: {pallet_errors} HU(s) con error.',
+                        badge='REVISION',
+                        mode='error',
+                        footer=f'Revisa los errores de P{pallet_id:02d} antes de imprimir.',
+                    )
                     log.warning(
                         "process_queue_task pallet_has_errors pallet=%s errors=%s",
                         pallet_id,
@@ -386,6 +501,12 @@ def process_queue_task(
                         emit_queue_done(final)
                         return final
 
+                    emit_queue_status(
+                        f'Pallet P{pallet_id:02d} listo. Generando ZE16/PDF e impresion.',
+                        badge='PDF',
+                        mode='running',
+                        footer=f'Generando e imprimiendo recibo de P{pallet_id:02d}.',
+                    )
                     result = _run_pallet_boundary(pallet_id, emit_completion=True)
                     if result and result.get('status') != 'ok':
                         errors += 1
@@ -451,7 +572,7 @@ def _process_hu_item(
     from core.hu_origins import detect_origin
     from core.sap_client import SAPClient, SAPConnectionError
     from queue_app.models import HUItem
-    from queue_app.utils import emit_item_update, emit_stats_update
+    from queue_app.utils import emit_item_update, emit_queue_status, emit_stats_update
 
     pythoncom.CoInitialize()
 
@@ -486,12 +607,28 @@ def _process_hu_item(
         emit_stats_update(item.pallet)
 
         sap = SAPClient()
+        emit_queue_status(
+            f'Conectando con SAP para HU {item.hu_code}.',
+            badge='SAP',
+            mode='running',
+            footer=f'Preparando sesion SAP para Pallet P{item.pallet_id:02d}.',
+            active_pallet_id=item.pallet_id,
+            active_hu_count=1,
+        )
         sap.connect()
         log.info("process_hu_item sap_connected hu=%s", item.hu_code)
 
         res1 = None
 
         if run_f1:
+            emit_queue_status(
+                f'HU {item.hu_code}: iniciando F1 Acknowledge.',
+                badge='F1',
+                mode='running',
+                footer='Capturando HU en ZMOVEINBHU.',
+                active_pallet_id=item.pallet_id,
+                active_hu_count=1,
+            )
             sap.setup_phase1(origin=origin)
             res1 = sap.process_hu_phase1(item.hu_code, origin=origin)
             item.phase1_msg = res1['message']
@@ -529,6 +666,14 @@ def _process_hu_item(
                 item.phase1_msg = 'Ya se hizo el Acknowledge'
 
         if run_f2:
+            emit_queue_status(
+                f'HU {item.hu_code}: {"F1 listo. " if run_f1 else ""}Iniciando F2 Separazione.',
+                badge='F2',
+                mode='running',
+                footer='Procesando separazione en ZMMTIJSEP.',
+                active_pallet_id=item.pallet_id,
+                active_hu_count=1,
+            )
             sap.setup_phase2(origin=origin)
             res2 = sap.process_hu_phase2(
                 item.hu_code,
@@ -663,7 +808,7 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
     from core.sap_client import SAPClient
     from core.ze16_client import ZE16Client, ZE16Error
     from queue_app.models import HUItem, Pallet
-    from queue_app.utils import emit_receipt_done
+    from queue_app.utils import emit_queue_status, emit_receipt_done
 
     pythoncom.CoInitialize()
     result = {'status': 'error', 'message': 'Unknown ZE16/PDF error', 'marked': 0}
@@ -685,10 +830,26 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
         origin = detect_origin(hu_codes[0])
         effective_origin = resolve_effective_origin(origin, hu_count)
 
+        emit_queue_status(
+            f'Pallet P{pallet_id:02d}: conectando SAP para ZE16.',
+            badge='ZE16',
+            mode='running',
+            footer='Preparando consulta de receipts.',
+            active_pallet_id=pallet_id,
+            active_hu_count=hu_count,
+        )
         sap = SAPClient()
         sap.connect()
         printed_by = getattr(settings, 'SAP_LOGIN_USER', '') or sap.get_user()
 
+        emit_queue_status(
+            f'Pallet P{pallet_id:02d}: consultando receipts en ZE16.',
+            badge='ZE16',
+            mode='running',
+            footer=f'Buscando receipts para {hu_count} HU(s).',
+            active_pallet_id=pallet_id,
+            active_hu_count=hu_count,
+        )
         ze16 = ZE16Client(sap.session)
         receipts = ze16.get_receipts_for_pallet(hu_codes)
         hu_display_map = _build_hu_display_map(ze16, hu_codes)
@@ -703,12 +864,28 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True):
             return result
 
         pdf_started = time.perf_counter()
+        emit_queue_status(
+            f'Pallet P{pallet_id:02d}: generando PDF de recibo.',
+            badge='PDF',
+            mode='running',
+            footer=f'Creando recibo con {len(receipts)} receipt(s).',
+            active_pallet_id=pallet_id,
+            active_hu_count=hu_count,
+        )
         pdf_path = PalletReceiptPDF.generate(
             pallet_id=pallet_id,
             origin_label=effective_origin.label,
             receipts=receipts,
             hu_display_map=hu_display_map,
             printed_by=printed_by,
+        )
+        emit_queue_status(
+            f'Pallet P{pallet_id:02d}: enviando PDF a impresora.',
+            badge='PRINT',
+            mode='running',
+            footer='Esperando confirmacion del sistema de impresion.',
+            active_pallet_id=pallet_id,
+            active_hu_count=hu_count,
         )
         printed = PalletReceiptPDF.print_pdf(pdf_path)
 

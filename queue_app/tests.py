@@ -10,7 +10,7 @@ from core.ze16_client import ZE16Client
 from queue_app.consumers import QueueConsumer
 from queue_app.models import HUItem, Pallet
 from queue_app.tasks import process_queue_task
-from queue_app.utils import emit_queue_done
+from queue_app.utils import emit_queue_done, emit_queue_status
 
 
 class PalletTimingTests(TestCase):
@@ -101,6 +101,28 @@ class QueueEventTests(TestCase):
 
         self.assertEqual(sent_events[0]['type'], 'queue_done')
         self.assertFalse(sent_events[0]['stats']['is_running'])
+
+    def test_queue_status_carries_operational_feedback(self):
+        sent_events = []
+
+        with (
+            patch('queue_app.utils.calculate_queue_stats', return_value={'is_running': True}),
+            patch('queue_app.utils._send_group', side_effect=lambda _event, data: sent_events.append(data)),
+        ):
+            emit_queue_status(
+                'Pallet P02 abierto con 5 HU(s). Cierra el pallet para continuar el proceso.',
+                badge='EN ESPERA',
+                mode='waiting',
+                footer='Esperando cierre de P02.',
+                active_pallet_id=2,
+                active_hu_count=5,
+                remaining_seconds=360,
+            )
+
+        self.assertEqual(sent_events[0]['type'], 'queue_status')
+        self.assertEqual(sent_events[0]['mode'], 'waiting')
+        self.assertEqual(sent_events[0]['active_pallet_id'], 2)
+        self.assertEqual(sent_events[0]['stats']['is_running'], True)
 
 
 class ClearQueueTests(TestCase):
@@ -644,6 +666,31 @@ class QueueConsumerTests(TestCase):
         self.assertEqual(sent_payloads[0]['type'], 'queue_done')
         self.assertEqual(sent_payloads[0]['stats']['pending'], 0)
         self.assertEqual(sent_payloads[0]['stats']['pdf_pending'], 0)
+
+    def test_queue_status_forwards_operational_message(self):
+        consumer = QueueConsumer()
+        sent_payloads = []
+
+        async def fake_send_json(payload):
+            sent_payloads.append(payload)
+
+        consumer._send_json = fake_send_json
+
+        async_to_sync(consumer.queue_status)({
+            'type': 'queue_status',
+            'message': 'Esperando cierre de P02.',
+            'badge': 'EN ESPERA',
+            'mode': 'waiting',
+            'footer': 'Usa Nuevo pallet.',
+            'active_pallet_id': 2,
+            'active_hu_count': 5,
+            'remaining_seconds': 360,
+            'stats': {'is_running': True},
+        })
+
+        self.assertEqual(sent_payloads[0]['type'], 'queue_status')
+        self.assertEqual(sent_payloads[0]['mode'], 'waiting')
+        self.assertEqual(sent_payloads[0]['active_hu_count'], 5)
 
     def test_delete_and_clear_events_forward_sync_payloads(self):
         consumer = QueueConsumer()

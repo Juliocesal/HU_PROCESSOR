@@ -23,9 +23,12 @@
   // -- Estado local -------------------------------------------------------------
   let isRunning   = false;
   let flashTimer  = null;
+  let stopRequested = false;
   let palletSepRows = {}; // pallet_id -> tr element
   const palletTimers = new Map();
   let palletTimerFrame = null;
+  let sessionCloseCountdownTimer = null;
+  let websocketConnectionLost = false;
   const _visibleSeps = new Set();
   let _stickyObserver = null;
   const tableWrap = document.getElementById('table-wrap');
@@ -115,6 +118,40 @@
     return seconds === 0 ? `${minutes}min` : `${minutes}min ${seconds}s`;
   }
 
+  function formatCountdown(seconds) {
+    const safeSeconds = Math.max(0, Math.ceil(Number(seconds || 0)));
+    const minutes = Math.floor(safeSeconds / 60);
+    const rest = safeSeconds % 60;
+    return `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`;
+  }
+
+  function clearSessionCloseCountdown() {
+    if (!sessionCloseCountdownTimer) return;
+    clearInterval(sessionCloseCountdownTimer);
+    sessionCloseCountdownTimer = null;
+  }
+
+  function startSessionCloseCountdown(msg) {
+    clearSessionCloseCountdown();
+    const initialSeconds = Number(msg.remaining_seconds || 0);
+    if (!initialSeconds || initialSeconds <= 0) return;
+
+    const endsAt = Date.now() + initialSeconds * 1000;
+    const baseMessage = msg.message || 'Worker en espera operativa.';
+    const baseFooter = msg.footer || 'Esperando siguiente pallet.';
+
+    const render = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
+      const countdown = formatCountdown(remaining);
+      setProgStatus(`${baseMessage} SAP se cerrara en ${countdown} si no cierras otro pallet.`, 'waiting');
+      setFooterStatus(`${baseFooter} Cierre automatico de SAP en ${countdown}.`, 'waiting');
+      if (remaining <= 0) clearSessionCloseCountdown();
+    };
+
+    render();
+    sessionCloseCountdownTimer = setInterval(render, 1000);
+  }
+
   function ensurePalletTimerLoop() {
     if (palletTimerFrame) return;
 
@@ -177,18 +214,28 @@
     ws = new WebSocket(`${proto}://${location.host}/ws/queue/`);
 
     ws.onopen = () => {
+      const wasReconnecting = websocketConnectionLost || wsRetry > 0;
       console.log('WS conectado');
+      websocketConnectionLost = false;
       wsRetry = 0;
+      if (wasReconnecting) {
+        setFooterStatus('Conexion en vivo restablecida.', isRunning ? 'running' : 'done');
+      }
     };
 
     ws.onclose = () => {
+      websocketConnectionLost = true;
       const delay = Math.min(1000 * 2 ** wsRetry, 30000); // max 30s
       wsRetry++;
       console.warn(`WS cerrado. Reintentando en ${delay/1000}s...`);
+      setFooterStatus(`Actualizaciones en vivo desconectadas. Reintentando en ${delay / 1000}s.`, 'waiting');
       setTimeout(connectWS, delay);
     };
 
-    ws.onerror = e => console.error('WS error', e);
+    ws.onerror = e => {
+      console.error('WS error', e);
+      setFooterStatus('Error de WebSocket. Esperando reconexion automatica.', 'waiting');
+    };
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
@@ -201,6 +248,7 @@
         case 'hu_deleted':    handleHuDeleted(msg);    break;
         case 'pallet_deleted': handlePalletDeleted(msg); break;
         case 'queue_cleared': handleQueueCleared(msg); break;
+        case 'queue_status':  handleQueueStatus(msg);  break;
         case 'queue_done':    handleQueueDone(msg);    break;
         case 'pallet_done':   handlePalletDone(msg);   break;
         case 'error':         handleError(msg);         break;
@@ -225,19 +273,25 @@
       tbody.innerHTML = emptyQueueRowHTML();
     }
     if (msg.stats) handleStatsUpdate(msg.stats);
-    if (isRunning) showRunningMode('Proceso activo. Puedes seguir escaneando HUs.');
+    if (msg.queue_status) handleQueueStatus(msg.queue_status);
+    else if (isRunning) showRunningMode('Proceso activo. Puedes seguir escaneando HUs.');
     updateStickyPallet();
     refreshIcons();
   }
 
   function handleItemUpdate(msg) {
+    clearSessionCloseCountdown();
     updateOrCreateRow(msg);
     updateProgress();
     refreshIcons();
 
     if (msg.status === 'processing') {
-      setProgStatus(`Procesando -> Pallet ${msg.pallet_id}  |  HU: ${msg.hu_code}`, 'running');
-      setFooterStatus(`  Procesando HU ${msg.hu_code}…`, 'running');
+      setProgBadge('PROCESANDO', 'running');
+      setProgStatus(`Procesando HU ${msg.hu_code} en Pallet P${String(msg.pallet_id).padStart(2, '0')}`, 'running');
+      setFooterStatus(`Procesando HU ${msg.hu_code}...`, 'running');
+    } else if ((msg.status === 'ok' || msg.status === 'duplicate') && isRunning) {
+      setProgStatus(`HU ${msg.hu_code} completada. Continuando con el pallet.`, 'running');
+      setFooterStatus(`HU ${msg.hu_code} OK.`, 'running');
     } else if (msg.status === 'error' || msg.status === 'hu_not_found') {
       const detail = (msg.phase1_msg || msg.phase2_msg || 'Sin detalles').slice(0, 60);
       setProgStatus(`ERROR en HU ${msg.hu_code}: ${detail}`, 'error');
@@ -248,6 +302,7 @@
   function handleStatsUpdate(msg) {
     if (Object.prototype.hasOwnProperty.call(msg, 'is_running')) {
       isRunning = Boolean(msg.is_running);
+      if (!isRunning) stopRequested = false;
     }
 
     stats = {
@@ -280,24 +335,40 @@
   }
 
   function showRunningMode(message) {
+    clearSessionCloseCountdown();
     setProgBadge('PROCESANDO', 'running');
     setProgStatus(message || 'Proceso activo.', 'running');
     setFooterStatus('Procesando...', 'running');
     const bar = document.getElementById('prog-bar');
     bar.classList.add('animated');
-    bar.classList.remove('done', 'error');
+    bar.classList.remove('done', 'error', 'waiting');
+  }
+
+  function showSapLoginMode(message) {
+    clearSessionCloseCountdown();
+    setProgBadge('SAP', 'running');
+    setProgStatus(message || 'Validando sesion SAP e iniciando sesion si es necesario...', 'running');
+    setFooterStatus('Validando SAP. Si la sesion esta cerrada, se abrira automaticamente.', 'running');
+    const bar = document.getElementById('prog-bar');
+    bar.classList.add('animated');
+    bar.classList.remove('done', 'error', 'waiting');
   }
 
   function handleAutoStartResult(data) {
     if (data.auto_started) {
+      stopRequested = false;
       isRunning = true;
       showRunningMode('Pallet cerrado. Proceso reactivado automaticamente.');
+      setFooterStatus('El worker continuo tomara el nuevo pallet listo.', 'running');
       updateButtons();
       flash('Proceso reactivado automaticamente.', 'green');
       return;
     }
 
     if (data.auto_start_error) {
+      setProgBadge('SAP', 'error');
+      setProgStatus(`Pallet listo, pero no se pudo reactivar: ${data.auto_start_error}`, 'error');
+      setFooterStatus('Corrige SAP y vuelve a iniciar el proceso.', 'error');
       flash(`Pallet listo. No se pudo reactivar: ${data.auto_start_error}`, 'orange');
     }
   }
@@ -305,8 +376,13 @@
   function handleReceiptDone(msg) {
     updatePalletPdfCells(msg);
     if (msg.status !== 'ok') {
+      setProgBadge('REVISION', 'error');
       setProgStatus(`ZE16/PDF: ${msg.message}`, 'error');
       setFooterStatus(`ZE16/PDF: ${msg.message}`, 'error');
+    } else if (isRunning) {
+      setProgBadge('PDF OK', 'done');
+      setProgStatus(`Recibo de Pallet P${String(msg.pallet_id).padStart(2, '0')} impreso. Buscando siguiente pallet.`, 'done');
+      setFooterStatus(`Pallet P${String(msg.pallet_id).padStart(2, '0')} impreso correctamente.`, 'done');
     }
     updateButtons();
   }
@@ -344,6 +420,8 @@
   }
 
   function handleQueueCleared(msg) {
+    clearSessionCloseCountdown();
+    stopRequested = false;
     const tbody = document.getElementById('queue-tbody');
     tbody.innerHTML = emptyQueueRowHTML();
     Object.keys(palletSepRows).forEach(k => delete palletSepRows[k]);
@@ -354,11 +432,42 @@
     setProgBadge('EN ESPERA', '');
     setProgStatus('Cola limpiada. Listo para escanear.', '');
     setFooterStatus('En espera.', '');
-    document.getElementById('prog-bar').classList.remove('animated','done','error');
+    document.getElementById('prog-bar').classList.remove('animated','done','error','waiting');
     refreshIcons();
   }
 
+  function handleQueueStatus(msg) {
+    if (msg.stats) handleStatsUpdate(msg.stats);
+    const mode = msg.mode || 'running';
+    if (msg.stats && Object.prototype.hasOwnProperty.call(msg.stats, 'is_running')) {
+      isRunning = Boolean(msg.stats.is_running);
+    } else {
+      isRunning = !['done', 'idle', 'error', 'stopped'].includes(mode);
+    }
+    setProgBadge(msg.badge || 'INFO', mode);
+    setProgStatus(msg.message || 'Proceso activo.', mode);
+    setFooterStatus(msg.footer || msg.message || 'Proceso activo.', mode);
+
+    const bar = document.getElementById('prog-bar');
+    bar.classList.remove('done', 'error', 'waiting');
+    if (mode === 'waiting') {
+      bar.classList.remove('animated');
+      bar.classList.add('waiting');
+      startSessionCloseCountdown(msg);
+    } else if (mode === 'error') {
+      clearSessionCloseCountdown();
+      bar.classList.remove('animated');
+      bar.classList.add('error');
+    } else {
+      clearSessionCloseCountdown();
+      bar.classList.add('animated');
+    }
+    updateButtons();
+  }
+
   function handleQueueDone(msg) {
+    clearSessionCloseCountdown();
+    stopRequested = false;
     if (msg.stats) {
       handleStatsUpdate({ ...msg.stats, is_running: false });
     } else {
@@ -370,7 +479,7 @@
     if (msg.status === 'stopped') {
       setProgStatus(msg.message, '');
       setProgBadge('Detenido', '');
-      document.getElementById('prog-bar').classList.remove('animated');
+      document.getElementById('prog-bar').classList.remove('animated', 'waiting');
       setFooterStatus(msg.message, '');
       updateButtons();
       flash(msg.message, 'orange');
@@ -379,7 +488,7 @@
     const hasErrors = msg.status !== 'ok' || Number(msg.errors || stats.errors || 0) > 0;
     setProgStatus(msg.message, hasErrors ? 'error' : 'done');
     setProgBadge(hasErrors ? 'Completado con errores' : 'Completado', hasErrors ? 'error' : 'done');
-    document.getElementById('prog-bar').classList.remove('animated');
+    document.getElementById('prog-bar').classList.remove('animated', 'waiting');
     document.getElementById('prog-bar').classList.toggle('done', !hasErrors);
     document.getElementById('prog-bar').classList.toggle('error', hasErrors);
     setFooterStatus(msg.message, hasErrors ? 'error' : 'done');
@@ -389,12 +498,18 @@
 
   function handlePalletDone(msg) {
     updatePalletSep(msg.pallet_id);
+    if (isRunning) {
+      setProgStatus(`Pallet P${String(msg.pallet_id).padStart(2, '0')} terminado. Preparando siguiente paso.`, 'running');
+      setFooterStatus(`Pallet P${String(msg.pallet_id).padStart(2, '0')} terminado.`, 'running');
+    }
   }
 
   function handleError(msg) {
+    clearSessionCloseCountdown();
+    stopRequested = false;
     isRunning = false;
     setProgBadge('Error: ERROR', 'error');
-    document.getElementById('prog-bar').classList.remove('animated');
+    document.getElementById('prog-bar').classList.remove('animated', 'waiting');
     document.getElementById('prog-bar').classList.add('error');
     setFooterStatus('Error:  Error en el proceso.', 'error');
     updateButtons();
@@ -614,7 +729,7 @@
     const bar   = document.getElementById('prog-bar');
     bar.style.width = `${pct}%`;
     document.getElementById('prog-pct').textContent = `${pct}%`;
-    if (total === 0) bar.classList.remove('animated', 'done', 'error');
+    if (total === 0) bar.classList.remove('animated', 'done', 'error', 'waiting');
   }
 
   function setProgBadge(text, mode) {
@@ -626,7 +741,12 @@
   function setProgStatus(text, mode) {
     const s = document.getElementById('prog-status');
     s.textContent = text;
-    const colors = { running: 'var(--blue)', error: 'var(--red)', done: 'var(--green-text)' };
+    const colors = {
+      running: 'var(--blue)',
+      waiting: 'var(--orange)',
+      error: 'var(--red)',
+      done: 'var(--green-text)',
+    };
     s.style.color      = colors[mode] || 'var(--muted)';
     s.style.fontWeight = mode ? 'bold' : 'normal';
   }
@@ -643,7 +763,7 @@
     const hasPdfWork   = Number(stats.pdf_pending || 0) > 0;
     const hasProcessed = stats.ok > 0 || stats.errors > 0;
     document.getElementById('btn-start').disabled     = isRunning || (!hasPending && !hasPdfWork);
-    document.getElementById('btn-stop').disabled      = !isRunning;
+    document.getElementById('btn-stop').disabled      = !isRunning || stopRequested;
     document.getElementById('btn-clear').disabled     = isRunning;
     document.getElementById('btn-reprocess').disabled = isRunning || hasPending || !hasProcessed;
     const newPalletBtn = document.getElementById('btn-new-pallet');
@@ -761,6 +881,7 @@
     scanInputForPaste.value = '';
     scanInputForPaste.disabled = true;
     setHint(`Pegando ${codes.length} HUs...`, 'idle');
+    setFooterStatus(`Pegando ${codes.length} HUs en la cola.`, isRunning ? 'running' : 'waiting');
 
     let okCount = 0;
     let errorCount = 0;
@@ -768,6 +889,7 @@
 
     try {
       for (const code of codes) {
+        setHint(`Pegando HU ${code}...`, 'idle');
         const data = await postScannedCode(code);
         if (data.ok) {
           okCount++;
@@ -790,9 +912,11 @@
 
     if (errorCount === 0) {
       setHint(`OK: ${okCount} HUs agregados desde pegado`, 'ok');
+      setFooterStatus(`${okCount} HUs agregados desde pegado.`, isRunning ? 'running' : '');
       flash(`OK: ${okCount} HUs agregados`, 'green');
     } else {
       setHint(`Pegado parcial: ${okCount} OK, ${errorCount} con error. ${firstError}`, 'warn');
+      setFooterStatus(`Pegado parcial: ${okCount} OK, ${errorCount} con error.`, 'waiting');
       flash(`Pegado parcial: ${okCount} OK, ${errorCount} con error`, okCount ? 'orange' : 'red');
     }
 
@@ -828,21 +952,41 @@
 
   // -- Nuevo pallet --------------------------------------------------------------
   async function newPallet() {
-    const res  = await fetch('/pallet/nuevo/', {
-      method: 'POST',
-      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        run_f1: document.getElementById('chk-f1').checked,
-        run_f2: document.getElementById('chk-f2').checked,
-        run_pdf: true,
-      })
-    });
-    const data = await readJsonResponse(res);
+    const wasRunning = isRunning;
+    if (wasRunning) {
+      showSapLoginMode('Cerrando pallet y validando sesion SAP para continuar...');
+      updateButtons();
+    }
+
+    let data;
+    try {
+      const res  = await fetch('/pallet/nuevo/', {
+        method: 'POST',
+        headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          run_f1: document.getElementById('chk-f1').checked,
+          run_f2: document.getElementById('chk-f2').checked,
+          run_pdf: true,
+        })
+      });
+      data = await readJsonResponse(res);
+    } catch (e) {
+      setHint(`Error: ${e.message}`, 'warn');
+      setProgStatus('No se pudo cerrar o crear el pallet.', 'error');
+      setFooterStatus('Revisa conexion con Django y vuelve a intentar.', 'error');
+      flash(`Error: ${e.message}`, 'red');
+      return;
+    }
     if (data.ok) {
       setHint(`OK ${data.message}`, 'ok');
       flash(`OK ${data.message}`, 'green');
       if (data.stats) handleStatsUpdate(data.stats);
       handleAutoStartResult(data);
+      if (wasRunning && !data.auto_started && !data.auto_start_error) {
+        setProgBadge('EN ESPERA', 'waiting');
+        setProgStatus('Pallet cerrado. El worker tomara el siguiente lote en unos segundos.', 'waiting');
+        setFooterStatus('Esperando reactivacion del worker continuo.', 'waiting');
+      }
       ensurePalletSep(data.pallet_id, 'Sin origen');
       updatePalletSep(data.pallet_id);
       updateStickyPallet();
@@ -856,12 +1000,16 @@
   async function startProcess() {
     if (isRunning) return;
     if (stats.pending === 0 && Number(stats.pdf_pending || 0) === 0) {
+      setProgBadge('EN ESPERA', '');
+      setProgStatus('No hay HUs pendientes ni PDFs por imprimir.', '');
+      setFooterStatus('Escanea HUs o cierra un pallet antes de iniciar.', '');
       flash('Error: No hay HUs pendientes ni PDFs por imprimir.', 'orange');
       return;
     }
 
     isRunning = true;
-    showRunningMode('Enviando HUs a procesar...');
+    stopRequested = false;
+    showSapLoginMode('Validando sesion SAP antes de iniciar la cola...');
     updateButtons();
 
     try {
@@ -881,9 +1029,10 @@
       if (!data.ok) {
         flash(`Error: ${data.error}`, 'red');
         isRunning = false;
+        stopRequested = false;
         setProgBadge('EN ESPERA', '');
         setProgStatus('Error al iniciar.', '');
-        document.getElementById('prog-bar').classList.remove('animated', 'done', 'error');
+        document.getElementById('prog-bar').classList.remove('animated', 'done', 'error', 'waiting');
         updateButtons();
         return;
       }
@@ -893,14 +1042,16 @@
       const message = pdfCount && !huCount
         ? `${pdfCount} PDF pendiente enviado a Celery`
         : `${huCount} HUs enviadas a Celery`;
+      showRunningMode('SAP listo. Cola enviada a Celery.');
       flash(message, 'green');
 
     } catch (e) {
       flash(`Error: Error: ${e.message}`, 'red');
       isRunning = false;
+      stopRequested = false;
       setProgBadge('EN ESPERA', '');
       setProgStatus('Error al iniciar.', 'error');
-      document.getElementById('prog-bar').classList.remove('animated');
+      document.getElementById('prog-bar').classList.remove('animated', 'waiting');
       document.getElementById('prog-bar').classList.add('error');
       updateButtons();
     }
@@ -908,6 +1059,12 @@
 
   // -- Detener proceso -----------------------------------------------------------
   async function stopProcess() {
+    stopRequested = true;
+    setProgBadge('DETENIENDO', 'waiting');
+    setProgStatus('Detencion solicitada. Esperando punto seguro del worker.', 'waiting');
+    setFooterStatus('SAP terminara la operacion actual antes de liberar la cola.', 'waiting');
+    updateButtons();
+
     try {
       const res = await fetch('/cola/detener/', {
         method: 'POST',
@@ -916,15 +1073,17 @@
       const data = await readJsonResponse(res);
       if (!data.ok) {
         isRunning = false;
+        stopRequested = false;
         flash(data.error || 'No hay proceso activo.', 'orange');
         updateButtons();
         return;
       }
-      setProgBadge('Deteniendo', 'running');
-      setProgStatus(data.message || 'Detencion solicitada.', 'running');
-      setFooterStatus('Deteniendo en punto seguro...', 'running');
+      setProgBadge('DETENIENDO', 'waiting');
+      setProgStatus(data.message || 'Detencion solicitada.', 'waiting');
+      setFooterStatus('Deteniendo en punto seguro...', 'waiting');
       flash(data.message || 'Detencion solicitada.', 'orange');
     } catch (e) {
+      stopRequested = false;
       flash(`Error al detener: ${e.message}`, 'red');
     }
     updateButtons();
@@ -936,11 +1095,26 @@
       return;
     }
     if (!confirm('Esto eliminará todas las HUs.\n¿Continuar?')) return;
-    const res  = await fetch('/cola/limpiar/', {
-      method: 'POST',
-      headers: { ...csrfHeaders() }
-    });
-    const data = await readJsonResponse(res);
+
+    setProgBadge('LIMPIANDO', 'waiting');
+    setProgStatus('Limpiando cola...', 'waiting');
+    setFooterStatus('Eliminando HUs y reiniciando contadores.', 'waiting');
+
+    let data;
+    try {
+      const res  = await fetch('/cola/limpiar/', {
+        method: 'POST',
+        headers: { ...csrfHeaders() }
+      });
+      data = await readJsonResponse(res);
+    } catch (e) {
+      setProgBadge('EN ESPERA', '');
+      setProgStatus('No se pudo limpiar la cola.', 'error');
+      setFooterStatus('Revisa conexion con Django y vuelve a intentar.', 'error');
+      flash(`Error: ${e.message}`, 'red');
+      return;
+    }
+
     if (data.ok) {
       document.getElementById('queue-tbody').innerHTML = emptyQueueRowHTML();
       refreshIcons();
@@ -948,15 +1122,19 @@
       _visibleSeps.clear();
       if (stickyPallet) stickyPallet.classList.remove('visible');
       isRunning = false;
+      stopRequested = false;
       stats = { total:0, ok:0, errors:0, pending:0, pallets:0, pdf_pending:0 };
       handleStatsUpdate(stats);
       setProgBadge('EN ESPERA', '');
       setProgStatus('Cola limpiada. Listo para escanear.', '');
       setFooterStatus('En espera.', '');
-      document.getElementById('prog-bar').classList.remove('animated','done','error');
+      document.getElementById('prog-bar').classList.remove('animated','done','error','waiting');
       flash('OK Cola limpiada.', 'green');
       document.getElementById('scan-input').focus();
     } else {
+      setProgBadge('EN ESPERA', '');
+      setProgStatus('No se pudo limpiar la cola.', 'error');
+      setFooterStatus(data.error || 'Limpieza rechazada por el servidor.', 'error');
       flash(`Error: ${data.error}`, 'red');
     }
   }
@@ -965,6 +1143,7 @@
   async function reprocess() {
     if (isRunning) return;
     if (stats.pending > 0 || ((stats.ok + stats.errors) === 0 && !hasErrorRows())) {
+      setFooterStatus('No hay HUs disponibles para reprocesar.', '');
       updateButtons();
       return;
     }
@@ -1009,12 +1188,30 @@
       : 'Marcará todos los HUs procesados como Pendientes para reprocesar.\n¿Continuar?';
     if (!confirm(message)) return;
 
-    const res  = await fetch('/cola/reprocesar/', {
-      method: 'POST',
-      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ mode })
-    });
-    const data = await readJsonResponse(res);
+    isRunning = true;
+    stopRequested = false;
+    showSapLoginMode('Validando sesion SAP antes de reprocesar...');
+    updateButtons();
+
+    let data;
+    try {
+      const res  = await fetch('/cola/reprocesar/', {
+        method: 'POST',
+        headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ mode })
+      });
+      data = await readJsonResponse(res);
+    } catch (e) {
+      flash(`Error al reprocesar: ${e.message}`, 'red');
+      isRunning = false;
+      stopRequested = false;
+      setProgBadge('EN ESPERA', '');
+      setProgStatus('Error al reprocesar.', 'error');
+      document.getElementById('prog-bar').classList.remove('animated', 'waiting');
+      document.getElementById('prog-bar').classList.add('error');
+      updateButtons();
+      return;
+    }
 
     if (data.ok) {
       flash('OK ' + data.count + ' HUs marcados como pendientes.', 'green');
@@ -1040,10 +1237,16 @@
       }
 
       updateProgress();
-      isRunning = true;
-      showRunningMode('Reprocesando HUs...');
+      showRunningMode('SAP listo. Reproceso enviado a Celery.');
       updateButtons();
     } else {
+      isRunning = false;
+      stopRequested = false;
+      setProgBadge('EN ESPERA', '');
+      setProgStatus('Error al reprocesar.', 'error');
+      document.getElementById('prog-bar').classList.remove('animated', 'waiting');
+      document.getElementById('prog-bar').classList.add('error');
+      updateButtons();
       flash('Error: ' + data.error, 'red');
     }
   }
@@ -1053,16 +1256,31 @@
       return;
     }
     const row = document.getElementById(`row-${huCode}`);
+    if (!row) {
+      flash('HU no encontrada en la tabla actual.', 'orange');
+      return;
+    }
     const currentStatus = row.dataset.status || '';
     if (!canDeleteStatus(currentStatus)) {
       flash('Esta HU ya no se puede borrar.', 'orange');
       return;
     }
-    const res  = await fetch(`/hu/${huCode}/borrar/`, {
-      method: 'POST',
-      headers: { ...csrfHeaders() }
-    });
-    const data = await readJsonResponse(res);
+
+    setFooterStatus(`Eliminando HU ${huCode}...`, 'waiting');
+
+    let data;
+    try {
+      const res  = await fetch(`/hu/${huCode}/borrar/`, {
+        method: 'POST',
+        headers: { ...csrfHeaders() }
+      });
+      data = await readJsonResponse(res);
+    } catch (e) {
+      setFooterStatus('No se pudo borrar la HU.', 'error');
+      flash(`Error: ${e.message}`, 'red');
+      return;
+    }
+
     if (data.ok) {
       if (row) {
         const palletId = parseInt(row.dataset.pallet);
@@ -1096,7 +1314,12 @@
         ? `OK HU ${huCode} eliminada. Pallet listo para imprimir PDF.`
         : `OK HU ${huCode} eliminada.`,
         'green');
+      setFooterStatus(data.pdf_reset
+        ? `HU ${huCode} eliminada. PDF del pallet recalculado.`
+        : `HU ${huCode} eliminada.`,
+        '');
     } else {
+      setFooterStatus(data.error || 'Borrado rechazado por el servidor.', 'error');
       flash(`Error: ${data.error}`, 'orange');
     }
   }
@@ -1342,13 +1565,23 @@
       flash('No se puede borrar mientras el proceso esta activo.', 'orange');
       return;
     }
-    if (!confirm(`¿Borrar el pallet P${String(_ctxTargetPallet).padStart(2,'0')} completo`)) return;
+    if (!confirm(`¿Borrar el pallet P${String(_ctxTargetPallet).padStart(2,'0')} completo?`)) return;
 
-    const res  = await fetch(`/pallet/${_ctxTargetPallet}/borrar/`, {
-      method: 'POST',
-      headers: { ...csrfHeaders() },
-    });
-    const data = await readJsonResponse(res);
+    setFooterStatus(`Eliminando Pallet P${String(_ctxTargetPallet).padStart(2, '0')}...`, 'waiting');
+
+    let data;
+    try {
+      const res  = await fetch(`/pallet/${_ctxTargetPallet}/borrar/`, {
+        method: 'POST',
+        headers: { ...csrfHeaders() },
+      });
+      data = await readJsonResponse(res);
+    } catch (e) {
+      setFooterStatus('No se pudo borrar el pallet.', 'error');
+      flash(`Error: ${e.message}`, 'red');
+      return;
+    }
+
     if (data.ok) {
       // Quitar separador y filas asociadas del DOM
       const sep = document.querySelector(`tr.pallet-sep[data-pallet-id="${_ctxTargetPallet}"]`);
@@ -1363,8 +1596,10 @@
       updateStickyPallet();
       ensureEmptyQueueMessage();
       updateButtons();
+      setFooterStatus(`Pallet P${String(_ctxTargetPallet).padStart(2, '0')} borrado.`, '');
       flash(`OK Pallet borrado.`, 'green');
     } else {
+      setFooterStatus(data.error || 'Borrado de pallet rechazado por el servidor.', 'error');
       flash(`Error: ${data.error}`, 'red');
     }
   }

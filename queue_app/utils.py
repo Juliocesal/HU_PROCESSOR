@@ -33,6 +33,115 @@ def calculate_queue_stats() -> dict:
     }
 
 
+def calculate_queue_operational_status() -> dict | None:
+    """Describe que esta haciendo el worker para reconstruir feedback visual."""
+    from queue_app.models import HUItem, Pallet
+    from queue_app.tasks import (
+        get_processing_pallet_ids,
+        get_queue_idle_remaining_seconds,
+        is_queue_locked,
+    )
+
+    if not is_queue_locked():
+        return None
+
+    processing = (
+        HUItem.objects
+        .filter(status=HUItem.STATUS_PROCESSING)
+        .select_related('pallet')
+        .order_by('processing_started_at', 'id')
+        .first()
+    )
+    if processing:
+        pallet_id = processing.pallet_id
+        return {
+            'type': 'queue_status',
+            'badge': 'PROCESANDO',
+            'mode': 'running',
+            'message': f'Procesando HU {processing.hu_code} en Pallet P{pallet_id:02d}.',
+            'footer': f'SAP esta trabajando con HU {processing.hu_code}.',
+            'active_pallet_id': pallet_id,
+            'active_hu_count': 1,
+            'remaining_seconds': None,
+        }
+
+    remaining_seconds = get_queue_idle_remaining_seconds()
+    if remaining_seconds is not None:
+        active = (
+            Pallet.objects
+            .filter(status=Pallet.STATUS_ACTIVE)
+            .order_by('-id')
+            .first()
+        )
+        if not active:
+            return {
+                'type': 'queue_status',
+                'badge': 'EN ESPERA',
+                'mode': 'waiting',
+                'message': 'Modo continuo activo. Escanea HUs para preparar el siguiente pallet.',
+                'footer': 'Esperando nuevos HUs.',
+                'active_pallet_id': None,
+                'active_hu_count': 0,
+                'remaining_seconds': remaining_seconds,
+            }
+
+        hu_count = active.items.count()
+        pallet_label = f'P{active.pk:02d}'
+        if hu_count:
+            return {
+                'type': 'queue_status',
+                'badge': 'EN ESPERA',
+                'mode': 'waiting',
+                'message': (
+                    f'Pallet {pallet_label} abierto con {hu_count} HU(s). '
+                    'Cierra el pallet para continuar el proceso.'
+                ),
+                'footer': (
+                    f'Esperando cierre de {pallet_label}. '
+                    'Usa Nuevo pallet o escanea PALLET.'
+                ),
+                'active_pallet_id': active.pk,
+                'active_hu_count': hu_count,
+                'remaining_seconds': remaining_seconds,
+            }
+
+        return {
+            'type': 'queue_status',
+            'badge': 'EN ESPERA',
+            'mode': 'waiting',
+            'message': f'Pallet {pallet_label} abierto sin HUs. Escanea para continuar.',
+            'footer': f'Esperando HUs en {pallet_label}.',
+            'active_pallet_id': active.pk,
+            'active_hu_count': 0,
+            'remaining_seconds': remaining_seconds,
+        }
+
+    active_pallet_ids = sorted(get_processing_pallet_ids())
+    if active_pallet_ids:
+        labels = ', '.join(f'P{pallet_id:02d}' for pallet_id in active_pallet_ids)
+        return {
+            'type': 'queue_status',
+            'badge': 'PROCESANDO',
+            'mode': 'running',
+            'message': f'Worker activo con pallet(s) {labels}.',
+            'footer': 'Esperando siguiente actualizacion de SAP/Celery.',
+            'active_pallet_id': active_pallet_ids[0],
+            'active_hu_count': 0,
+            'remaining_seconds': None,
+        }
+
+    return {
+        'type': 'queue_status',
+        'badge': 'PROCESANDO',
+        'mode': 'running',
+        'message': 'Worker activo. Sincronizando estado de cola.',
+        'footer': 'Esperando siguiente actualizacion de SAP/Celery.',
+        'active_pallet_id': None,
+        'active_hu_count': 0,
+        'remaining_seconds': None,
+    }
+
+
 def pallets_ready_for_pdf_queryset():
     """
     Pallets sin HUs pendientes ni fallidas, con HUs OK y recibo PDF pendiente.
@@ -156,6 +265,52 @@ def emit_receipt_done(pallet_id, result):
         'processing_finished_at': result.get('processing_finished_at', ''),
         'receipt_done_at': result.get('receipt_done_at', ''),
     })
+
+
+def emit_queue_status(
+    message,
+    *,
+    badge='INFO',
+    mode='running',
+    footer='',
+    active_pallet_id=None,
+    active_hu_count=0,
+    remaining_seconds=None,
+    is_running=None,
+):
+    """Emite un mensaje operativo no invasivo para la barra de progreso."""
+    stats = calculate_queue_stats()
+    if is_running is not None:
+        stats['is_running'] = bool(is_running)
+
+    _send_group('queue_status', {
+        'type': 'queue_status',
+        'message': message,
+        'badge': badge,
+        'mode': mode,
+        'footer': footer or message,
+        'active_pallet_id': active_pallet_id,
+        'active_hu_count': active_hu_count,
+        'remaining_seconds': remaining_seconds,
+        'stats': stats,
+    })
+
+
+def emit_current_queue_status_if_available() -> None:
+    """Reemite el estado operativo actual, por ejemplo tras escanear otra HU."""
+    payload = calculate_queue_operational_status()
+    if not payload:
+        return
+
+    emit_queue_status(
+        payload['message'],
+        badge=payload['badge'],
+        mode=payload['mode'],
+        footer=payload['footer'],
+        active_pallet_id=payload['active_pallet_id'],
+        active_hu_count=payload['active_hu_count'],
+        remaining_seconds=payload['remaining_seconds'],
+    )
 
 
 def emit_queue_done(result):

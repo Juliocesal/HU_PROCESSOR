@@ -25,9 +25,11 @@ from queue_app.tasks import (
 from queue_app.utils import (
     calculate_queue_stats,
     emit_hu_deleted,
+    emit_current_queue_status_if_available,
     emit_item_update,
     emit_pallet_created,
     emit_pallet_deleted,
+    emit_queue_status,
     emit_queue_cleared,
     emit_stats_update,
     pallets_ready_for_pdf_queryset,
@@ -134,6 +136,7 @@ def scan_hu(request):
 
     emit_item_update(item)
     emit_stats_update(item.pallet)
+    emit_current_queue_status_if_available()
 
     log.info("scan_hu hu=%s pallet=%s origin=%s", raw, pallet.pk, origin.code)
 
@@ -514,6 +517,13 @@ def _auto_start_queue_after_pallet_close(run_f1=True, run_f2=True, run_pdf=True)
         }
 
     emit_stats_update(None)
+    emit_queue_status(
+        'Pallet cerrado. El worker continuo se reactivo automaticamente.',
+        badge='AUTO',
+        mode='running',
+        footer='Celery tomara el siguiente pallet listo sin otro click.',
+        is_running=True,
+    )
     return {'auto_started': True, 'auto_start_reason': 'pallet_closed'}
 
 
@@ -629,6 +639,13 @@ def reprocess_queue(request):
             'error': f'No se pudo iniciar Celery/Redis: {e}',
         }, status=503)
 
+    emit_queue_status(
+        f'Reproceso preparado. {count} HU(s) vuelven a la cola.',
+        badge='REPROCESO',
+        mode='running',
+        footer='Celery retomara la cola con los HUs marcados como pendientes.',
+        is_running=True,
+    )
     log.info("reprocess_queue mode=%s count=%d", mode, count)
     return JsonResponse({'ok': True, 'count': count, 'mode': mode})
 
@@ -679,6 +696,13 @@ def start_processing(request):
             'error': f'No se pudo iniciar Celery/Redis: {e}',
         }, status=503)
 
+    emit_queue_status(
+        'Cola enviada a Celery. Preparando SAP para el primer pallet.',
+        badge='INICIO',
+        mode='running',
+        footer=f'{count} HU(s) pendiente(s), {pdf_count} PDF(s) por imprimir.',
+        is_running=True,
+    )
     log.info("start_processing launched queue task for %s HUs", count)
     return JsonResponse({
         'ok':    True,
@@ -897,6 +921,13 @@ def detener_queue(request):
     if not stopped:
         return JsonResponse({'ok': False, 'error': 'No hay proceso activo'}, status=409)
     disarm_continuous_queue()
+    emit_queue_status(
+        'Detencion solicitada. El worker se detendra en el siguiente punto seguro.',
+        badge='DETENIENDO',
+        mode='waiting',
+        footer='SAP terminara la operacion actual antes de liberar la cola.',
+        is_running=True,
+    )
     return JsonResponse({'ok': True, 'message': 'Detencion solicitada. Esperando cierre seguro.'})
 
 
@@ -940,6 +971,13 @@ def procesar_pendientes(request):
             'error': f'No se pudo iniciar Celery/Redis: {e}',
         }, status=503)
 
+    emit_queue_status(
+        'Cola enviada a Celery. Preparando SAP para el primer pallet.',
+        badge='INICIO',
+        mode='running',
+        footer=f'{count} HU(s) pendiente(s), {pdf_count} PDF(s) por imprimir.',
+        is_running=True,
+    )
     log.info(
         "procesar_pendientes sequential_task_started count=%s pdf_count=%s",
         count,

@@ -257,6 +257,7 @@
     transition: all 0.3s;
   }
   .prog-badge.running  { background: var(--proc-bg);  color: var(--blue);      border-color: var(--blue-border); }
+  .prog-badge.waiting  { background: var(--orange-bg); color: var(--orange);    border-color: #F8C994; }
   .prog-badge.error    { background: var(--red-bg);   color: var(--red);       border-color: var(--red-mut); }
   .prog-badge.done     { background: var(--green-bg); color: var(--green);     border-color: var(--green-mut); }
   .prog-badge.stopped  { background: var(--red-bg);   color: var(--muted);     border-color: var(--red-mut); }
@@ -275,6 +276,7 @@
     100% { background-position: 32px 0; }
   }
   .prog-bar-fill.done   { background: var(--green-text); animation: none; }
+  .prog-bar-fill.waiting { background: var(--orange); animation: none; }
   .prog-bar-fill.error  { background: var(--red); animation: none; }
   .prog-pct { font-size: 11pt; font-weight: bold; min-width: 46px; text-align: right; }
   .prog-status { font-size: 8pt; color: var(--muted); transition: color 0.2s; }
@@ -775,6 +777,7 @@
   .btn-ghost:disabled { opacity: 0.35; cursor: default; }
   .footer-status { font-size: 9pt; color: var(--muted); transition: color 0.3s; }
   .footer-status.running { color: var(--blue); font-weight: bold; }
+  .footer-status.waiting { color: var(--orange); font-weight: bold; }
   .footer-status.error   { color: var(--red); font-weight: bold; }
   .footer-status.done    { color: var(--green-text); font-weight: bold; }
 
