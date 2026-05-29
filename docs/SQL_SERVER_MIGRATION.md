@@ -5,25 +5,28 @@ migrar NEXHUS desde SQLite a SQL Server.
 
 ## Estado actual
 
-El proyecto actualmente usa SQLite como base local:
+El proyecto actualmente usa SQLite como base local configurable:
 
 ```python
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "NAME": SQLITE_DB_PATH,
     }
 }
 ```
 
-Archivo activo:
+Archivo activo recomendado en Windows:
 
 ```text
-db.sqlite3
+%LOCALAPPDATA%\NEXHUS\db.sqlite3
 ```
 
-Archivos como `db.sqlite3-wal` y `db.sqlite3-shm` son temporales de SQLite y no
-se migran como bases independientes.
+La ruta puede sobreescribirse con `SQLITE_DB_PATH`. Se evita usar SQLite dentro
+de OneDrive para reducir errores de bloqueo/escritura como
+`attempt to write a readonly database`. Archivos como `db.sqlite3-wal` y
+`db.sqlite3-shm` son temporales de SQLite y no se migran como bases
+independientes.
 
 ## Objetivo recomendado
 

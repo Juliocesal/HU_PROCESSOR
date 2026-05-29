@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from decouple import config
 
@@ -74,10 +75,30 @@ ASGI_APPLICATION = 'config.asgi.application'
 #    estructura y migrar los datos actuales desde db.sqlite3 con un proceso
 #    controlado. No borrar db.sqlite3 hasta validar conteos de pallets, HUs y logs.
 # SQLite queda como valor local por defecto mientras se completa la migracion.
+# En OneDrive/Windows evitamos WAL porque sus archivos `-wal` y `-shm` pueden
+# quedar bloqueados por sincronizacion o procesos duplicados y provocar errores
+# intermitentes como "attempt to write a readonly database".
+SQLITE_TIMEOUT_SECONDS = config('SQLITE_TIMEOUT_SECONDS', default=30, cast=float)
+SQLITE_JOURNAL_MODE = config('SQLITE_JOURNAL_MODE', default='DELETE')
+LOCAL_DATA_DIR = Path(
+    config(
+        'NEXHUS_DATA_DIR',
+        default=str(Path(os.environ.get('LOCALAPPDATA', BASE_DIR)) / 'NEXHUS'),
+    )
+)
+SQLITE_DB_PATH = Path(config('SQLITE_DB_PATH', default=str(LOCAL_DATA_DIR / 'db.sqlite3')))
+SQLITE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': SQLITE_DB_PATH,
+        'OPTIONS': {
+            'timeout': SQLITE_TIMEOUT_SECONDS,
+            'init_command': '; '.join([
+                f'PRAGMA journal_mode={SQLITE_JOURNAL_MODE}',
+                f'PRAGMA busy_timeout={int(SQLITE_TIMEOUT_SECONDS * 1000)}',
+            ]),
+        },
     }
 }
 
