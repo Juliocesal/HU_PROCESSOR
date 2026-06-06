@@ -37,6 +37,11 @@
         <i data-lucide="printer"></i>
         <span>Imprimir</span>
       </div>
+      <div class="ham-item" onclick="openDiagnosticConsole()">
+        <i data-lucide="square-terminal"></i>
+        <span>Diagnóstico</span>
+        <span class="diag-menu-dot info" id="diag-menu-dot" title="Estado de diagnostico pendiente"></span>
+      </div>
       <div class="ham-sep"></div>
       <div class="ham-item" style="color:var(--shell-muted);cursor:default;font-size:7.5pt;">
     NexHus Platform - Developed by
@@ -355,6 +360,45 @@
   <div class="ctx-item" onclick="reprocessQueue('errors')">
     <i data-lucide="triangle-alert"></i>
     <span>Solo HUs con error</span>
+  </div>
+</div>
+
+<div class="diag-panel" id="diag-panel" aria-hidden="true">
+  <div class="diag-window" role="dialog" aria-modal="false" aria-labelledby="diag-title">
+    <div class="diag-head">
+      <div class="diag-title">
+        <i data-lucide="terminal"></i>
+        <span id="diag-title">Diagnóstico del sistema</span>
+      </div>
+      <div class="diag-actions">
+        <button type="button" class="diag-btn" id="diag-refresh" onclick="refreshSystemStatus()">
+          <i data-lucide="activity"></i>
+          <span>Estado</span>
+        </button>
+        <button type="button" class="diag-btn" id="diag-pause" onclick="toggleDiagnosticAutoscroll()">
+          <i data-lucide="pause"></i>
+          <span>Pausar</span>
+        </button>
+        <button type="button" class="diag-btn" onclick="copyDiagnosticLogs()">
+          <i data-lucide="copy"></i>
+          <span>Copiar</span>
+        </button>
+        <button type="button" class="diag-btn" onclick="clearDiagnosticConsole()">
+          <i data-lucide="eraser"></i>
+          <span>Limpiar</span>
+        </button>
+        <button type="button" class="diag-close" onclick="closeDiagnosticConsole()" aria-label="Cerrar diagnóstico">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+    </div>
+    <div class="diag-summary" id="diag-summary">
+      <span class="diag-pill info">Django</span>
+      <span class="diag-pill info">Redis</span>
+      <span class="diag-pill info">Celery</span>
+      <span class="diag-pill info">SAP</span>
+    </div>
+    <pre class="diag-console" id="diag-console" aria-live="polite"></pre>
   </div>
 </div>
 

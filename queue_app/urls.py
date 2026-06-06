@@ -19,6 +19,7 @@ urlpatterns = [
     path('exportar/', views.export_csv, name='export_csv'),
     path('api/stats/', views.stats_view, name='stats'),
     path('api/sap-status/', views.sap_status, name='sap_status'),
+    path('api/system-status/', views.system_status, name='system_status'),
     path('api/sap/iniciar/', views.iniciar_sap_endpoint, name='iniciar_sap'),
     path('api/procesar/', views.procesar_pendientes, name='procesar_pendientes'),
 ]

@@ -1,6 +1,8 @@
 import csv
 import json
 import logging
+import os
+import time
 from datetime import datetime
 from django.conf import settings
 from django.core.management.color import no_style
@@ -16,6 +18,7 @@ from queue_app.models import HUItem, Pallet, ScanLog
 from queue_app.tasks import (
     arm_continuous_queue,
     disarm_continuous_queue,
+    get_queue_idle_remaining_seconds,
     get_processing_pallet_ids,
     is_continuous_queue_armed,
     is_queue_locked,
@@ -23,6 +26,7 @@ from queue_app.tasks import (
     request_queue_stop,
 )
 from queue_app.utils import (
+    calculate_queue_operational_status,
     calculate_queue_stats,
     emit_hu_deleted,
     emit_current_queue_status_if_available,
@@ -38,6 +42,14 @@ from queue_app.utils import (
 log = logging.getLogger(__name__)
 
 QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS = 360
+CELERY_NO_WORKER_MESSAGE = (
+    'Celery apagado. Redis responde, pero no hay workers activos. '
+    'La cola NO se procesara hasta iniciar Celery.'
+)
+CELERY_START_BLOCKED_MESSAGE = (
+    'No se puede iniciar proceso: Celery no esta activo. '
+    'Redis esta conectado, pero ningun worker respondio.'
+)
 HU_CODE_MIN_LENGTH = 10
 HU_CODE_MAX_LENGTH = 15
 REPROCESS_ERROR_STATUSES = [HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
@@ -481,6 +493,48 @@ def _dispatch_continuous_queue(run_f1=True, run_f2=True, run_pdf=True) -> None:
     arm_continuous_queue()
 
 
+def _celery_start_blocker() -> dict | None:
+    """
+    Verifica broker y workers antes de abrir SAP.
+
+    Redis activo solo confirma transporte; sin workers Celery la cola quedaria
+    en espera indefinida. Por eso este bloqueo se ejecuta antes de iniciar o
+    reusar una sesion SAP.
+    """
+    redis_status = _check_redis_status()
+    celery_status = _check_celery_status(redis_status['ok'])
+
+    if redis_status['ok'] and celery_status['ok']:
+        return None
+
+    if not redis_status['ok']:
+        message = (
+            'No se puede iniciar proceso: Redis no responde. '
+            'Revisa el servicio Redis y el puerto configurado antes de iniciar la cola.'
+        )
+    else:
+        message = CELERY_START_BLOCKED_MESSAGE
+
+    return {
+        'message': message,
+        'redis': redis_status,
+        'celery': celery_status,
+    }
+
+
+def _celery_start_blocker_response():
+    blocker = _celery_start_blocker()
+    if not blocker:
+        return None
+
+    return JsonResponse({
+        'ok': False,
+        'error': blocker['message'],
+        'redis': blocker['redis'],
+        'celery': blocker['celery'],
+    }, status=503)
+
+
 def _auto_start_queue_after_pallet_close(run_f1=True, run_f2=True, run_pdf=True) -> dict:
     """
     Reactiva Celery solo cuando el modo continuo ya fue armado manualmente.
@@ -496,6 +550,16 @@ def _auto_start_queue_after_pallet_close(run_f1=True, run_f2=True, run_pdf=True)
 
     if not _has_ready_queue_work(run_pdf=run_pdf):
         return {'auto_started': False, 'auto_start_reason': 'no_ready_work'}
+
+    celery_blocker = _celery_start_blocker()
+    if celery_blocker:
+        return {
+            'auto_started': False,
+            'auto_start_reason': 'celery_unavailable',
+            'auto_start_error': celery_blocker['message'],
+            'celery': celery_blocker['celery'],
+            'redis': celery_blocker['redis'],
+        }
 
     connected, user, message = _ensure_sap_session()
     if not connected:
@@ -580,6 +644,10 @@ def reprocess_queue(request):
 
     if count == 0:
         return JsonResponse({'ok': False, 'error': 'No hay HUs para reprocesar'}, status=400)
+
+    celery_error = _celery_start_blocker_response()
+    if celery_error:
+        return celery_error
 
     sap_error = _sap_session_error_response()
     if sap_error:
@@ -681,6 +749,10 @@ def start_processing(request):
             'ok':    False,
             'error': 'No hay HUs pendientes ni PDFs por imprimir',
         }, status=400)
+
+    celery_error = _celery_start_blocker_response()
+    if celery_error:
+        return celery_error
 
     sap_error = _sap_session_error_response()
     if sap_error:
@@ -813,6 +885,35 @@ def sap_status(request):
         return JsonResponse({'connected': False, 'user': '', 'error': str(e)})
 
 
+@require_GET
+def system_status(request):
+    """
+    Estado operativo para la consola de diagnostico de soporte.
+
+    El endpoint siempre responde JSON para que la UI pueda explicar fallas de
+    Redis, Celery, SAP o cola sin convertirse en otro error 500.
+    """
+    redis_status = _check_redis_status()
+    celery_status = _check_celery_status(redis_status['ok'])
+    database_status = _check_database_status()
+
+    return JsonResponse({
+        'ok': redis_status['ok'] and celery_status['ok'] and database_status['ok'],
+        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'debug': bool(settings.DEBUG),
+        'django': {
+            'ok': True,
+            'message': 'Django/Daphne responde correctamente.',
+            'action': 'Si la UI no responde, revisar Daphne/ASGI y el puerto publicado.',
+        },
+        'redis': redis_status,
+        'celery': celery_status,
+        'database': database_status,
+        'sap': _check_sap_status_for_diagnostics(),
+        'queue': _queue_diagnostic_snapshot(),
+    })
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  STATS — para actualizar KPIs desde JS
 # ══════════════════════════════════════════════════════════════════════════════
@@ -828,6 +929,195 @@ def stats_view(request):
 
 def _get_stats() -> dict:
     return calculate_queue_stats()
+
+
+def _diagnostic_error_message(exc: Exception) -> str:
+    """Evita exponer trazas internas cuando DEBUG esta desactivado."""
+    if settings.DEBUG:
+        return str(exc)[:300]
+    return exc.__class__.__name__
+
+
+def _check_redis_status() -> dict:
+    started = time.perf_counter()
+    try:
+        import redis
+
+        client = redis.Redis.from_url(
+            settings.CELERY_BROKER_URL,
+            socket_connect_timeout=1,
+            socket_timeout=1,
+        )
+        client.ping()
+        return {
+            'ok': True,
+            'message': 'Redis responde.',
+            'action': 'Redis esta disponible para broker/cache.',
+            'latency_ms': round((time.perf_counter() - started) * 1000, 1),
+        }
+    except Exception as exc:
+        return {
+            'ok': False,
+            'message': 'Redis no responde.',
+            'action': 'Revisar servicio Redis, puerto y CELERY_BROKER_URL.',
+            'error': _diagnostic_error_message(exc),
+            'latency_ms': round((time.perf_counter() - started) * 1000, 1),
+        }
+
+
+def _check_celery_status(redis_ok: bool) -> dict:
+    if not redis_ok:
+        return {
+            'ok': False,
+            'message': 'No se verifica Celery porque Redis no responde.',
+            'action': 'Levantar Redis antes de validar o iniciar workers Celery.',
+            'workers': [],
+        }
+
+    started = time.perf_counter()
+    try:
+        from celery import current_app
+
+        ping = current_app.control.inspect(timeout=1).ping() or {}
+        workers = sorted(ping.keys())
+        if not workers:
+            return {
+                'ok': False,
+                'message': CELERY_NO_WORKER_MESSAGE,
+                'action': 'Iniciar el worker Celery antes de procesar o reprocesar.',
+                'workers': [],
+                'latency_ms': round((time.perf_counter() - started) * 1000, 1),
+            }
+
+        return {
+            'ok': True,
+            'message': f'{len(workers)} worker(s) Celery respondieron.',
+            'action': 'Celery esta listo para recibir tareas.',
+            'workers': workers,
+            'latency_ms': round((time.perf_counter() - started) * 1000, 1),
+        }
+    except Exception as exc:
+        return {
+            'ok': False,
+            'message': 'No se pudo consultar Celery.',
+            'action': 'Revisar worker Celery, broker Redis y permisos de red.',
+            'error': _diagnostic_error_message(exc),
+            'workers': [],
+            'latency_ms': round((time.perf_counter() - started) * 1000, 1),
+        }
+
+
+def _check_database_status() -> dict:
+    started = time.perf_counter()
+    db_settings = settings.DATABASES.get('default', {})
+    engine = str(db_settings.get('ENGINE', ''))
+    name = str(db_settings.get('NAME', ''))
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT 1')
+            cursor.fetchone()
+
+        status = {
+            'ok': True,
+            'level': 'ok',
+            'message': 'Base de datos responde.',
+            'action': 'DB disponible para lectura/escritura segun permisos del proceso.',
+            'latency_ms': round((time.perf_counter() - started) * 1000, 1),
+            'engine': engine,
+        }
+
+        if settings.DEBUG:
+            status['name'] = name
+
+        if connection.vendor == 'sqlite' and name and name != ':memory:':
+            db_path = os.path.abspath(name)
+            db_dir = os.path.dirname(db_path) or os.getcwd()
+            db_file_writable = os.path.exists(db_path) and os.access(db_path, os.W_OK)
+            db_dir_writable = os.access(db_dir, os.W_OK)
+            status['writable'] = bool(db_file_writable and db_dir_writable)
+
+            if not status['writable']:
+                status.update({
+                    'ok': False,
+                    'level': 'error',
+                    'message': 'SQLite responde, pero la base no parece escribible.',
+                    'action': 'Revisar permisos de archivo/carpeta. Puede provocar: attempt to write a readonly database.',
+                })
+
+        return status
+    except Exception as exc:
+        message = 'Base de datos no responde.'
+        action = 'Revisar conexion, credenciales, permisos y disponibilidad del servidor DB.'
+        lowered = str(exc).lower()
+
+        if 'readonly database' in lowered or 'read-only database' in lowered:
+            message = 'La base de datos esta en modo solo lectura.'
+            action = 'Revisar permisos/ruta de DB. Django necesita escribir cambios de cola y trazabilidad.'
+
+        return {
+            'ok': False,
+            'level': 'error',
+            'message': message,
+            'action': action,
+            'error': _diagnostic_error_message(exc),
+            'latency_ms': round((time.perf_counter() - started) * 1000, 1),
+            'engine': engine,
+            **({'name': name} if settings.DEBUG else {}),
+        }
+
+
+def _check_sap_status_for_diagnostics() -> dict:
+    try:
+        from core.sap_client import SAPClient
+
+        connected, user = SAPClient.check_session()
+        return {
+            'ok': bool(connected),
+            'connected': bool(connected),
+            'user': user if connected else '',
+            'message': 'Sesion SAP activa.' if connected else 'Sesion SAP desconectada o no valida.',
+            'action': 'Si SAP esta invalido, cerrar/reabrir SAP o revisar login automatico.',
+        }
+    except Exception as exc:
+        return {
+            'ok': False,
+            'connected': False,
+            'user': '',
+            'message': 'No se pudo validar SAP.',
+            'action': 'Cerrar/reabrir SAP o revisar scripting/login automatico.',
+            'error': _diagnostic_error_message(exc),
+        }
+
+
+def _queue_diagnostic_snapshot() -> dict:
+    try:
+        return {
+            'is_locked': is_queue_locked(),
+            'continuous_armed': is_continuous_queue_armed(),
+            'processing_pallet_ids': sorted(get_processing_pallet_ids()),
+            'idle_remaining_seconds': get_queue_idle_remaining_seconds(),
+            'processing_hus': HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).count(),
+            'pending_hus': HUItem.objects.filter(status=HUItem.STATUS_PENDING).count(),
+            'ready_pallets': Pallet.objects.filter(status=Pallet.STATUS_READY).count(),
+            'active_pallets': Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).count(),
+            'pdf_pending': pallets_ready_for_pdf_queryset().count(),
+            'last_operational_status': calculate_queue_operational_status(),
+        }
+    except Exception as exc:
+        return {
+            'is_locked': False,
+            'continuous_armed': False,
+            'processing_pallet_ids': [],
+            'idle_remaining_seconds': None,
+            'processing_hus': 0,
+            'pending_hus': 0,
+            'ready_pallets': 0,
+            'active_pallets': 0,
+            'pdf_pending': 0,
+            'last_operational_status': None,
+            'error': _diagnostic_error_message(exc),
+        }
 
 
 def _get_or_create_active_pallet(hu_code: str, origin) -> Pallet:
@@ -956,6 +1246,10 @@ def procesar_pendientes(request):
     if not count and not pdf_count:
         _close_sap_session_if_idle()
         return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes ni PDFs por imprimir'})
+
+    celery_error = _celery_start_blocker_response()
+    if celery_error:
+        return celery_error
 
     sap_error = _sap_session_error_response()
     if sap_error:

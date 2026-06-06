@@ -430,6 +430,189 @@
     background: #FBE9E7; border-color: #FFAB91; color: #7B3100;
   }
 
+  /* -- Consola de diagnostico ----------------------------------- */
+  .diag-panel {
+    display: none;
+    position: fixed;
+    right: 18px;
+    bottom: 72px;
+    z-index: 1400;
+    pointer-events: none;
+  }
+
+  .diag-panel.open {
+    display: block;
+  }
+
+  .diag-window {
+    width: min(760px, calc(100vw - 36px));
+    height: min(520px, calc(100vh - 120px));
+    background: #08111F;
+    border: 1px solid #26364F;
+    border-radius: 8px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.42);
+    color: #D7E2F1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    pointer-events: auto;
+  }
+
+  .diag-head {
+    height: 42px;
+    padding: 0 10px 0 14px;
+    background: #111C2D;
+    border-bottom: 1px solid #26364F;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .diag-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #FFFFFF;
+    font-size: 9pt;
+    font-weight: 700;
+    min-width: 180px;
+  }
+
+  .diag-title svg {
+    color: #72A7FF;
+  }
+
+  .diag-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .diag-btn,
+  .diag-close {
+    height: 28px;
+    border: 1px solid #31445F;
+    background: #162337;
+    color: #CAD7E8;
+    border-radius: 5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 9px;
+    font-size: 8pt;
+    font-family: var(--font);
+    cursor: pointer;
+  }
+
+  .diag-btn:hover,
+  .diag-close:hover {
+    background: #1D304C;
+    color: #FFFFFF;
+  }
+
+  .diag-close {
+    width: 30px;
+    padding: 0;
+  }
+
+  .diag-btn svg,
+  .diag-close svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .diag-summary {
+    min-height: 34px;
+    padding: 7px 12px;
+    border-bottom: 1px solid #18263C;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #0B1525;
+    overflow-x: auto;
+  }
+
+  .diag-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid #33445F;
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 7.5pt;
+    white-space: nowrap;
+    color: #AFC0D6;
+    background: #101B2C;
+  }
+
+  .diag-pill.ok {
+    border-color: #2E6E48;
+    color: #8FE0A6;
+    background: rgba(35, 107, 61, 0.18);
+  }
+
+  .diag-pill.warn {
+    border-color: #94652A;
+    color: #FFD08A;
+    background: rgba(148, 101, 42, 0.18);
+  }
+
+  .diag-pill.error {
+    border-color: #8B3131;
+    color: #FF9A9A;
+    background: rgba(139, 49, 49, 0.18);
+  }
+
+  .diag-console {
+    flex: 1;
+    margin: 0;
+    padding: 12px 14px;
+    overflow: auto;
+    background: #07101C;
+    color: #D7E2F1;
+    font-family: var(--mono);
+    font-size: 8.5pt;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .diag-line-time { color: #6F8198; }
+  .diag-line-source { color: #9DB4D0; }
+  .diag-line-info { color: #9FC5FF; }
+  .diag-line-ok { color: #8FE0A6; }
+  .diag-line-warn { color: #FFD08A; }
+  .diag-line-error { color: #FF9A9A; }
+
+  @media (max-width: 760px) {
+    .diag-panel {
+      left: 10px;
+      right: 10px;
+      bottom: 62px;
+    }
+
+    .diag-window {
+      width: auto;
+      height: min(540px, calc(100vh - 100px));
+    }
+
+    .diag-head {
+      height: auto;
+      min-height: 42px;
+      flex-wrap: wrap;
+      padding-top: 8px;
+      padding-bottom: 8px;
+    }
+
+    .diag-actions {
+      width: 100%;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+  }
+
   /* ==========================================================================
     UI/UX empresarial con iconos Lucide
     ========================================================================== */
@@ -832,6 +1015,32 @@
     transition: background 0.15s;
   }
   .ham-item:hover { background: rgba(255,255,255,0.08); }
+
+  .diag-menu-dot {
+    width: 8px;
+    height: 8px;
+    margin-left: auto;
+    border-radius: 999px;
+    background: #6F8198;
+    box-shadow: 0 0 0 2px rgba(255,255,255,0.08);
+  }
+
+  .diag-menu-dot.ok {
+    background: #22C55E;
+  }
+
+  .diag-menu-dot.warn {
+    background: #F59E0B;
+  }
+
+  .diag-menu-dot.error {
+    background: #EF4444;
+  }
+
+  .diag-menu-dot.info {
+    background: #6F8198;
+  }
+
   .ham-sep {
     height: 1px;
     background: #253448;

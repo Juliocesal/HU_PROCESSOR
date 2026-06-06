@@ -29,6 +29,7 @@
   let palletTimerFrame = null;
   let sessionCloseCountdownTimer = null;
   let websocketConnectionLost = false;
+  let lastSapConnected = null;
   const _visibleSeps = new Set();
   let _stickyObserver = null;
   const tableWrap = document.getElementById('table-wrap');
@@ -76,6 +77,301 @@
       "'": '&#39;',
     }[char]));
   }
+
+  // -- Consola de diagnostico ---------------------------------------------------
+  const DIAG_MAX_LINES = 500;
+  const diagnosticLogs = [];
+  let diagnosticAutoscroll = true;
+  let diagnosticStatusTimer = null;
+  let lastSystemStatus = null;
+  let lastRelevantWsEventAt = Date.now();
+  let lastRelevantWsMode = '';
+  let lastNoProgressWarningAt = 0;
+  const nativeFetch = window.fetch.bind(window);
+  const NO_PROGRESS_WARNING_MS = 45000;
+  const NO_PROGRESS_WARNING_COOLDOWN_MS = 60000;
+  const RELEVANT_WS_EVENTS = new Set([
+    'item_update',
+    'queue_status',
+    'receipt_done',
+    'queue_done',
+    'error',
+  ]);
+
+  function sanitizeDiagnosticText(value) {
+    return String(value ?? '')
+      .replace(/((password|passwd|pwd|pass|bcode|token|secret)\s*[:=]\s*)[^&\s,;}"']+/ig, '$1***')
+      .slice(0, 700);
+  }
+
+  function diagnosticTimestamp() {
+    return new Date().toLocaleTimeString('es-MX', { hour12: false });
+  }
+
+  function addDiagnosticLog(level, source, message, detail = '') {
+    const entry = {
+      ts: diagnosticTimestamp(),
+      level: String(level || 'info').toLowerCase(),
+      source: sanitizeDiagnosticText(source || 'UI'),
+      message: sanitizeDiagnosticText(message),
+      detail: sanitizeDiagnosticText(detail),
+    };
+
+    diagnosticLogs.push(entry);
+    if (diagnosticLogs.length > DIAG_MAX_LINES) diagnosticLogs.shift();
+    renderDiagnosticConsole();
+  }
+
+  function renderDiagnosticConsole() {
+    const consoleEl = document.getElementById('diag-console');
+    if (!consoleEl) return;
+
+    consoleEl.innerHTML = diagnosticLogs.map(entry => {
+      const level = ['ok', 'warn', 'error', 'info'].includes(entry.level) ? entry.level : 'info';
+      const detail = entry.detail ? ` ${escapeHTML(entry.detail)}` : '';
+      return (
+        `<span class="diag-line-time">[${escapeHTML(entry.ts)}]</span> ` +
+        `<span class="diag-line-${level}">${escapeHTML(level.toUpperCase()).padEnd(5, ' ')}</span> ` +
+        `<span class="diag-line-source">${escapeHTML(entry.source)}</span> ` +
+        `${escapeHTML(entry.message)}${detail}`
+      );
+    }).join('\n');
+
+    if (diagnosticAutoscroll) {
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+  }
+
+  function setDiagnosticMenuState(level = 'info', title = 'Estado de diagnostico pendiente') {
+    const dot = document.getElementById('diag-menu-dot');
+    if (!dot) return;
+
+    dot.classList.remove('ok', 'warn', 'error', 'info');
+    dot.classList.add(['ok', 'warn', 'error', 'info'].includes(level) ? level : 'info');
+    dot.title = title;
+  }
+
+  function worstDiagnosticLevel(levels) {
+    const rank = { error: 3, warn: 2, ok: 1, info: 0 };
+    return levels.reduce((worst, level) => (
+      (rank[level] || 0) > (rank[worst] || 0) ? level : worst
+    ), 'info');
+  }
+
+  function serviceLevel(status, warnWhenUnavailable = false) {
+    if (!status) return 'info';
+    if (['ok', 'warn', 'error', 'info'].includes(status.level)) return status.level;
+    if (status.ok || status.connected) return 'ok';
+    return warnWhenUnavailable ? 'warn' : 'error';
+  }
+
+  function diagnosticHealthFromStatus(status) {
+    if (!status) {
+      return {
+        level: websocketConnectionLost ? 'error' : 'info',
+        title: websocketConnectionLost
+          ? 'WebSocket desconectado. Revisar Daphne/ASGI/puerto.'
+          : 'Diagnostico pendiente.',
+      };
+    }
+
+    const levels = [
+      serviceLevel(status.django),
+      serviceLevel(status.redis),
+      serviceLevel(status.celery),
+      serviceLevel(status.database),
+      serviceLevel(status.sap, true),
+      websocketConnectionLost ? 'error' : 'ok',
+    ];
+    const level = worstDiagnosticLevel(levels);
+    const titleByLevel = {
+      ok: 'Diagnostico OK.',
+      warn: 'Diagnostico con advertencias. Revisar SAP/cola.',
+      error: 'Diagnostico con errores criticos. Revisar consola.',
+      info: 'Diagnostico pendiente.',
+    };
+    return { level, title: titleByLevel[level] || titleByLevel.info };
+  }
+
+  function updateDiagnosticMenuFromStatus(status = lastSystemStatus) {
+    const health = diagnosticHealthFromStatus(status);
+    setDiagnosticMenuState(health.level, health.title);
+  }
+
+  function setDiagnosticSummary(status) {
+    const summary = document.getElementById('diag-summary');
+    if (!summary) return;
+
+    const pill = (label, level = 'info') => {
+      const cls = ['ok', 'warn', 'error', 'info'].includes(level) ? level : 'info';
+      return `<span class="diag-pill ${cls}">${escapeHTML(label)}</span>`;
+    };
+
+    summary.innerHTML = [
+      pill('Django', serviceLevel(status.django)),
+      pill('Redis', serviceLevel(status.redis)),
+      pill('Celery', serviceLevel(status.celery)),
+      pill('DB', serviceLevel(status.database)),
+      pill('SAP', serviceLevel(status.sap, true)),
+      pill(`Lock: ${status.queue?.is_locked ? 'activo' : 'libre'}`, status.queue?.is_locked ? 'warn' : 'ok'),
+      pill(`Pendientes: ${Number(status.queue?.pending_hus || 0)}`, 'ok'),
+    ].join('');
+
+    updateDiagnosticMenuFromStatus(status);
+  }
+
+  async function refreshSystemStatus() {
+    addDiagnosticLog('info', 'SYSTEM', 'Consultando estado del sistema...');
+
+    try {
+      const res = await nativeFetch('/api/system-status/', {
+        headers: csrfHeaders({ 'Accept': 'application/json' }),
+      });
+      const data = await readJsonResponse(res);
+      lastSystemStatus = data;
+      if (!data.ok) {
+        const critical = !data.redis?.ok || !data.celery?.ok || !data.database?.ok;
+        addDiagnosticLog(critical ? 'error' : 'warn', 'SYSTEM', 'Diagnostico recibido con alertas.');
+      }
+
+      setDiagnosticSummary(data);
+      addDiagnosticLog(data.django?.ok ? 'ok' : 'error', 'DAPHNE', data.django?.message || 'Sin respuesta Django.', data.django?.action || '');
+      addDiagnosticLog(data.redis?.ok ? 'ok' : 'error', 'REDIS', data.redis?.message || 'Sin estado Redis.', data.redis?.error || data.redis?.action || '');
+      addDiagnosticLog(data.celery?.ok ? 'ok' : 'error', 'CELERY', data.celery?.message || 'Sin estado Celery.', (data.celery?.workers || []).join(', ') || data.celery?.action || '');
+      addDiagnosticLog(data.database?.ok ? 'ok' : 'error', 'DB', data.database?.message || 'Sin estado DB.', data.database?.error || data.database?.action || '');
+      addDiagnosticLog(data.sap?.connected ? 'ok' : 'warn', 'SAP', data.sap?.message || 'Sin estado SAP.', data.sap?.user ? `user=${data.sap.user}` : (data.sap?.error || data.sap?.action || ''));
+
+      const queue = data.queue || {};
+      addDiagnosticLog(
+        queue.is_locked ? 'warn' : 'ok',
+        'QUEUE',
+        `lock=${queue.is_locked ? 'activo' : 'libre'} pending=${queue.pending_hus || 0} processing=${queue.processing_hus || 0} ready_pallets=${queue.ready_pallets || 0} pdf_pending=${queue.pdf_pending || 0}`,
+        queue.processing_pallet_ids?.length ? `pallets=${queue.processing_pallet_ids.join(',')}` : ''
+      );
+
+      if (queue.last_operational_status?.message) {
+        addDiagnosticLog('info', 'QUEUE_STATUS', queue.last_operational_status.message);
+      }
+    } catch (error) {
+      addDiagnosticLog('error', 'SYSTEM', 'No se pudo consultar /api/system-status/.', error.message);
+      setDiagnosticMenuState('error', 'No se pudo consultar Django/Daphne. Revisar backend/puerto.');
+    }
+
+    refreshIcons();
+  }
+
+  function openDiagnosticConsole() {
+    const panel = document.getElementById('diag-panel');
+    if (!panel) return;
+    panel.classList.add('open');
+    panel.setAttribute('aria-hidden', 'false');
+    addDiagnosticLog('info', 'UI', 'Consola de diagnostico abierta.');
+    refreshSystemStatus();
+    clearInterval(diagnosticStatusTimer);
+    diagnosticStatusTimer = setInterval(refreshSystemStatus, 15000);
+    refreshIcons();
+  }
+
+  function closeDiagnosticConsole() {
+    const panel = document.getElementById('diag-panel');
+    if (!panel) return;
+    panel.classList.remove('open');
+    panel.setAttribute('aria-hidden', 'true');
+    clearInterval(diagnosticStatusTimer);
+    diagnosticStatusTimer = null;
+  }
+
+  function clearDiagnosticConsole() {
+    diagnosticLogs.length = 0;
+    renderDiagnosticConsole();
+    addDiagnosticLog('info', 'UI', 'Consola limpiada.');
+  }
+
+  function toggleDiagnosticAutoscroll() {
+    diagnosticAutoscroll = !diagnosticAutoscroll;
+    const btn = document.getElementById('diag-pause');
+    if (btn) {
+      btn.querySelector('span').textContent = diagnosticAutoscroll ? 'Pausar' : 'Seguir';
+    }
+    addDiagnosticLog('info', 'UI', diagnosticAutoscroll ? 'Auto-scroll activado.' : 'Auto-scroll pausado.');
+  }
+
+  async function copyDiagnosticLogs() {
+    const text = buildSupportReport();
+
+    try {
+      await navigator.clipboard.writeText(text);
+      addDiagnosticLog('ok', 'UI', 'Reporte de soporte copiado al portapapeles.');
+      flash('Reporte de soporte copiado.', 'green');
+    } catch (error) {
+      addDiagnosticLog('error', 'UI', 'No se pudieron copiar los logs.', error.message);
+      flash('No se pudieron copiar los logs.', 'orange');
+    }
+  }
+
+  function formatServiceForReport(label, service, extra = '') {
+    if (!service) return `${label}: SIN DATOS`;
+    const state = (service.ok || service.connected) ? 'OK' : 'ERROR';
+    const parts = [
+      `${label}: ${state}`,
+      service.message || '',
+      service.action ? `accion=${service.action}` : '',
+      service.error ? `error=${service.error}` : '',
+      extra,
+    ].filter(Boolean);
+    return parts.join(' | ');
+  }
+
+  function buildSupportReport() {
+    const status = lastSystemStatus || {};
+    const queue = status.queue || {};
+    const recentLogs = diagnosticLogs.slice(-80).map(entry => (
+      `[${entry.ts}] ${entry.level.toUpperCase()} ${entry.source} ${entry.message}${entry.detail ? ' ' + entry.detail : ''}`
+    ));
+
+    return [
+      'NEXHUS - REPORTE DE SOPORTE',
+      `Generado: ${new Date().toLocaleString('es-MX', { hour12: false })}`,
+      `Ultimo system-status: ${status.timestamp || 'sin consulta'}`,
+      formatServiceForReport('Django/Daphne', status.django),
+      formatServiceForReport('Redis', status.redis),
+      formatServiceForReport('Celery', status.celery, status.celery?.workers?.length ? `workers=${status.celery.workers.join(',')}` : ''),
+      formatServiceForReport('DB', status.database, status.database?.engine ? `engine=${status.database.engine}` : ''),
+      formatServiceForReport('SAP', status.sap, status.sap?.user ? `user=${status.sap.user}` : ''),
+      `WebSocket: ${websocketConnectionLost ? 'DESCONECTADO' : 'OK'}`,
+      `Queue: lock=${queue.is_locked ? 'activo' : 'libre'} pending=${queue.pending_hus || 0} processing=${queue.processing_hus || 0} ready_pallets=${queue.ready_pallets || 0} pdf_pending=${queue.pdf_pending || 0}`,
+      `UI: isRunning=${isRunning} stopRequested=${stopRequested} lastWsMode=${lastRelevantWsMode || 'n/a'} lastWsEvent=${Math.round((Date.now() - lastRelevantWsEventAt) / 1000)}s`,
+      '',
+      'Ultimos logs visibles:',
+      recentLogs.length ? recentLogs.join('\n') : 'Sin logs visibles.',
+    ].join('\n');
+  }
+
+  window.fetch = async (resource, init) => {
+    const started = performance.now();
+    const url = typeof resource === 'string' ? resource : resource?.url || 'fetch';
+
+    try {
+      const response = await nativeFetch(resource, init);
+      if (!response.ok) {
+        addDiagnosticLog(
+          response.status >= 500 ? 'error' : 'warn',
+          'HTTP',
+          `${response.status} ${response.statusText || ''}`,
+          url
+        );
+      }
+      return response;
+    } catch (error) {
+      addDiagnosticLog('error', 'HTTP', 'Fallo de conexion HTTP.', `${url} ${error.message}`);
+      throw error;
+    } finally {
+      const elapsed = performance.now() - started;
+      if (elapsed > 5000) {
+        addDiagnosticLog('warn', 'HTTP', `Solicitud lenta (${Math.round(elapsed)} ms).`, url);
+      }
+    }
+  };
 
   function refreshIcons() {
     if (!window.lucide) return;
@@ -209,6 +505,74 @@
   let ws;
   let wsRetry = 0;
 
+  function logWebSocketDiagnostic(msg) {
+    if (!msg || !msg.type) return;
+
+    if (msg.type === 'queue_status') {
+      const level = msg.mode === 'error' ? 'error' : (msg.mode === 'waiting' ? 'warn' : 'info');
+      addDiagnosticLog(level, msg.badge || 'QUEUE', msg.message || 'Actualizacion de cola.', msg.footer || '');
+      return;
+    }
+
+    if (msg.type === 'item_update') {
+      if (msg.status === 'processing') {
+        addDiagnosticLog('info', 'HU', `Procesando ${msg.hu_code}.`, `pallet=P${String(msg.pallet_id).padStart(2, '0')}`);
+      } else if (msg.status === 'error' || msg.status === 'hu_not_found') {
+        addDiagnosticLog('error', 'HU', `Error en ${msg.hu_code}.`, msg.phase1_msg || msg.phase2_msg || '');
+      }
+      return;
+    }
+
+    if (msg.type === 'receipt_done') {
+      addDiagnosticLog(
+        msg.status === 'ok' ? 'ok' : 'error',
+        'PDF',
+        `Pallet P${String(msg.pallet_id).padStart(2, '0')}: ${msg.message || 'receipt_done'}`,
+        msg.pdf_ms ? `${msg.pdf_ms}ms` : ''
+      );
+      return;
+    }
+
+    if (msg.type === 'queue_done') {
+      addDiagnosticLog(
+        msg.status === 'ok' ? 'ok' : (msg.status === 'stopped' ? 'warn' : 'error'),
+        'QUEUE',
+        msg.message || 'Cola finalizada.',
+        `hus=${msg.hus_processed || 0} errors=${msg.errors || 0}`
+      );
+      return;
+    }
+
+    if (msg.type === 'error') {
+      addDiagnosticLog('error', 'BACKEND', msg.message || 'Error recibido por WebSocket.');
+    }
+  }
+
+  function markRelevantWebSocketEvent(msg) {
+    if (!msg || !RELEVANT_WS_EVENTS.has(msg.type)) return;
+
+    lastRelevantWsEventAt = Date.now();
+    lastRelevantWsMode = msg.type === 'queue_status' ? String(msg.mode || '') : '';
+  }
+
+  function checkProcessingProgressSilence() {
+    if (!isRunning || lastRelevantWsMode === 'waiting') return;
+
+    const elapsed = Date.now() - lastRelevantWsEventAt;
+    if (elapsed < NO_PROGRESS_WARNING_MS) return;
+
+    if (Date.now() - lastNoProgressWarningAt < NO_PROGRESS_WARNING_COOLDOWN_MS) return;
+    lastNoProgressWarningAt = Date.now();
+
+    addDiagnosticLog(
+      'warn',
+      'WATCHDOG',
+      'No hay eventos nuevos desde hace 45s.',
+      'Posible Celery detenido, SAP bloqueado o WebSocket sin eventos.'
+    );
+    setDiagnosticMenuState('warn', 'Proceso sin eventos recientes. Revisar consola de diagnostico.');
+  }
+
   function connectWS() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}/ws/queue/`);
@@ -218,6 +582,8 @@
       console.log('WS conectado');
       websocketConnectionLost = false;
       wsRetry = 0;
+      addDiagnosticLog('ok', 'WEBSOCKET', 'Conectado a /ws/queue/.');
+      updateDiagnosticMenuFromStatus();
       if (wasReconnecting) {
         setFooterStatus('Conexion en vivo restablecida.', isRunning ? 'running' : 'done');
       }
@@ -228,17 +594,23 @@
       const delay = Math.min(1000 * 2 ** wsRetry, 30000); // max 30s
       wsRetry++;
       console.warn(`WS cerrado. Reintentando en ${delay/1000}s...`);
+      addDiagnosticLog('error', 'WEBSOCKET', 'Conexion cerrada. Reintentando...', `delay=${delay / 1000}s. Revisar Daphne/ASGI/puerto.`);
+      setDiagnosticMenuState('error', 'WebSocket desconectado. Revisar Daphne/ASGI/puerto.');
       setFooterStatus(`Actualizaciones en vivo desconectadas. Reintentando en ${delay / 1000}s.`, 'waiting');
       setTimeout(connectWS, delay);
     };
 
     ws.onerror = e => {
       console.error('WS error', e);
+      addDiagnosticLog('error', 'WEBSOCKET', 'Error de WebSocket.', 'Revisar Daphne/ASGI/puerto.');
+      setDiagnosticMenuState('error', 'WebSocket con error. Revisar Daphne/ASGI/puerto.');
       setFooterStatus('Error de WebSocket. Esperando reconexion automatica.', 'waiting');
     };
 
     ws.onmessage = (e) => {
       const msg = JSON.parse(e.data);
+      markRelevantWebSocketEvent(msg);
+      logWebSocketDiagnostic(msg);
       switch (msg.type) {
         case 'initial_state': handleInitialState(msg); break;
         case 'item_update':   handleItemUpdate(msg);   break;
@@ -257,6 +629,7 @@
   }
 
   connectWS();
+  setInterval(checkProcessingProgressSilence, 5000);
 
   // -- Handlers WebSocket --------------------------------------------------------
 
@@ -882,6 +1255,7 @@
     scanInputForPaste.disabled = true;
     setHint(`Pegando ${codes.length} HUs...`, 'idle');
     setFooterStatus(`Pegando ${codes.length} HUs en la cola.`, isRunning ? 'running' : 'waiting');
+    addDiagnosticLog('info', 'SCAN', 'Pegado multiple detectado.', `lines=${codes.length}`);
 
     let okCount = 0;
     let errorCount = 0;
@@ -913,10 +1287,12 @@
     if (errorCount === 0) {
       setHint(`OK: ${okCount} HUs agregados desde pegado`, 'ok');
       setFooterStatus(`${okCount} HUs agregados desde pegado.`, isRunning ? 'running' : '');
+      addDiagnosticLog('ok', 'SCAN', 'Pegado multiple finalizado.', `ok=${okCount}`);
       flash(`OK: ${okCount} HUs agregados`, 'green');
     } else {
       setHint(`Pegado parcial: ${okCount} OK, ${errorCount} con error. ${firstError}`, 'warn');
       setFooterStatus(`Pegado parcial: ${okCount} OK, ${errorCount} con error.`, 'waiting');
+      addDiagnosticLog('warn', 'SCAN', 'Pegado multiple parcial.', `ok=${okCount} errors=${errorCount} first=${firstError}`);
       flash(`Pegado parcial: ${okCount} OK, ${errorCount} con error`, okCount ? 'orange' : 'red');
     }
 
@@ -953,6 +1329,7 @@
   // -- Nuevo pallet --------------------------------------------------------------
   async function newPallet() {
     const wasRunning = isRunning;
+    addDiagnosticLog('info', 'UI', 'Solicitud de nuevo pallet.', wasRunning ? 'proceso_activo=true' : 'proceso_activo=false');
     if (wasRunning) {
       showSapLoginMode('Cerrando pallet y validando sesion SAP para continuar...');
       updateButtons();
@@ -999,6 +1376,7 @@
   // -- Iniciar proceso -----------------------------------------------------------
   async function startProcess() {
     if (isRunning) return;
+    addDiagnosticLog('info', 'UI', 'Operador inicio procesamiento.', `pending=${stats.pending} pdf_pending=${Number(stats.pdf_pending || 0)}`);
     if (stats.pending === 0 && Number(stats.pdf_pending || 0) === 0) {
       setProgBadge('EN ESPERA', '');
       setProgStatus('No hay HUs pendientes ni PDFs por imprimir.', '');
@@ -1059,6 +1437,7 @@
 
   // -- Detener proceso -----------------------------------------------------------
   async function stopProcess() {
+    addDiagnosticLog('warn', 'UI', 'Operador solicito detener el proceso.');
     stopRequested = true;
     setProgBadge('DETENIENDO', 'waiting');
     setProgStatus('Detencion solicitada. Esperando punto seguro del worker.', 'waiting');
@@ -1096,6 +1475,7 @@
     }
     if (!confirm('Esto eliminará todas las HUs.\n¿Continuar?')) return;
 
+    addDiagnosticLog('warn', 'UI', 'Operador solicito limpiar la cola.', `total=${stats.total}`);
     setProgBadge('LIMPIANDO', 'waiting');
     setProgStatus('Limpiando cola...', 'waiting');
     setFooterStatus('Eliminando HUs y reiniciando contadores.', 'waiting');
@@ -1188,6 +1568,7 @@
       : 'Marcará todos los HUs procesados como Pendientes para reprocesar.\n¿Continuar?';
     if (!confirm(message)) return;
 
+    addDiagnosticLog('warn', 'UI', 'Operador inicio reproceso.', `mode=${mode}`);
     isRunning = true;
     stopRequested = false;
     showSapLoginMode('Validando sesion SAP antes de reprocesar...');
@@ -1364,12 +1745,27 @@
   async function readJsonResponse(res) {
     const contentType = res.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
-      return await res.json();
+      const data = await res.json();
+      if (!res.ok || data.ok === false) {
+        addDiagnosticLog(
+          res.status >= 500 ? 'error' : 'warn',
+          'HTTP',
+          `Respuesta JSON con alerta (${res.status}).`,
+          data.error || data.message || res.url
+        );
+      }
+      return data;
     }
 
     const text = await res.text();
     const titleMatch = text.match(/<title>(.*)<\/title>/i);
     const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : '';
+    addDiagnosticLog(
+      'error',
+      'HTTP',
+      'Respuesta no JSON cuando se esperaba JSON.',
+      `${res.status} ${title || res.url}`
+    );
     return {
       ok: false,
       error: title || `Error HTTP ${res.status}`,
@@ -1386,8 +1782,22 @@
       document.getElementById('conn-label').textContent = data.connected
         ? `CONECTADO${data.user ? ' - ' + data.user : ''}`
         : 'Sin sesión SAP';
+      if (lastSapConnected !== Boolean(data.connected)) {
+        addDiagnosticLog(
+          data.connected ? 'ok' : 'warn',
+          'SAP',
+          data.connected ? 'Sesion SAP detectada.' : 'Sesion SAP no disponible.',
+          data.user ? `user=${data.user}` : data.error || ''
+        );
+        lastSapConnected = Boolean(data.connected);
+      }
       return Boolean(data.connected);
-    } catch { /* silencioso */ }
+    } catch (error) {
+      if (lastSapConnected !== false) {
+        addDiagnosticLog('error', 'SAP', 'No se pudo consultar /api/sap-status/.', error.message);
+      }
+      lastSapConnected = false;
+    }
     return false;
   }
   setInterval(checkSAP, 5000);
