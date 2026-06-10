@@ -1,6 +1,0 @@
-08:06:17 [WARNING] django.request - Not Found: /:undefined
-08:06:17 [WARNING] django.request - Not Found: /:undefined
-08:06:17 [WARNING] django.request - Not Found: /:undefined
-08:06:17 [WARNING] django.request - Not Found: /:undefined
-08:06:17 [WARNING] django.request - Not Found: /cgi-bin/
-08:06:18 [WARNING] django.security.csrf - Forbidden (CSRF cookie not set.): /
