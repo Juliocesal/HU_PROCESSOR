@@ -1420,3 +1420,133 @@ RuntimeError: Redis down
 10:07:21 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!d5a18a649cd14011b8f0c4e7889174ac code=1006
 10:07:40 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!6837a21f23024a2eacf54825b29f09bf
 10:08:03 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!8977ae5f832a4256903aa813055f53b3
+10:18:12 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!6837a21f23024a2eacf54825b29f09bf code=1006
+10:18:22 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!e9a7a04deeb74bc5b17f3d2c2adcdca6
+10:19:14 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!e9a7a04deeb74bc5b17f3d2c2adcdca6 code=1001
+10:19:15 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!233818c6c89049839c72478bd6c10ecd
+10:19:37 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!8977ae5f832a4256903aa813055f53b3 code=1001
+10:19:37 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!75fff11b1fb3458b848a6e5494035bfc
+10:20:46 [INFO] queue_app.views - scan_hu hu=t10045890029 pallet=1 origin=CNA
+10:20:48 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!233818c6c89049839c72478bd6c10ecd code=1006
+10:20:57 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!545d5d9bd139441392fe1805f1c92d66
+10:21:03 [INFO] queue_app.views - scan_hu hu=t10045909377 pallet=1 origin=CNA
+10:21:11 [INFO] queue_app.views - scan_hu hu=t10045900275 pallet=1 origin=CNA
+10:21:14 [INFO] queue_app.views - scan_hu hu=t10045890018 pallet=1 origin=CNA
+10:21:20 [INFO] queue_app.views - scan_hu hu=t10045890038 pallet=1 origin=CNA
+10:21:21 [INFO] queue_app.views - scan_hu hu=t10045894174 pallet=1 origin=CNA
+10:21:54 [INFO] queue_app.views - new_pallet created id=2
+10:22:07 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=6 pdf_count=0
+10:55:47 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!75fff11b1fb3458b848a6e5494035bfc code=1006
+10:55:47 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!545d5d9bd139441392fe1805f1c92d66 code=1006
+10:55:55 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!67f6ce2ac9e64011bcdbe601fe2a4861
+10:57:07 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!67f6ce2ac9e64011bcdbe601fe2a4861 code=1006
+11:03:14 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!079e5443a89949c4b193b654492acd05
+11:03:14 [WARNING] django.request - Not Found: /favicon.ico
+11:05:08 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!6c74d3eafff64ffb97430ce6ba423c09
+11:05:12 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!27d2d5c4219241568a8864e83a0d1626
+11:05:13 [WARNING] django.request - Not Found: /favicon.ico
+11:05:35 [WARNING] django.request - Not Found: /favicon.ico
+11:06:05 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!b24bcbff51c4494c965792979b9b7f37
+11:06:07 [WARNING] django.request - Not Found: /favicon.ico
+11:06:44 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!b24bcbff51c4494c965792979b9b7f37 code=1001
+11:11:31 [INFO] queue_app.views - scan_hu hu=T10045890029 pallet=2 origin=CNA
+11:11:33 [INFO] queue_app.views - scan_hu hu=T10045909377 pallet=2 origin=CNA
+11:11:37 [INFO] queue_app.views - scan_hu hu=T10045890018 pallet=2 origin=CNA
+11:11:39 [INFO] queue_app.views - scan_hu hu=T10045900275 pallet=2 origin=CNA
+11:11:44 [INFO] queue_app.views - scan_hu hu=T10045890038 pallet=2 origin=CNA
+11:11:56 [INFO] queue_app.views - scan_hu hu=T10045890060 pallet=2 origin=CNA
+11:12:02 [INFO] queue_app.views - scan_hu hu=T10045906191 pallet=2 origin=CNA
+11:12:27 [INFO] queue_app.views - scan_hu hu=T10045900260 pallet=3 origin=CNA
+11:12:34 [INFO] queue_app.views - scan_hu hu=T10045900249 pallet=3 origin=CNA
+11:12:35 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=7 pdf_count=0
+11:12:36 [INFO] core.sap_client - sap_multi_logon_option_selected
+11:12:37 [INFO] queue_app.views - new_pallet created id=3
+11:12:42 [INFO] queue_app.views - new_pallet created id=4
+11:12:46 [INFO] queue_app.views - scan_hu hu=T10045905993 pallet=4 origin=CNA
+11:12:50 [INFO] queue_app.views - scan_hu hu=T10045906403 pallet=4 origin=CNA
+11:12:58 [INFO] queue_app.views - scan_hu hu=T10045893265 pallet=4 origin=CNA
+11:13:00 [INFO] queue_app.views - scan_hu hu=T10045890114 pallet=4 origin=CNA
+11:13:12 [INFO] queue_app.views - scan_hu hu=T10045890107 pallet=4 origin=CNA
+11:13:18 [INFO] queue_app.views - new_pallet created id=5
+11:14:10 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!27d2d5c4219241568a8864e83a0d1626 code=1001
+11:20:54 [WARNING] django.request - Conflict: /scan/
+11:21:15 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+11:21:30 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!6c74d3eafff64ffb97430ce6ba423c09 code=1001
+11:21:30 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!4ba2450e432840d89742d3299b7f8945
+11:21:31 [WARNING] django.request - Not Found: /favicon.ico
+11:21:33 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!4ba2450e432840d89742d3299b7f8945 code=1001
+11:21:33 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!45047ec24aa44f0aa52aa8626efba40b
+11:21:35 [INFO] queue_app.consumers - ws_disconnected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!45047ec24aa44f0aa52aa8626efba40b code=1001
+11:21:45 [INFO] queue_app.consumers - ws_connected channel=specific.041a1d9d5c7444bcbc73b37c8a8b1a72!39538dd2d2e6409b8b7c0d1d72150560
+11:21:45 [WARNING] django.request - Not Found: /favicon.ico
+11:23:14 [INFO] daphne.server - Killed 2 pending application instances
+11:23:21 [INFO] daphne.cli - Starting server at tcp:port=9821:interface=0.0.0.0
+11:23:21 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+11:23:21 [INFO] daphne.server - Configuring endpoint tcp:port=9821:interface=0.0.0.0
+11:23:21 [INFO] daphne.server - Listening on TCP address 0.0.0.0:9821
+11:25:09 [INFO] daphne.server - Killed 0 pending application instances
+11:25:13 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+11:25:13 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+11:25:13 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+11:25:13 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+11:25:13 [INFO] queue_app.consumers - ws_connected channel=specific.1e83ea1a78484ea6830c5ff16b4d1849!2417d2335b8c403bb5eb959ac5cbe077
+11:25:13 [INFO] queue_app.consumers - ws_connected channel=specific.1e83ea1a78484ea6830c5ff16b4d1849!f452b4b31fac4140b975f7f9f9727e58
+11:27:53 [INFO] daphne.server - Killed 2 pending application instances
+11:27:57 [INFO] daphne.cli - Starting server at tcp:port=9821:interface=0.0.0.0
+11:27:57 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+11:27:57 [INFO] daphne.server - Configuring endpoint tcp:port=9821:interface=0.0.0.0
+11:27:57 [INFO] daphne.server - Listening on TCP address 0.0.0.0:9821
+11:32:52 [INFO] daphne.server - Killed 0 pending application instances
+11:33:00 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+11:33:00 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+11:33:00 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+11:33:00 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+11:33:00 [INFO] queue_app.consumers - ws_connected channel=specific.7d3cb0185fc5400f9c567795f65aa486!b2b4005fea214b87ab5211854cd1ae4b
+11:33:16 [INFO] queue_app.consumers - ws_connected channel=specific.7d3cb0185fc5400f9c567795f65aa486!53ba1e69c046477f98d3d5d0e6330492
+11:34:28 [INFO] queue_app.consumers - ws_disconnected channel=specific.7d3cb0185fc5400f9c567795f65aa486!53ba1e69c046477f98d3d5d0e6330492 code=1001
+11:34:31 [INFO] queue_app.consumers - ws_connected channel=specific.7d3cb0185fc5400f9c567795f65aa486!b9985437e76040bdbf106e0cb9ab0242
+11:35:02 [INFO] queue_app.views - scan_hu hu=2972193801 pallet=1 origin=ITA
+11:35:07 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+11:35:12 [INFO] queue_app.views - scan_hu hu=t10045891358 pallet=1 origin=CNA
+11:35:15 [INFO] queue_app.views - scan_hu hu=t10045891524 pallet=1 origin=CNA
+11:35:20 [INFO] queue_app.views - scan_hu hu=t10045891539 pallet=1 origin=CNA
+11:35:24 [INFO] queue_app.views - scan_hu hu=t10045890185 pallet=1 origin=CNA
+11:35:26 [INFO] queue_app.views - scan_hu hu=t10045894236 pallet=1 origin=CNA
+11:35:28 [INFO] queue_app.views - new_pallet created id=2
+11:35:38 [INFO] queue_app.views - scan_hu hu=t10045906202 pallet=2 origin=CNA
+11:35:40 [INFO] queue_app.views - scan_hu hu=t10045894173 pallet=2 origin=CNA
+11:35:41 [INFO] queue_app.views - scan_hu hu=t10045890012 pallet=2 origin=CNA
+11:35:45 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=5 pdf_count=0
+11:35:45 [INFO] queue_app.views - scan_hu hu=t10045900247 pallet=2 origin=CNA
+11:35:47 [INFO] queue_app.views - scan_hu hu=t10045906204 pallet=2 origin=CNA
+11:35:51 [INFO] queue_app.views - scan_hu hu=t10045890016 pallet=2 origin=CNA
+11:36:05 [INFO] queue_app.views - new_pallet created id=3
+11:36:17 [INFO] queue_app.views - scan_hu hu=c1017145917 pallet=3 origin=BRA/ATL
+11:36:19 [INFO] queue_app.views - new_pallet created id=4
+11:36:34 [INFO] queue_app.consumers - ws_disconnected channel=specific.7d3cb0185fc5400f9c567795f65aa486!b9985437e76040bdbf106e0cb9ab0242 code=1001
+11:36:35 [INFO] queue_app.consumers - ws_connected channel=specific.7d3cb0185fc5400f9c567795f65aa486!17e7fe39050f45b98d7ae28e95bd0af3
+11:36:36 [WARNING] django.request - Not Found: /favicon.ico
+11:37:05 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+11:37:27 [INFO] queue_app.views - scan_hu hu=c1017145768 pallet=4 origin=BRA/ATL
+11:37:30 [INFO] queue_app.views - new_pallet created id=5
+11:38:53 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+11:45:39 [INFO] queue_app.views - scan_hu hu=t10045906176 pallet=5 origin=CNA
+11:45:41 [INFO] queue_app.views - scan_hu hu=t10045906175 pallet=5 origin=CNA
+11:45:54 [INFO] queue_app.views - scan_hu hu=t10045906205 pallet=5 origin=CNA
+11:45:58 [INFO] queue_app.views - scan_hu hu=t10045890013 pallet=5 origin=CNA
+11:46:16 [INFO] queue_app.views - scan_hu hu=t10045906157 pallet=6 origin=CNA
+11:46:17 [INFO] queue_app.views - scan_hu hu=t10045906163 pallet=6 origin=CNA
+11:46:26 [INFO] queue_app.views - scan_hu hu=t10045900253 pallet=6 origin=CNA
+11:46:30 [INFO] queue_app.views - scan_hu hu=t10045906192 pallet=6 origin=CNA
+11:46:33 [INFO] queue_app.views - scan_hu hu=t10045894181 pallet=6 origin=CNA
+11:48:29 [WARNING] daphne.server - Application instance <Task pending name='Task-2648' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<_GatheringFuture pending cb=[Task.task_wakeup()]>> for connection <WebRequest at 0x1e3e4059a90 method=POST uri=/api/procesar/ clientproto=HTTP/1.1> took too long to shut down and was killed.
+11:51:30 [INFO] core.sap_client - sap_multi_logon_option_selected
+11:51:31 [INFO] core.sap_client - sap_multi_logon_option_selected
+11:51:31 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+12:03:07 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+12:03:07 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+12:03:07 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+12:03:07 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+12:03:08 [INFO] queue_app.consumers - ws_connected channel=specific.6350cc53e86849bf8aa95d260169c5f9!67dae9bf33384a158af10b13b9acb5d3
+12:03:10 [INFO] queue_app.consumers - ws_connected channel=specific.6350cc53e86849bf8aa95d260169c5f9!4adf8e226cfb4ff0a4b07b7b388224ca
+12:03:11 [WARNING] django.request - Not Found: /favicon.ico
