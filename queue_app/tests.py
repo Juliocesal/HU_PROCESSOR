@@ -93,6 +93,53 @@ class SystemStatusTests(TestCase):
         self.assertEqual(status['workers'], [])
 
 
+    def test_celery_without_ping_but_active_queue_is_reported_as_busy_warning(self):
+        inspector = SimpleNamespace(ping=lambda: {})
+        current_app = SimpleNamespace(
+            control=SimpleNamespace(inspect=lambda timeout=1: inspector)
+        )
+        queue_status = {
+            'is_locked': True,
+            'worker_heartbeat_alive': True,
+            'worker_stale': False,
+            'processing_hus': 0,
+            'processing_pallet_ids': [],
+            'idle_remaining_seconds': 120,
+            'last_operational_status': {'mode': 'waiting'},
+        }
+
+        with patch('celery.current_app', current_app):
+            status = _check_celery_status(redis_ok=True, queue_status=queue_status)
+
+        self.assertTrue(status['ok'])
+        self.assertEqual(status['level'], 'warn')
+        self.assertFalse(status['control_ping_ok'])
+        self.assertIn('cola esta activa', status['message'])
+
+
+    def test_celery_without_ping_and_stale_worker_is_reported_as_error(self):
+        inspector = SimpleNamespace(ping=lambda: {})
+        current_app = SimpleNamespace(
+            control=SimpleNamespace(inspect=lambda timeout=1: inspector)
+        )
+        queue_status = {
+            'is_locked': True,
+            'worker_heartbeat_alive': False,
+            'worker_stale': True,
+            'processing_hus': 0,
+            'processing_pallet_ids': [],
+            'idle_remaining_seconds': 120,
+            'last_operational_status': {'mode': 'waiting'},
+        }
+
+        with patch('celery.current_app', current_app):
+            status = _check_celery_status(redis_ok=True, queue_status=queue_status)
+
+        self.assertFalse(status['ok'])
+        self.assertEqual(status['level'], 'error')
+        self.assertEqual(status['message'], CELERY_NO_WORKER_MESSAGE)
+
+
 
 
 class SAPSessionValidationTests(TestCase):
@@ -677,14 +724,138 @@ class StartProcessingTests(TestCase):
         close_sessions.assert_called_once()
 
 
+    def test_start_processing_recovers_stale_lock_without_processing_hus(self):
+        pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+        HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_PENDING)
+        queue_status = {
+            'is_locked': True,
+            'worker_stale': True,
+            'processing_hus': 0,
+            'stop_requested': False,
+            'stop_request_age_seconds': None,
+        }
+
+
+        with (
+            patch('queue_app.views._queue_diagnostic_snapshot', return_value=queue_status),
+            patch('queue_app.views.clear_queue_runtime_state') as clear_runtime,
+            patch('queue_app.views.emit_stats_update'),
+            patch('queue_app.views.emit_queue_status'),
+            patch('queue_app.views._celery_start_blocker_response', return_value=None),
+            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
+            patch('queue_app.views.process_queue_task.delay') as delay,
+        ):
+            response = self.client.post('/api/procesar/', data='{}', content_type='application/json')
+
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+        clear_runtime.assert_called_once()
+        delay.assert_called_once()
+
+
     def test_stop_requests_worker_cancellation(self):
-        with patch('queue_app.views.request_queue_stop', return_value=True) as stop:
+        with (
+            patch('queue_app.views._queue_diagnostic_snapshot', return_value={'is_locked': True, 'worker_stale': False}),
+            patch('queue_app.views._check_redis_status', return_value={'ok': True}),
+            patch('queue_app.views._check_celery_status', return_value={'ok': True}),
+            patch('queue_app.views.request_queue_stop', return_value=True) as stop,
+        ):
             response = self.client.post('/cola/detener/')
 
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()['ok'])
         stop.assert_called_once()
+
+
+    def test_stop_recovers_orphaned_runtime_when_celery_was_forced_closed(self):
+        pallet = Pallet.objects.create(status=Pallet.STATUS_READY)
+        item = HUItem.objects.create(
+            hu_code='T10045916001',
+            pallet=pallet,
+            status=HUItem.STATUS_PROCESSING,
+            processing_started_at=timezone.now() - timedelta(seconds=30),
+        )
+        queue_status = {
+            'is_locked': True,
+            'worker_stale': True,
+        }
+        celery_status = {
+            'ok': False,
+            'message': CELERY_NO_WORKER_MESSAGE,
+        }
+
+
+        with (
+            patch('queue_app.views._queue_diagnostic_snapshot', return_value=queue_status),
+            patch('queue_app.views._check_redis_status', return_value={'ok': True}),
+            patch('queue_app.views._check_celery_status', return_value=celery_status),
+            patch('queue_app.views.clear_queue_runtime_state') as clear_runtime,
+            patch('queue_app.views.emit_item_update') as emit_item,
+            patch('queue_app.views.emit_stats_update'),
+            patch('queue_app.views.emit_queue_done') as emit_done,
+            patch('queue_app.views.request_queue_stop') as stop,
+        ):
+            response = self.client.post('/cola/detener/')
+
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['recovered'])
+        clear_runtime.assert_called_once()
+        stop.assert_not_called()
+        emit_item.assert_called_once()
+        emit_done.assert_called_once()
+        item.refresh_from_db()
+        self.assertEqual(item.status, HUItem.STATUS_ERROR)
+        self.assertIn('Celery', item.error_msg)
+
+
+    def test_stop_recovers_when_safe_stop_waits_too_long(self):
+        pallet = Pallet.objects.create(status=Pallet.STATUS_READY)
+        item = HUItem.objects.create(
+            hu_code='T10045916001',
+            pallet=pallet,
+            status=HUItem.STATUS_PROCESSING,
+            processing_started_at=timezone.now() - timedelta(seconds=60),
+        )
+        queue_status = {
+            'is_locked': True,
+            'worker_stale': False,
+            'stop_requested': True,
+            'stop_request_age_seconds': 45,
+        }
+
+
+        with (
+            patch('queue_app.views._queue_diagnostic_snapshot', return_value=queue_status),
+            patch('queue_app.views._check_redis_status', return_value={'ok': True}),
+            patch('queue_app.views._check_celery_status', return_value={'ok': True}),
+            patch('queue_app.views.clear_queue_runtime_state') as clear_runtime,
+            patch('queue_app.views.emit_item_update') as emit_item,
+            patch('queue_app.views.emit_stats_update'),
+            patch('queue_app.views.emit_queue_done') as emit_done,
+            patch('queue_app.views.request_queue_stop') as stop,
+        ):
+            response = self.client.post(
+                '/cola/detener/',
+                data='{"force": true}',
+                content_type='application/json',
+            )
+
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['recovered'])
+        clear_runtime.assert_called_once()
+        stop.assert_not_called()
+        emit_item.assert_called_once()
+        emit_done.assert_called_once()
+        item.refresh_from_db()
+        self.assertEqual(item.status, HUItem.STATUS_ERROR)
 
 
     def test_start_processing_allows_pdf_pending_pallet_without_pending_hus(self):
@@ -1153,6 +1324,8 @@ class SequentialQueueTaskTests(TestCase):
         with (
             patch('queue_app.tasks._acquire_queue_lock', return_value=True),
             patch('queue_app.tasks._release_queue_lock'),
+            patch('queue_app.tasks._stop_requested', return_value=False),
+            patch('queue_app.tasks._touch_queue_worker_heartbeat'),
             patch('queue_app.tasks._process_hu_item', side_effect=process_item),
             patch('queue_app.tasks._run_pallet_boundary', side_effect=print_pallet),
             patch('queue_app.utils.emit_queue_done'),
@@ -1196,6 +1369,7 @@ class SequentialQueueTaskTests(TestCase):
             patch('queue_app.tasks._acquire_queue_lock', return_value=True),
             patch('queue_app.tasks._release_queue_lock'),
             patch('queue_app.tasks._stop_requested', return_value=False),
+            patch('queue_app.tasks._touch_queue_worker_heartbeat'),
             patch('queue_app.tasks._process_hu_item', side_effect=process_item),
             patch('queue_app.tasks._run_pallet_boundary', side_effect=print_pallet),
             patch('queue_app.utils.emit_queue_done'),
@@ -1224,6 +1398,7 @@ class SequentialQueueTaskTests(TestCase):
             patch('queue_app.tasks._acquire_queue_lock', return_value=True),
             patch('queue_app.tasks._release_queue_lock'),
             patch('queue_app.tasks._stop_requested', return_value=False),
+            patch('queue_app.tasks._touch_queue_worker_heartbeat'),
             patch('queue_app.tasks._process_hu_item') as process_item,
             patch('queue_app.tasks._run_pallet_boundary', side_effect=print_pallet),
             patch('queue_app.utils.emit_queue_done'),
@@ -1269,6 +1444,7 @@ class SequentialQueueTaskTests(TestCase):
             patch('queue_app.tasks._acquire_queue_lock', return_value=True),
             patch('queue_app.tasks._release_queue_lock'),
             patch('queue_app.tasks._stop_requested', return_value=False),
+            patch('queue_app.tasks._touch_queue_worker_heartbeat'),
             patch('queue_app.tasks._process_hu_item', side_effect=process_item),
             patch('queue_app.tasks._run_pallet_boundary', side_effect=print_pallet),
             patch('queue_app.utils.emit_queue_done'),

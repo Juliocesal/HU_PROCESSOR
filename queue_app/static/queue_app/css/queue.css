@@ -565,6 +565,105 @@
     background: rgba(139, 49, 49, 0.18);
   }
 
+  .diag-status {
+    padding: 10px 12px 12px;
+    border-bottom: 1px solid #18263C;
+    background: #091322;
+  }
+
+  .diag-status-head,
+  .diag-log-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+    color: #D7E2F1;
+    font-size: 8pt;
+    font-weight: 700;
+  }
+
+  .diag-status-head span:last-child,
+  .diag-log-head span:last-child {
+    color: #70839D;
+    font-size: 7.5pt;
+    font-weight: 600;
+  }
+
+  .diag-status-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .diag-status-card {
+    min-height: 64px;
+    padding: 8px 9px;
+    border: 1px solid #24354E;
+    border-radius: 7px;
+    background: #0D1A2C;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow: hidden;
+  }
+
+  .diag-status-name {
+    color: #95A8C2;
+    font-size: 7.3pt;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .diag-status-card strong {
+    color: #DCE8F7;
+    font-size: 9pt;
+    line-height: 1;
+  }
+
+  .diag-status-card small {
+    color: #8FA1B9;
+    font-size: 7.4pt;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .diag-status-card.ok {
+    border-color: rgba(46, 110, 72, 0.75);
+    background: rgba(35, 107, 61, 0.14);
+  }
+
+  .diag-status-card.ok strong {
+    color: #8FE0A6;
+  }
+
+  .diag-status-card.warn {
+    border-color: rgba(148, 101, 42, 0.8);
+    background: rgba(148, 101, 42, 0.15);
+  }
+
+  .diag-status-card.warn strong {
+    color: #FFD08A;
+  }
+
+  .diag-status-card.error {
+    border-color: rgba(139, 49, 49, 0.85);
+    background: rgba(139, 49, 49, 0.16);
+  }
+
+  .diag-status-card.error strong {
+    color: #FF9A9A;
+  }
+
+  .diag-log-head {
+    margin: 0;
+    padding: 8px 12px;
+    background: #07101C;
+    border-bottom: 1px solid #101D2F;
+  }
+
   .diag-console {
     flex: 1;
     margin: 0;
@@ -610,6 +709,10 @@
       width: 100%;
       justify-content: flex-start;
       flex-wrap: wrap;
+    }
+
+    .diag-status-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
   }
 

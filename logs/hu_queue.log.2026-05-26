@@ -1,0 +1,360 @@
+06:52:14 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+06:52:14 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+06:52:14 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+06:52:14 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+06:52:54 [INFO] queue_app.consumers - ws_connected channel=specific.ef22c5b40d0c436a812cb774b95bbbd4!4dc76cb416514761b3c7a203a0085a78
+06:52:57 [WARNING] django.request - Not Found: /favicon.ico
+06:53:02 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+06:53:15 [INFO] queue_app.views - scan_hu hu=C1016562074 pallet=1 origin=BRA/ATL
+06:53:32 [INFO] queue_app.views - scan_hu hu=C1016562075 pallet=1 origin=BRA/ATL
+06:53:51 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=LOPEZHJC
+06:53:52 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=2 pdf_count=0
+08:16:31 [INFO] queue_app.consumers - ws_disconnected channel=specific.ef22c5b40d0c436a812cb774b95bbbd4!4dc76cb416514761b3c7a203a0085a78 code=1006
+08:40:19 [INFO] queue_app.consumers - ws_connected channel=specific.ef22c5b40d0c436a812cb774b95bbbd4!a08a3181cb5441198a44a01202f8ac56
+08:46:32 [INFO] queue_app.views - scan_hu hu=TH0000268037 pallet=2 origin=THA
+08:46:32 [INFO] queue_app.views - scan_hu hu=TH0000268090 pallet=2 origin=THA
+08:46:33 [INFO] queue_app.views - scan_hu hu=TH0000267998 pallet=2 origin=THA
+08:46:33 [INFO] queue_app.views - scan_hu hu=TH0000268006 pallet=2 origin=THA
+08:46:33 [INFO] queue_app.views - scan_hu hu=TH0000268114 pallet=2 origin=THA
+08:46:33 [INFO] queue_app.views - scan_hu hu=TH0000268036 pallet=2 origin=THA
+08:46:33 [INFO] queue_app.views - scan_hu hu=TH0000268111 pallet=2 origin=THA
+08:46:33 [INFO] queue_app.views - scan_hu hu=TH0000268021 pallet=2 origin=THA
+08:46:34 [INFO] queue_app.views - scan_hu hu=TH0000267996 pallet=2 origin=THA
+08:46:34 [INFO] queue_app.views - scan_hu hu=TH0000267997 pallet=2 origin=THA
+08:46:34 [INFO] queue_app.views - scan_hu hu=TH0000268115 pallet=2 origin=THA
+08:46:34 [INFO] queue_app.views - scan_hu hu=TH0000268007 pallet=2 origin=THA
+08:46:34 [INFO] queue_app.views - scan_hu hu=TH0000268010 pallet=2 origin=THA
+08:46:34 [INFO] queue_app.views - scan_hu hu=TH0000268054 pallet=2 origin=THA
+08:46:34 [INFO] queue_app.views - scan_hu hu=TH0000268011 pallet=2 origin=THA
+08:47:41 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=LOPEZHJC
+08:48:11 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=15 pdf_count=0
+08:50:25 [INFO] queue_app.views - scan_hu hu=C1012090370 pallet=3 origin=BRA/ATL
+08:50:33 [INFO] queue_app.views - scan_hu hu=C1012090368 pallet=3 origin=BRA/ATL
+08:50:36 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=2 pdf_count=0
+08:57:51 [WARNING] django.request - Conflict: /cola/limpiar/
+08:57:51 [WARNING] django.request - Conflict: /cola/limpiar/
+08:57:51 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:57:51 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+08:57:51 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+08:57:51 [WARNING] django.request - Conflict: /pallet/1/borrar/
+08:57:51 [INFO] queue_app.views - new_pallet created id=2
+08:57:51 [INFO] queue_app.views - new_pallet created id=2
+08:57:52 [INFO] queue_app.views - new_pallet created id=2
+08:57:52 [INFO] queue_app.views - new_pallet created id=2
+08:57:52 [INFO] queue_app.views - reprocess_queue mode=all count=3
+08:57:52 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+08:57:52 [WARNING] django.request - Conflict: /cola/reprocesar/
+08:57:52 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+08:57:52 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+08:57:52 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+08:57:52 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+08:57:52 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:57:52 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:57:52 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+08:57:52 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+08:57:52 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:57:52 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+08:57:52 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:57:52 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+08:57:52 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+08:57:52 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:57:52 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+08:57:52 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+08:57:52 [WARNING] django.request - Conflict: /api/procesar/
+08:57:53 [WARNING] django.request - Conflict: /api/procesar/
+08:57:53 [INFO] queue_app.views - detener_queue stop_requested=True
+08:58:17 [WARNING] django.request - Conflict: /cola/limpiar/
+08:58:17 [WARNING] django.request - Conflict: /cola/limpiar/
+08:58:17 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:58:17 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+08:58:17 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+08:58:17 [WARNING] django.request - Conflict: /pallet/1/borrar/
+08:58:17 [INFO] queue_app.views - new_pallet created id=2
+08:58:17 [INFO] queue_app.views - new_pallet created id=2
+08:58:18 [INFO] queue_app.views - new_pallet created id=2
+08:58:18 [INFO] queue_app.views - new_pallet created id=2
+08:58:18 [INFO] queue_app.views - reprocess_queue mode=all count=3
+08:58:18 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+08:58:18 [WARNING] django.request - Conflict: /cola/reprocesar/
+08:58:18 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+08:58:18 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+08:58:18 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+08:58:18 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+08:58:18 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:58:18 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:58:18 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+08:58:18 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+08:58:18 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:58:18 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+08:58:18 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:58:18 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+08:58:18 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+08:58:18 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:58:18 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+08:58:18 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+08:58:18 [WARNING] django.request - Conflict: /api/procesar/
+08:58:18 [WARNING] django.request - Conflict: /api/procesar/
+08:58:18 [INFO] queue_app.views - detener_queue stop_requested=True
+09:15:50 [INFO] queue_app.consumers - ws_disconnected channel=specific.ef22c5b40d0c436a812cb774b95bbbd4!a08a3181cb5441198a44a01202f8ac56 code=1006
+09:16:03 [WARNING] daphne.server - Application instance <Task pending name='Task-948' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<Task cancelled name='Task-2037' coro=<RedisChannelLayer.receive() done, defined at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py:264>>> for connection <WebSocketProtocol client=['127.0.0.1', 58374] path=b'/ws/queue/'> took too long to shut down and was killed.
+09:16:28 [INFO] daphne.server - Killed 0 pending application instances
+09:16:32 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+09:16:32 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+09:16:32 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+09:16:32 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+09:16:36 [INFO] queue_app.consumers - ws_connected channel=specific.5e696d04a04d47799f6b60a03d35d87c!e2479a33b5e14e97821cfac5de5a2a57
+09:16:37 [INFO] queue_app.consumers - ws_disconnected channel=specific.5e696d04a04d47799f6b60a03d35d87c!e2479a33b5e14e97821cfac5de5a2a57 code=1001
+09:16:37 [INFO] queue_app.consumers - ws_connected channel=specific.5e696d04a04d47799f6b60a03d35d87c!1de2746d76cd441d9ba405bb51791146
+09:16:38 [WARNING] django.request - Not Found: /favicon.ico
+09:16:47 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+09:16:53 [INFO] queue_app.views - scan_hu hu=T10045786743 pallet=1 origin=CNA
+09:16:53 [INFO] queue_app.views - scan_hu hu=T10045848443 pallet=1 origin=CNA
+09:16:53 [INFO] queue_app.views - scan_hu hu=T10045855233 pallet=1 origin=CNA
+09:16:53 [INFO] queue_app.views - scan_hu hu=T10045850147 pallet=1 origin=CNA
+09:16:54 [INFO] queue_app.views - scan_hu hu=T10045556933 pallet=1 origin=CNA
+09:16:54 [INFO] queue_app.views - scan_hu hu=T10045831108 pallet=1 origin=CNA
+09:16:54 [INFO] queue_app.views - scan_hu hu=T10045786650 pallet=1 origin=CNA
+09:16:54 [INFO] queue_app.views - scan_hu hu=T10045831106 pallet=1 origin=CNA
+09:16:54 [INFO] queue_app.views - scan_hu hu=T10045786735 pallet=1 origin=CNA
+09:16:54 [INFO] queue_app.views - scan_hu hu=T10045548822 pallet=1 origin=CNA
+09:16:58 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=10 pdf_count=0
+09:18:37 [INFO] queue_app.consumers - ws_disconnected channel=specific.5e696d04a04d47799f6b60a03d35d87c!1de2746d76cd441d9ba405bb51791146 code=1006
+10:07:33 [WARNING] daphne.server - Application instance <Task pending name='Task-32' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<Task cancelled name='Task-436' coro=<RedisChannelLayer.receive() done, defined at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py:264>>> for connection <WebSocketProtocol client=['127.0.0.1', 61359] path=b'/ws/queue/'> took too long to shut down and was killed.
+10:07:33 [WARNING] daphne.server - Application instance <Task pending name='Task-459' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<_GatheringFuture pending cb=[Task.task_wakeup()]>> for connection <WebRequest at 0x237dd069d10 method=GET uri=/api/sap-status/ clientproto=HTTP/1.1> took too long to shut down and was killed.
+10:08:13 [INFO] queue_app.consumers - ws_connected channel=specific.5e696d04a04d47799f6b60a03d35d87c!4fd7e4d238f349a999163aef28f1064a
+10:08:14 [INFO] queue_app.consumers - ws_disconnected channel=specific.5e696d04a04d47799f6b60a03d35d87c!4fd7e4d238f349a999163aef28f1064a code=1001
+10:08:14 [INFO] queue_app.consumers - ws_connected channel=specific.5e696d04a04d47799f6b60a03d35d87c!63e8c8ac7cdb41fea888b5c6492228ac
+10:08:15 [WARNING] django.request - Not Found: /favicon.ico
+10:12:20 [INFO] queue_app.consumers - ws_disconnected channel=specific.5e696d04a04d47799f6b60a03d35d87c!63e8c8ac7cdb41fea888b5c6492228ac code=1001
+10:12:20 [INFO] queue_app.consumers - ws_connected channel=specific.5e696d04a04d47799f6b60a03d35d87c!b4b1b2e757e74f2bb2020591e3318402
+10:12:20 [WARNING] django.request - Not Found: /favicon.ico
+10:21:03 [WARNING] django.request - Conflict: /cola/limpiar/
+10:21:03 [WARNING] django.request - Conflict: /cola/limpiar/
+10:21:03 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+10:21:03 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+10:21:03 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+10:21:03 [WARNING] django.request - Conflict: /pallet/1/borrar/
+10:21:03 [INFO] queue_app.views - new_pallet created id=2
+10:21:03 [INFO] queue_app.views - new_pallet created id=2
+10:21:03 [INFO] queue_app.views - new_pallet created id=2
+10:21:03 [INFO] queue_app.views - new_pallet created id=2
+10:21:03 [INFO] queue_app.views - reprocess_queue mode=all count=3
+10:21:04 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+10:21:04 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:21:04 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:21:04 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:21:04 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:21:04 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:21:04 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:21:04 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:21:04 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+10:21:04 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:21:04 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:21:04 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+10:21:04 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:21:04 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+10:21:04 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+10:21:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:21:04 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+10:21:04 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+10:21:04 [WARNING] django.request - Conflict: /api/procesar/
+10:21:04 [WARNING] django.request - Conflict: /api/procesar/
+10:21:04 [INFO] queue_app.views - detener_queue stop_requested=True
+10:22:16 [INFO] daphne.server - Killed 1 pending application instances
+10:22:24 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+10:22:24 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+10:22:24 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+10:22:24 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+10:22:29 [INFO] queue_app.consumers - ws_connected channel=specific.58a0d5d511e142c19613f8562a04bea2!f3a50653c4454c579471371be814664d
+10:22:30 [INFO] queue_app.consumers - ws_disconnected channel=specific.58a0d5d511e142c19613f8562a04bea2!f3a50653c4454c579471371be814664d code=1001
+10:22:31 [INFO] queue_app.consumers - ws_connected channel=specific.58a0d5d511e142c19613f8562a04bea2!e34378c67de6451eb487eb6c176c1f9c
+10:22:31 [WARNING] django.request - Not Found: /favicon.ico
+10:22:38 [INFO] queue_app.views - scan_hu hu=C1012089476 pallet=2 origin=BRA/ATL
+10:22:38 [INFO] queue_app.views - scan_hu hu=C1012089475 pallet=2 origin=BRA/ATL
+10:22:38 [INFO] queue_app.views - scan_hu hu=C1012089472 pallet=2 origin=BRA/ATL
+10:22:38 [INFO] queue_app.views - scan_hu hu=C1012089483 pallet=2 origin=BRA/ATL
+10:22:38 [INFO] queue_app.views - scan_hu hu=C1012089481 pallet=2 origin=BRA/ATL
+10:22:38 [INFO] queue_app.views - scan_hu hu=C1012089479 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089484 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089478 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089485 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089473 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089470 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089486 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089477 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089480 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089488 pallet=2 origin=BRA/ATL
+10:22:39 [INFO] queue_app.views - scan_hu hu=C1012089482 pallet=2 origin=BRA/ATL
+10:22:40 [INFO] queue_app.views - scan_hu hu=C1012089471 pallet=2 origin=BRA/ATL
+10:22:40 [INFO] queue_app.views - scan_hu hu=C1012089474 pallet=2 origin=BRA/ATL
+10:22:46 [INFO] queue_app.views - new_pallet created id=3
+10:22:58 [INFO] queue_app.views - scan_hu hu=T10045831120 pallet=3 origin=CNA
+10:22:58 [INFO] queue_app.views - scan_hu hu=T10045855982 pallet=3 origin=CNA
+10:22:58 [INFO] queue_app.views - scan_hu hu=T10045855981 pallet=3 origin=CNA
+10:22:58 [INFO] queue_app.views - scan_hu hu=T10045855235 pallet=3 origin=CNA
+10:22:58 [INFO] queue_app.views - scan_hu hu=T10045850173 pallet=3 origin=CNA
+10:22:58 [INFO] queue_app.views - scan_hu hu=T10045831116 pallet=3 origin=CNA
+10:24:24 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=24 pdf_count=0
+10:27:25 [WARNING] django.request - Conflict: /cola/limpiar/
+10:27:25 [WARNING] django.request - Conflict: /cola/limpiar/
+10:27:25 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+10:27:25 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+10:27:25 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+10:27:25 [WARNING] django.request - Conflict: /pallet/1/borrar/
+10:27:25 [INFO] queue_app.views - new_pallet created id=2
+10:27:25 [INFO] channels_redis.core - 1 of 2 channels over capacity in group queue_updates
+10:27:25 [INFO] queue_app.views - new_pallet created id=2
+10:27:25 [INFO] channels_redis.core - 1 of 2 channels over capacity in group queue_updates
+10:27:25 [INFO] channels_redis.core - 1 of 2 channels over capacity in group queue_updates
+10:27:25 [INFO] queue_app.views - new_pallet created id=2
+10:27:25 [INFO] channels_redis.core - 1 of 2 channels over capacity in group queue_updates
+10:27:25 [INFO] queue_app.views - new_pallet created id=2
+10:27:25 [INFO] queue_app.views - reprocess_queue mode=all count=3
+10:27:25 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+10:27:26 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:27:26 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:27:26 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:27:26 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:27:26 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:27:26 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:27:26 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:27:26 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+10:27:26 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:27:26 [INFO] channels_redis.core - 1 of 2 channels over capacity in group queue_updates
+10:27:26 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:27:26 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+10:27:26 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:27:26 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+10:27:26 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+10:27:26 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:27:26 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+10:27:26 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+10:27:26 [WARNING] django.request - Conflict: /api/procesar/
+10:27:26 [WARNING] django.request - Conflict: /api/procesar/
+10:27:26 [INFO] queue_app.views - detener_queue stop_requested=True
+10:27:47 [WARNING] django.request - Conflict: /cola/limpiar/
+10:27:47 [WARNING] django.request - Conflict: /cola/limpiar/
+10:27:47 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+10:27:47 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+10:27:47 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+10:27:47 [WARNING] django.request - Conflict: /pallet/1/borrar/
+10:27:47 [INFO] queue_app.views - new_pallet created id=2
+10:27:47 [INFO] queue_app.views - new_pallet created id=2
+10:27:47 [INFO] queue_app.views - new_pallet created id=2
+10:27:47 [INFO] queue_app.views - new_pallet created id=2
+10:27:47 [INFO] queue_app.views - reprocess_queue mode=all count=3
+10:27:47 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+10:27:47 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:27:47 [WARNING] core.sap_client - sap_session_disconnected_dialog text=sap gui for windows 770 sap gui for windows 770 sap gui for windows 770 wsaeconnreset: connection reset by peer
+10:27:47 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:27:47 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:27:47 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:27:47 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:27:47 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:27:47 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:27:47 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+10:27:47 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:27:47 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:27:47 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+10:27:47 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:27:47 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+10:27:47 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+10:27:47 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:27:47 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+10:27:47 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+10:27:47 [WARNING] django.request - Conflict: /api/procesar/
+10:27:48 [WARNING] django.request - Conflict: /api/procesar/
+10:27:48 [INFO] queue_app.views - detener_queue stop_requested=True
+11:08:33 [INFO] queue_app.consumers - ws_disconnected channel=specific.58a0d5d511e142c19613f8562a04bea2!e34378c67de6451eb487eb6c176c1f9c code=1006
+11:52:01 [INFO] queue_app.consumers - ws_connected channel=specific.58a0d5d511e142c19613f8562a04bea2!deced56ad29440f1984a7063577095e4
+12:21:08 [INFO] queue_app.consumers - ws_disconnected channel=specific.58a0d5d511e142c19613f8562a04bea2!deced56ad29440f1984a7063577095e4 code=1006
+12:21:37 [INFO] queue_app.consumers - ws_connected channel=specific.58a0d5d511e142c19613f8562a04bea2!fc707b68334d44849f207fe0011b8fbb
+12:23:10 [WARNING] daphne.server - Application instance <Task pending name='Task-1284' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<Future pending cb=[Task.task_wakeup()]>> for connection <WebSocketProtocol client=['127.0.0.1', 60434] path=b'/ws/queue/'> took too long to shut down and was killed.
+12:23:13 [INFO] queue_app.consumers - ws_connected channel=specific.58a0d5d511e142c19613f8562a04bea2!33dc695bec9446f6869c563e39fea9d2
+13:43:00 [INFO] queue_app.consumers - ws_disconnected channel=specific.58a0d5d511e142c19613f8562a04bea2!33dc695bec9446f6869c563e39fea9d2 code=1001
+13:43:00 [INFO] queue_app.consumers - ws_connected channel=specific.58a0d5d511e142c19613f8562a04bea2!5ccbb20ce2b64e34af2a6c57b86497c0
+13:43:01 [WARNING] django.request - Not Found: /favicon.ico
+13:43:08 [INFO] daphne.server - Killed 1 pending application instances
+13:43:13 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+13:43:13 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+13:43:13 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+13:43:13 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+13:43:15 [INFO] queue_app.consumers - ws_connected channel=specific.3a79ba7993574d708007300a29322ffa!24ba1fbfff644797b9179e25b37d4e6e
+13:49:10 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=LOPEZHJC
+13:49:43 [INFO] queue_app.views - reprocess_queue mode=errors count=24
+13:51:02 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+13:51:16 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+13:52:30 [INFO] queue_app.views - new_pallet created id=4
+13:52:38 [INFO] queue_app.views - scan_hu hu=C1016562075 pallet=4 origin=BRA/ATL
+13:52:56 [INFO] queue_app.views - new_pallet created id=5
+13:53:01 [INFO] queue_app.views - scan_hu hu=C1016562074 pallet=5 origin=BRA/ATL
+13:54:33 [INFO] queue_app.views - new_pallet created id=6
+13:56:57 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=LOPEZHJC
+13:59:53 [INFO] queue_app.consumers - ws_disconnected channel=specific.3a79ba7993574d708007300a29322ffa!24ba1fbfff644797b9179e25b37d4e6e code=1006
+13:59:57 [INFO] queue_app.consumers - ws_connected channel=specific.3a79ba7993574d708007300a29322ffa!6bc9985a0e314dad91eeff8b4241c8f9
+14:40:13 [WARNING] daphne.server - Application instance <Task pending name='Task-1281' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<Future pending cb=[Task.task_wakeup()]>> for connection <WebSocketProtocol client=['127.0.0.1', 60292] path=b'/ws/queue/'> took too long to shut down and was killed.
+14:51:41 [INFO] queue_app.consumers - ws_connected channel=specific.3a79ba7993574d708007300a29322ffa!d4c5860bae07437cad5be5036aba27a3
+14:53:48 [INFO] queue_app.consumers - ws_disconnected channel=specific.3a79ba7993574d708007300a29322ffa!d4c5860bae07437cad5be5036aba27a3 code=1001
+14:53:48 [INFO] queue_app.consumers - ws_connected channel=specific.3a79ba7993574d708007300a29322ffa!8f0dd4ef44a448459e064691d171fff6
+14:53:49 [WARNING] django.request - Not Found: /favicon.ico
+18:20:51 [INFO] queue_app.consumers - ws_disconnected channel=specific.3a79ba7993574d708007300a29322ffa!8f0dd4ef44a448459e064691d171fff6 code=1006

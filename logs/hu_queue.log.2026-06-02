@@ -1,0 +1,306 @@
+06:22:14 [INFO] daphne.server - Killed 0 pending application instances
+06:34:54 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+06:34:54 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+06:34:54 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+06:34:54 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+06:35:44 [INFO] queue_app.consumers - ws_connected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!952033fd92824aaf9531f93564efb6b0
+06:35:45 [WARNING] django.request - Not Found: /favicon.ico
+06:35:48 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:22:57 [INFO] queue_app.views - scan_hu hu=C1017000732 pallet=1 origin=BRA/ATL
+08:23:10 [INFO] core.sap_client - sap_multi_logon_option_selected
+08:23:14 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=1 pdf_count=0
+08:45:18 [WARNING] django.request - Not Found: /favicon.ico
+08:45:49 [WARNING] django.request - Not Found: /favicon.ico
+08:45:49 [INFO] queue_app.consumers - ws_connected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!4f009f344ac047dbaa55bbcfa34d4bf5
+08:46:01 [WARNING] django.request - Not Found: /favicon.ico
+08:46:07 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:46:32 [INFO] queue_app.consumers - ws_connected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!4d318691a16e44dbab5084c4aac6099d
+08:46:33 [WARNING] django.request - Not Found: /favicon.ico
+08:47:05 [INFO] queue_app.consumers - ws_disconnected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!4d318691a16e44dbab5084c4aac6099d code=1001
+08:47:21 [INFO] queue_app.views - scan_hu hu=C1016902003 pallet=1 origin=BRA/ATL
+08:47:24 [INFO] queue_app.views - new_pallet created id=2
+08:47:35 [INFO] queue_app.views - scan_hu hu=C1017000734 pallet=2 origin=BRA/ATL
+08:47:39 [INFO] queue_app.views - new_pallet created id=3
+08:47:50 [INFO] queue_app.views - scan_hu hu=C1017000773 pallet=3 origin=BRA/ATL
+08:48:07 [INFO] core.sap_client - sap_multi_logon_option_selected
+08:48:08 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=3 pdf_count=0
+08:48:45 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+08:53:14 [INFO] queue_app.views - scan_hu hu=C1017000747 pallet=4 origin=BRA/ATL
+08:53:17 [INFO] queue_app.views - new_pallet created id=5
+08:53:29 [INFO] queue_app.views - scan_hu hu=C1017000733 pallet=5 origin=BRA/ATL
+08:53:32 [INFO] queue_app.views - new_pallet created id=6
+08:55:09 [INFO] queue_app.views - detener_queue stop_requested=True
+08:55:13 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:55:21 [INFO] queue_app.views - scan_hu hu=C1017072731 pallet=1 origin=BRA/ATL
+08:55:49 [INFO] core.sap_client - sap_multi_logon_option_selected
+08:55:50 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=1 pdf_count=0
+08:55:59 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+08:58:14 [WARNING] django.request - Not Found: /:undefined
+08:58:15 [WARNING] django.security.csrf - Forbidden (CSRF cookie not set.): /
+09:02:32 [INFO] queue_app.consumers - ws_disconnected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!952033fd92824aaf9531f93564efb6b0 code=1006
+09:53:04 [INFO] queue_app.consumers - ws_disconnected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!4f009f344ac047dbaa55bbcfa34d4bf5 code=1006
+09:53:06 [INFO] queue_app.consumers - ws_connected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!4d151737aafc4d36bcbe94fd1d1f7fbc
+09:53:34 [INFO] queue_app.consumers - ws_connected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!fc6905aa1aad4a8bbb1bb90a5bb56eac
+10:31:57 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+10:34:10 [INFO] queue_app.consumers - ws_disconnected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!fc6905aa1aad4a8bbb1bb90a5bb56eac code=1001
+10:34:46 [WARNING] django.request - Not Found: /favicon.ico
+10:35:09 [WARNING] django.request - Not Found: /favicon.ico
+10:36:12 [WARNING] django.request - Not Found: /favicon.ico
+10:41:10 [INFO] queue_app.consumers - ws_connected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!b9c0b139153541d48357023499a2b8e2
+10:41:10 [WARNING] django.request - Not Found: /favicon.ico
+10:41:15 [INFO] queue_app.views - scan_hu hu=C1016902013 pallet=1 origin=BRA/ATL
+10:41:17 [INFO] queue_app.views - scan_hu hu=C1016902022 pallet=1 origin=BRA/ATL
+10:41:22 [INFO] queue_app.views - scan_hu hu=C1017072752 pallet=1 origin=BRA/ATL
+10:41:27 [INFO] queue_app.views - scan_hu hu=C1016902007 pallet=1 origin=BRA/ATL
+10:41:32 [INFO] queue_app.views - scan_hu hu=C1016902014 pallet=1 origin=BRA/ATL
+10:41:35 [INFO] queue_app.views - scan_hu hu=C1016902021 pallet=1 origin=BRA/ATL
+10:41:44 [INFO] queue_app.views - scan_hu hu=C1016229101 pallet=1 origin=BRA/ATL
+10:41:48 [INFO] queue_app.views - scan_hu hu=C1016902011 pallet=1 origin=BRA/ATL
+10:41:51 [INFO] queue_app.views - scan_hu hu=C1016229108 pallet=1 origin=BRA/ATL
+10:41:55 [INFO] queue_app.views - scan_hu hu=C1016229106 pallet=1 origin=BRA/ATL
+10:41:59 [INFO] queue_app.views - scan_hu hu=C1016229107 pallet=1 origin=BRA/ATL
+10:42:17 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=11 pdf_count=0
+10:42:59 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+10:44:38 [INFO] queue_app.views - detener_queue stop_requested=True
+10:45:26 [INFO] queue_app.consumers - ws_disconnected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!4d151737aafc4d36bcbe94fd1d1f7fbc code=1001
+10:45:27 [INFO] queue_app.consumers - ws_connected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!da6d7c5e42ce4b43883e937585c6b58d
+10:45:27 [WARNING] django.request - Not Found: /favicon.ico
+10:45:29 [INFO] queue_app.views - delete_hu hu=C1016902007 pallet=1
+10:45:32 [WARNING] django.request - Not Found: /hu/C1016902007/borrar/
+10:46:23 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+10:47:03 [INFO] queue_app.views - new_pallet created id=2
+10:47:38 [INFO] queue_app.consumers - ws_disconnected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!da6d7c5e42ce4b43883e937585c6b58d code=1001
+10:47:38 [INFO] queue_app.consumers - ws_connected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!37f29bbb0e5e4970a56fed940a76812b
+10:47:39 [WARNING] django.request - Not Found: /favicon.ico
+10:49:40 [INFO] queue_app.views - scan_hu hu=C1016229098 pallet=2 origin=BRA/ATL
+10:49:46 [INFO] queue_app.views - scan_hu hu=C1016902005 pallet=2 origin=BRA/ATL
+10:49:48 [INFO] queue_app.views - scan_hu hu=C1016902012 pallet=2 origin=BRA/ATL
+10:49:49 [INFO] queue_app.views - scan_hu hu=C1016902004 pallet=2 origin=BRA/ATL
+10:49:50 [INFO] queue_app.views - scan_hu hu=C1016229104 pallet=2 origin=BRA/ATL
+10:49:52 [INFO] queue_app.views - scan_hu hu=C1016229103 pallet=2 origin=BRA/ATL
+10:49:55 [INFO] queue_app.views - scan_hu hu=C1016229099 pallet=2 origin=BRA/ATL
+10:49:57 [INFO] queue_app.views - scan_hu hu=C1017072735 pallet=2 origin=BRA/ATL
+10:49:58 [INFO] queue_app.views - scan_hu hu=C1016902006 pallet=2 origin=BRA/ATL
+10:49:58 [INFO] queue_app.views - scan_hu hu=C1016229105 pallet=2 origin=BRA/ATL
+10:49:59 [INFO] queue_app.views - scan_hu hu=C1016229102 pallet=2 origin=BRA/ATL
+10:54:11 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=11 pdf_count=0
+10:54:11 [INFO] queue_app.views - new_pallet created id=3
+10:54:25 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+10:54:25 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+10:54:28 [INFO] queue_app.views - scan_hu hu=C1017000779 pallet=3 origin=BRA/ATL
+10:54:40 [INFO] queue_app.views - new_pallet created id=4
+10:55:00 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+10:55:03 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+11:26:09 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+11:26:15 [INFO] queue_app.views - scan_hu hu=c1017072763 pallet=1 origin=BRA/ATL
+11:26:19 [INFO] queue_app.views - new_pallet created id=2
+11:28:22 [INFO] queue_app.views - scan_hu hu=c1017000778 pallet=2 origin=BRA/ATL
+11:28:36 [INFO] queue_app.views - scan_hu hu=c1016902052 pallet=2 origin=BRA/ATL
+11:28:40 [INFO] queue_app.views - delete_hu hu=c1016902052 pallet=2
+11:28:42 [INFO] queue_app.views - new_pallet created id=3
+11:28:51 [INFO] queue_app.views - scan_hu hu=c1016902052 pallet=3 origin=BRA/ATL
+11:29:05 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=3 pdf_count=0
+11:30:42 [INFO] queue_app.views - new_pallet created id=4
+11:31:06 [INFO] queue_app.views - scan_hu hu=c1016902049 pallet=4 origin=BRA/ATL
+11:31:09 [INFO] queue_app.views - new_pallet created id=5
+11:31:20 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+11:31:20 [INFO] queue_app.views - scan_hu hu=c1017072761 pallet=5 origin=BRA/ATL
+11:35:27 [INFO] queue_app.views - new_pallet created id=6
+11:36:38 [INFO] queue_app.views - scan_hu hu=c1016902048 pallet=6 origin=BRA/ATL
+11:36:40 [INFO] queue_app.views - new_pallet created id=7
+11:36:42 [INFO] queue_app.views - scan_hu hu=c1016902038 pallet=7 origin=BRA/ATL
+11:36:43 [INFO] queue_app.views - new_pallet created id=8
+11:36:46 [INFO] queue_app.views - scan_hu hu=c1017072757 pallet=8 origin=BRA/ATL
+11:36:49 [INFO] queue_app.views - new_pallet created id=9
+11:36:52 [INFO] queue_app.views - scan_hu hu=c1016902057 pallet=9 origin=BRA/ATL
+11:37:10 [INFO] queue_app.views - new_pallet created id=10
+11:37:14 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+11:46:49 [INFO] queue_app.views - scan_hu hu=c1017000777 pallet=10 origin=BRA/ATL
+11:46:50 [INFO] queue_app.consumers - ws_disconnected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!b9c0b139153541d48357023499a2b8e2 code=1001
+11:46:51 [WARNING] django.request - Not Found: /favicon.ico
+11:46:51 [INFO] queue_app.consumers - ws_connected channel=specific.3bdd40c7f7c0473bb72c770b9abac057!76890b0a800b48a2b8b9567c64f0f9d2
+11:46:56 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+11:47:00 [INFO] queue_app.views - scan_hu hu=c1017000777 pallet=1 origin=BRA/ATL
+11:47:00 [WARNING] daphne.server - Application instance <Task pending name='Task-11101' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<_GatheringFuture pending cb=[Task.task_wakeup()]>> for connection <WebRequest at 0x141591f3750 method=POST uri=/pallet/nuevo/ clientproto=HTTP/1.1> took too long to shut down and was killed.
+12:06:08 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+12:06:08 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+12:06:08 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+12:06:08 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+12:06:16 [INFO] queue_app.consumers - ws_connected channel=specific.877e6187d27e4ebaa459a5b874d83741!2a5df1b798ee49cbb72e41f255908600
+12:06:17 [WARNING] django.request - Not Found: /favicon.ico
+12:06:17 [INFO] queue_app.consumers - ws_connected channel=specific.877e6187d27e4ebaa459a5b874d83741!d7c82db23b1e427da5ac42ec3c83c48f
+12:06:33 [INFO] queue_app.views - scan_hu hu=c1017072758 pallet=1 origin=BRA/ATL
+12:06:46 [INFO] queue_app.views - new_pallet created id=2
+12:07:04 [WARNING] django.request - Conflict: /scan/
+12:07:33 [WARNING] django.request - Conflict: /scan/
+12:07:50 [WARNING] django.request - Conflict: /scan/
+12:07:57 [INFO] queue_app.views - detener_queue stop_requested=True
+12:08:05 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+12:08:08 [INFO] queue_app.views - scan_hu hu=c1017072758 pallet=1 origin=BRA/ATL
+12:08:11 [INFO] queue_app.views - new_pallet created id=2
+12:08:14 [INFO] queue_app.views - scan_hu hu=c1017000777 pallet=2 origin=BRA/ATL
+12:08:15 [INFO] queue_app.views - new_pallet created id=3
+12:08:30 [INFO] queue_app.views - scan_hu hu=c1017072755 pallet=3 origin=BRA/ATL
+12:08:34 [INFO] queue_app.views - new_pallet created id=4
+12:08:36 [INFO] queue_app.views - scan_hu hu=c1017000776 pallet=4 origin=BRA/ATL
+12:08:38 [INFO] queue_app.views - new_pallet created id=5
+12:08:45 [INFO] queue_app.views - scan_hu hu=c1017000775 pallet=5 origin=BRA/ATL
+12:08:52 [INFO] queue_app.views - new_pallet created id=6
+12:08:56 [INFO] queue_app.views - scan_hu hu=c1016902066 pallet=6 origin=BRA/ATL
+12:08:58 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=5 pdf_count=0
+12:08:58 [INFO] queue_app.views - new_pallet created id=7
+12:09:04 [INFO] queue_app.views - scan_hu hu=c1016902040 pallet=7 origin=BRA/ATL
+12:09:06 [INFO] queue_app.views - new_pallet created id=8
+12:09:10 [INFO] queue_app.views - scan_hu hu=c1016902051 pallet=8 origin=BRA/ATL
+12:09:12 [INFO] queue_app.views - new_pallet created id=9
+12:09:30 [INFO] queue_app.views - scan_hu hu=c1017072771 pallet=9 origin=BRA/ATL
+12:09:31 [INFO] queue_app.views - new_pallet created id=10
+12:09:35 [INFO] queue_app.views - scan_hu hu=c1017072756 pallet=10 origin=BRA/ATL
+12:09:45 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+12:12:06 [INFO] queue_app.views - new_pallet created id=11
+12:13:56 [INFO] queue_app.views - scan_hu hu=c1017072770 pallet=11 origin=BRA/ATL
+12:13:58 [INFO] queue_app.views - scan_hu hu=c1016902042 pallet=11 origin=BRA/ATL
+12:14:01 [INFO] queue_app.views - scan_hu hu=c1016902046 pallet=11 origin=BRA/ATL
+12:14:05 [INFO] queue_app.views - scan_hu hu=c1016902043 pallet=11 origin=BRA/ATL
+12:14:06 [INFO] queue_app.views - scan_hu hu=c1016902054 pallet=11 origin=BRA/ATL
+12:14:28 [INFO] queue_app.views - scan_hu hu=c1016902041 pallet=11 origin=BRA/ATL
+12:14:44 [INFO] queue_app.views - new_pallet created id=12
+12:15:07 [INFO] queue_app.views - scan_hu hu=c1017000781 pallet=12 origin=BRA/ATL
+12:15:08 [INFO] queue_app.views - new_pallet created id=13
+12:15:13 [INFO] queue_app.views - scan_hu hu=c1016902053 pallet=13 origin=BRA/ATL
+12:15:14 [INFO] queue_app.views - new_pallet created id=14
+12:15:55 [WARNING] django.request - Conflict: /scan/
+12:15:55 [WARNING] django.request - Conflict: /scan/
+12:15:56 [INFO] queue_app.views - scan_hu hu=c1017072754 pallet=14 origin=BRA/ATL
+12:15:58 [INFO] queue_app.views - new_pallet created id=15
+12:16:05 [INFO] queue_app.views - scan_hu hu=c1017000780 pallet=15 origin=BRA/ATL
+12:16:08 [INFO] queue_app.views - new_pallet created id=16
+12:16:15 [INFO] queue_app.views - scan_hu hu=c1016902039 pallet=16 origin=BRA/ATL
+12:16:21 [INFO] queue_app.views - scan_hu hu=c1016902062 pallet=16 origin=BRA/ATL
+12:16:30 [INFO] queue_app.views - scan_hu hu=c1017072759 pallet=16 origin=BRA/ATL
+12:16:36 [INFO] queue_app.views - new_pallet created id=17
+12:26:13 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+12:26:16 [INFO] queue_app.views - scan_hu hu=c1016229100 pallet=1 origin=BRA/ATL
+12:26:34 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=1 pdf_count=0
+12:29:13 [INFO] queue_app.views - new_pallet created id=2
+12:29:17 [INFO] queue_app.views - scan_hu hu=c1016902055 pallet=2 origin=BRA/ATL
+12:29:23 [INFO] queue_app.views - scan_hu hu=c1017072765 pallet=2 origin=BRA/ATL
+12:29:25 [INFO] queue_app.views - scan_hu hu=c1016902044 pallet=2 origin=BRA/ATL
+12:29:27 [INFO] queue_app.views - scan_hu hu=c1017072766 pallet=2 origin=BRA/ATL
+12:29:30 [INFO] queue_app.views - scan_hu hu=c1017072764 pallet=2 origin=BRA/ATL
+12:29:32 [INFO] queue_app.views - scan_hu hu=c1016902045 pallet=2 origin=BRA/ATL
+12:39:47 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=6 pdf_count=0
+12:53:30 [INFO] queue_app.views - new_pallet created id=3
+12:53:35 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+12:56:38 [INFO] queue_app.views - scan_hu hu=C1017072759 pallet=1 origin=BRA/ATL
+12:56:40 [INFO] queue_app.views - new_pallet created id=2
+12:56:45 [INFO] queue_app.views - scan_hu hu=C1016902062 pallet=2 origin=BRA/ATL
+12:56:47 [INFO] queue_app.views - new_pallet created id=3
+12:56:51 [INFO] queue_app.views - scan_hu hu=C1016902039 pallet=3 origin=BRA/ATL
+12:56:58 [INFO] queue_app.views - new_pallet created id=4
+12:57:01 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=3 pdf_count=0
+12:57:19 [INFO] queue_app.views - scan_hu hu=C1016902050 pallet=4 origin=BRA/ATL
+12:57:20 [INFO] queue_app.views - new_pallet created id=5
+12:57:25 [INFO] queue_app.views - scan_hu hu=C1017072760 pallet=5 origin=BRA/ATL
+12:57:33 [INFO] queue_app.views - new_pallet created id=6
+12:57:37 [INFO] queue_app.views - scan_hu hu=C1017072767 pallet=6 origin=BRA/ATL
+12:57:39 [INFO] queue_app.views - scan_hu hu=C1017000782 pallet=6 origin=BRA/ATL
+12:57:42 [INFO] queue_app.views - scan_hu hu=C1016902060 pallet=6 origin=BRA/ATL
+12:57:44 [INFO] queue_app.views - scan_hu hu=C1017072768 pallet=6 origin=BRA/ATL
+12:57:45 [INFO] queue_app.views - scan_hu hu=C1016902058 pallet=6 origin=BRA/ATL
+12:57:49 [INFO] queue_app.views - scan_hu hu=C1016902056 pallet=6 origin=BRA/ATL
+12:57:51 [INFO] queue_app.views - scan_hu hu=C1017000783 pallet=6 origin=BRA/ATL
+12:57:58 [INFO] queue_app.views - new_pallet created id=7
+13:14:33 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+13:14:45 [INFO] queue_app.views - scan_hu hu=C1016902009 pallet=1 origin=BRA/ATL
+13:14:47 [INFO] queue_app.views - scan_hu hu=C1017072534 pallet=1 origin=BRA/ATL
+13:14:49 [INFO] queue_app.views - scan_hu hu=C1017072762 pallet=1 origin=BRA/ATL
+13:14:56 [INFO] queue_app.views - scan_hu hu=C1016902008 pallet=1 origin=BRA/ATL
+13:14:59 [INFO] queue_app.views - scan_hu hu=C1016902061 pallet=1 origin=BRA/ATL
+13:15:01 [INFO] queue_app.views - scan_hu hu=C1016902010 pallet=1 origin=BRA/ATL
+13:15:02 [INFO] queue_app.views - scan_hu hu=C1016902059 pallet=1 origin=BRA/ATL
+13:15:04 [INFO] queue_app.views - scan_hu hu=C1017072769 pallet=1 origin=BRA/ATL
+13:15:23 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=8 pdf_count=0
+14:40:31 [WARNING] daphne.server - Application instance <Task pending name='Task-5' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<Future pending cb=[Task.task_wakeup()]>> for connection <WebSocketProtocol client=['127.0.0.1', 49765] path=b'/ws/queue/'> took too long to shut down and was killed.
+14:40:50 [INFO] queue_app.consumers - ws_disconnected channel=specific.877e6187d27e4ebaa459a5b874d83741!d7c82db23b1e427da5ac42ec3c83c48f code=1006
+14:44:50 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+14:45:15 [INFO] queue_app.consumers - ws_connected channel=specific.877e6187d27e4ebaa459a5b874d83741!91ec9d436130479aab9c39a6c898798e
+15:03:32 [INFO] queue_app.views - scan_hu hu=c1016902061 pallet=1 origin=BRA/ATL
+15:03:34 [INFO] queue_app.views - scan_hu hu=c1016902010 pallet=1 origin=BRA/ATL
+15:03:35 [INFO] queue_app.views - scan_hu hu=c1016902059 pallet=1 origin=BRA/ATL
+15:03:39 [INFO] queue_app.views - scan_hu hu=c1016902008 pallet=1 origin=BRA/ATL
+15:03:39 [INFO] queue_app.views - scan_hu hu=c1017072534 pallet=1 origin=BRA/ATL
+15:03:40 [INFO] queue_app.views - scan_hu hu=c1017072762 pallet=1 origin=BRA/ATL
+15:03:42 [INFO] queue_app.views - scan_hu hu=c1016902009 pallet=1 origin=BRA/ATL
+15:03:46 [INFO] queue_app.views - scan_hu hu=c1017072769 pallet=1 origin=BRA/ATL
+15:04:03 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=8 pdf_count=0
+16:02:10 [INFO] queue_app.consumers - ws_disconnected channel=specific.877e6187d27e4ebaa459a5b874d83741!91ec9d436130479aab9c39a6c898798e code=1006
+16:02:17 [INFO] queue_app.consumers - ws_connected channel=specific.877e6187d27e4ebaa459a5b874d83741!7d3fcd7f735f49b9b7971511b78aacd7
+16:12:50 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+16:44:22 [INFO] queue_app.consumers - ws_connected channel=specific.877e6187d27e4ebaa459a5b874d83741!ec0d353248b14d9f8131763772099e96
+17:06:17 [ERROR] daphne.server - Exception inside application: Error while reading from localhost:6379 : (10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None)
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 543, in read_response
+    response = await self._parser.read_response(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        disable_decoding=disable_decoding
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\_parsers\resp2.py", line 82, in read_response
+    response = await self._read_response(disable_decoding=disable_decoding)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\_parsers\resp2.py", line 90, in _read_response
+    raw = await self._readline()
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\_parsers\base.py", line 219, in _readline
+    data = await self._stream.readline()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 562, in readline
+    line = await self.readuntil(sep)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 677, in readuntil
+    await self._wait_for_data('readuntil')
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 539, in _wait_for_data
+    await self._waiter
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\selector_events.py", line 1005, in _read_ready__data_received
+    data = self._sock.recv(self.max_size)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 57, in await_many_dispatch
+    await task
+redis.exceptions.ConnectionError: Error while reading from localhost:6379 : (10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None)

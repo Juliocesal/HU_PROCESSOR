@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 
 from celery import shared_task
@@ -12,7 +13,11 @@ QUEUE_STOP_KEY = 'nexhus:queue_stop_requested'
 QUEUE_ACTIVE_PALLETS_KEY = 'nexhus:queue_active_pallets'
 QUEUE_CONTINUOUS_ARMED_KEY = 'nexhus:queue_continuous_armed'
 QUEUE_IDLE_DEADLINE_KEY = 'nexhus:queue_idle_deadline'
+QUEUE_WORKER_HEARTBEAT_KEY = 'nexhus:queue_worker_heartbeat'
 QUEUE_LOCK_TTL_SECONDS = 60 * 60 * 6
+QUEUE_WORKER_HEARTBEAT_TTL_SECONDS = 75
+QUEUE_WORKER_HEARTBEAT_STALE_SECONDS = 45
+QUEUE_WORKER_HEARTBEAT_INTERVAL_SECONDS = 10
 QUEUE_DEFAULT_IDLE_TIMEOUT_SECONDS = 3
 QUEUE_IDLE_POLL_SECONDS = 2
 
@@ -30,12 +35,27 @@ def _get_redis_lock_client():
 def _acquire_queue_lock(owner: str) -> bool:
     try:
         client = _get_redis_lock_client()
-        acquired = bool(client.set(QUEUE_LOCK_KEY, owner, nx=True, ex=QUEUE_LOCK_TTL_SECONDS))
+        lock_value = f'{owner}|{time.time()}'
+        acquired = bool(client.set(QUEUE_LOCK_KEY, lock_value, nx=True, ex=QUEUE_LOCK_TTL_SECONDS))
         if acquired:
             client.delete(QUEUE_STOP_KEY)
             client.delete(QUEUE_ACTIVE_PALLETS_KEY)
             client.delete(QUEUE_IDLE_DEADLINE_KEY)
-        return acquired
+            client.delete(QUEUE_WORKER_HEARTBEAT_KEY)
+            return True
+
+        if _queue_lock_is_stale():
+            log.warning("queue_lock_stale_recovered owner=%s", owner)
+            clear_queue_runtime_state()
+            acquired = bool(client.set(QUEUE_LOCK_KEY, lock_value, nx=True, ex=QUEUE_LOCK_TTL_SECONDS))
+            if acquired:
+                client.delete(QUEUE_STOP_KEY)
+                client.delete(QUEUE_ACTIVE_PALLETS_KEY)
+                client.delete(QUEUE_IDLE_DEADLINE_KEY)
+                client.delete(QUEUE_WORKER_HEARTBEAT_KEY)
+            return acquired
+
+        return False
     except Exception as e:
         log.error("queue_lock_acquire_failed owner=%s error=%s", owner, e)
         return False
@@ -45,13 +65,49 @@ def _release_queue_lock(owner: str) -> None:
     try:
         client = _get_redis_lock_client()
         current = client.get(QUEUE_LOCK_KEY)
-        if current and current.decode('utf-8', errors='replace') == owner:
+        if current and _queue_lock_owner(current) == owner:
             client.delete(QUEUE_LOCK_KEY)
             client.delete(QUEUE_STOP_KEY)
             client.delete(QUEUE_ACTIVE_PALLETS_KEY)
             client.delete(QUEUE_IDLE_DEADLINE_KEY)
+            client.delete(QUEUE_WORKER_HEARTBEAT_KEY)
     except Exception as e:
         log.warning("queue_lock_release_failed owner=%s error=%s", owner, e)
+
+
+def _queue_lock_owner(raw_value) -> str:
+    value = raw_value.decode('utf-8', errors='replace') if isinstance(raw_value, bytes) else str(raw_value)
+    return value.rsplit('|', 1)[0]
+
+
+def _queue_lock_age_seconds() -> int | None:
+    try:
+        raw = _get_redis_lock_client().get(QUEUE_LOCK_KEY)
+        if not raw:
+            return None
+
+        value = raw.decode('utf-8', errors='replace')
+        if '|' not in value:
+            return None
+
+        _owner, raw_timestamp = value.rsplit('|', 1)
+        return max(0, int(time.time() - float(raw_timestamp)))
+    except Exception as e:
+        log.warning("queue_lock_age_failed error=%s", e)
+        return None
+
+
+def _queue_lock_is_stale() -> bool:
+    heartbeat_age = get_queue_worker_heartbeat_age_seconds()
+    if heartbeat_age is not None and heartbeat_age <= QUEUE_WORKER_HEARTBEAT_STALE_SECONDS:
+        return False
+
+    lock_age = _queue_lock_age_seconds()
+    if lock_age is None:
+        # Locks created before timestamps cannot prove liveness after heartbeat expired.
+        return heartbeat_age is None or heartbeat_age > QUEUE_WORKER_HEARTBEAT_STALE_SECONDS
+
+    return lock_age > QUEUE_WORKER_HEARTBEAT_STALE_SECONDS
 
 
 def is_queue_locked() -> bool:
@@ -61,6 +117,71 @@ def is_queue_locked() -> bool:
     except Exception as e:
         log.warning("queue_lock_status_failed error=%s", e)
         return False
+
+
+def _touch_queue_worker_heartbeat(owner: str) -> None:
+    """Marca que el worker que posee la cola sigue vivo."""
+    try:
+        _get_redis_lock_client().set(
+            QUEUE_WORKER_HEARTBEAT_KEY,
+            f'{owner}|{time.time()}',
+            ex=QUEUE_WORKER_HEARTBEAT_TTL_SECONDS,
+        )
+    except Exception as e:
+        log.warning("queue_worker_heartbeat_touch_failed owner=%s error=%s", owner, e)
+
+
+def get_queue_worker_heartbeat_age_seconds() -> int | None:
+    """Devuelve la edad del ultimo heartbeat del worker activo."""
+    try:
+        raw = _get_redis_lock_client().get(QUEUE_WORKER_HEARTBEAT_KEY)
+        if not raw:
+            return None
+
+        value = raw.decode('utf-8', errors='replace')
+        _owner, raw_timestamp = value.rsplit('|', 1)
+        return max(0, int(time.time() - float(raw_timestamp)))
+    except Exception as e:
+        log.warning("queue_worker_heartbeat_read_failed error=%s", e)
+        return None
+
+
+def _start_queue_worker_heartbeat(owner: str):
+    """Mantiene vivo el heartbeat incluso durante llamadas bloqueantes a SAP/PDF."""
+    stop_event = threading.Event()
+
+    def heartbeat_loop() -> None:
+        while not stop_event.wait(QUEUE_WORKER_HEARTBEAT_INTERVAL_SECONDS):
+            _touch_queue_worker_heartbeat(owner)
+
+    thread = threading.Thread(
+        target=heartbeat_loop,
+        name='nexhus-queue-worker-heartbeat',
+        daemon=True,
+    )
+    thread.start()
+    return stop_event, thread
+
+
+def clear_queue_runtime_state() -> None:
+    """
+    Limpia estado runtime de Redis cuando el worker desaparecio.
+
+    Se usa solo para recuperacion operativa: no toca HUs/pallets por si SAP
+    alcanzo a terminar una parte del trabajo antes de que Celery se cerrara.
+    """
+    try:
+        client = _get_redis_lock_client()
+        client.delete(
+            QUEUE_LOCK_KEY,
+            QUEUE_STOP_KEY,
+            QUEUE_ACTIVE_PALLETS_KEY,
+            QUEUE_IDLE_DEADLINE_KEY,
+            QUEUE_WORKER_HEARTBEAT_KEY,
+            QUEUE_CONTINUOUS_ARMED_KEY,
+        )
+    except Exception as e:
+        log.warning("queue_runtime_state_clear_failed error=%s", e)
 
 
 def arm_continuous_queue() -> None:
@@ -166,11 +287,42 @@ def request_queue_stop() -> bool:
         client = _get_redis_lock_client()
         if not client.exists(QUEUE_LOCK_KEY):
             return False
-        client.set(QUEUE_STOP_KEY, '1', ex=QUEUE_LOCK_TTL_SECONDS)
+        if not client.exists(QUEUE_STOP_KEY):
+            client.set(QUEUE_STOP_KEY, str(time.time()), ex=QUEUE_LOCK_TTL_SECONDS)
+        else:
+            client.expire(QUEUE_STOP_KEY, QUEUE_LOCK_TTL_SECONDS)
         return True
     except Exception as e:
         log.error("queue_stop_request_failed error=%s", e)
         return False
+
+
+def is_queue_stop_requested() -> bool:
+    """Indica si ya existe una solicitud de detencion pendiente."""
+    try:
+        return bool(_get_redis_lock_client().exists(QUEUE_STOP_KEY))
+    except Exception as e:
+        log.warning("queue_stop_status_failed error=%s", e)
+        return False
+
+
+def get_queue_stop_request_age_seconds() -> int | None:
+    """Devuelve cuanto tiempo lleva esperando una solicitud de detencion."""
+    try:
+        raw = _get_redis_lock_client().get(QUEUE_STOP_KEY)
+        if not raw:
+            return None
+
+        value = raw.decode('utf-8', errors='replace')
+        try:
+            started_at = float(value)
+        except ValueError:
+            # Compatibilidad con locks viejos guardados como "1".
+            started_at = 1.0
+        return max(0, int(time.time() - started_at))
+    except Exception as e:
+        log.warning("queue_stop_age_failed error=%s", e)
+        return None
 
 
 def _stop_requested() -> bool:
@@ -311,7 +463,6 @@ def process_queue_task(
     """
     from queue_app.models import HUItem, Pallet
     from queue_app.utils import (
-        emit_error,
         emit_queue_done,
         emit_queue_status,
         emit_receipt_done,
@@ -322,9 +473,17 @@ def process_queue_task(
     if not _acquire_queue_lock(owner):
         message = 'Queue processing already active; start request ignored.'
         log.warning(message)
-        emit_error(message)
+        emit_queue_status(
+            message,
+            badge='EN CURSO',
+            mode='running',
+            footer='Se ignoro una solicitud duplicada porque otro worker controla la cola.',
+            is_running=True,
+        )
         return {'ok': False, 'error': message}
 
+    _touch_queue_worker_heartbeat(owner)
+    heartbeat_stop, heartbeat_thread = _start_queue_worker_heartbeat(owner)
     pallets_processed = 0
     hus_processed = 0
     errors = 0
@@ -338,6 +497,7 @@ def process_queue_task(
 
     try:
         while True:
+            _touch_queue_worker_heartbeat(owner)
             if _stop_requested():
                 final = _stopped_result(pallets_processed, hus_processed, errors)
                 emit_queue_done(final)
@@ -378,6 +538,7 @@ def process_queue_task(
                     log.info("process_queue_task idle_wait timeout=%ss", idle_timeout)
 
                 if not idle_status_sent:
+                    _touch_queue_worker_heartbeat(owner)
                     context = _active_pallet_wait_context()
                     emit_queue_status(
                         context['message'],
@@ -425,6 +586,7 @@ def process_queue_task(
             log.info("process_queue_task batch_start pallets=%s", pallet_ids)
 
             for pallet_id in pallet_ids:
+                _touch_queue_worker_heartbeat(owner)
                 if _stop_requested():
                     final = _stopped_result(pallets_processed, hus_processed, errors)
                     emit_queue_done(final)
@@ -450,6 +612,7 @@ def process_queue_task(
                 )
 
                 for item_id in item_ids:
+                    _touch_queue_worker_heartbeat(owner)
                     if _stop_requested():
                         final = _stopped_result(pallets_processed, hus_processed, errors)
                         emit_queue_done(final)
@@ -462,6 +625,7 @@ def process_queue_task(
                         run_pallet_boundary=False,
                         emit_pallet_completion=False,
                     )
+                    _touch_queue_worker_heartbeat(owner)
                     hus_processed += 1
                     if item and item.status in (HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND):
                         errors += 1
@@ -507,7 +671,9 @@ def process_queue_task(
                         mode='running',
                         footer=f'Generando e imprimiendo recibo de P{pallet_id:02d}.',
                     )
+                    _touch_queue_worker_heartbeat(owner)
                     result = _run_pallet_boundary(pallet_id, emit_completion=True)
+                    _touch_queue_worker_heartbeat(owner)
                     if result and result.get('status') != 'ok':
                         errors += 1
                         log.error(
@@ -536,6 +702,8 @@ def process_queue_task(
         return final
     finally:
         _close_sap_after_queue_idle()
+        heartbeat_stop.set()
+        heartbeat_thread.join(timeout=1)
         _release_queue_lock(owner)
 
 

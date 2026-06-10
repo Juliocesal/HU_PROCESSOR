@@ -371,7 +371,7 @@
         <span id="diag-title">Diagnóstico del sistema</span>
       </div>
       <div class="diag-actions">
-        <button type="button" class="diag-btn" id="diag-refresh" onclick="refreshSystemStatus()">
+        <button type="button" class="diag-btn" id="diag-refresh" onclick="refreshSystemStatus({ manual: true })">
           <i data-lucide="activity"></i>
           <span>Estado</span>
         </button>
@@ -397,6 +397,23 @@
       <span class="diag-pill info">Redis</span>
       <span class="diag-pill info">Celery</span>
       <span class="diag-pill info">SAP</span>
+    </div>
+    <section class="diag-status" aria-label="Estado en vivo del sistema">
+      <div class="diag-status-head">
+        <span>Estado en vivo</span>
+        <span id="diag-status-updated">Sin consulta</span>
+      </div>
+      <div class="diag-status-grid" id="diag-status-grid">
+        <div class="diag-status-card info">
+          <span class="diag-status-name">Esperando diagnóstico</span>
+          <strong>INFO</strong>
+          <small>Abre o actualiza el estado del sistema.</small>
+        </div>
+      </div>
+    </section>
+    <div class="diag-log-head">
+      <span>Registro operativo</span>
+      <span>Eventos, errores y cambios relevantes</span>
     </div>
     <pre class="diag-console" id="diag-console" aria-live="polite"></pre>
   </div>

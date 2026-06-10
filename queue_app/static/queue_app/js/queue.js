@@ -24,6 +24,7 @@
   let isRunning   = false;
   let flashTimer  = null;
   let stopRequested = false;
+  let stopRequestedAt = 0;
   let palletSepRows = {}; // pallet_id -> tr element
   const palletTimers = new Map();
   let palletTimerFrame = null;
@@ -36,11 +37,22 @@
   const stickyPallet = document.getElementById('sticky-pallet');
   const QUEUE_TABLE_COLSPAN = 6;
   const EMPTY_QUEUE_MESSAGE = 'Sin HUs en cola - escanea el primer código';
+  const SAFE_STOP_GRACE_MS = 30000;
 
   const initialStats = JSON.parse(
     document.getElementById('initial-stats').textContent || '{}'
   );
   isRunning = Boolean(initialStats.is_running || false);
+
+  function markStopRequested() {
+    stopRequested = true;
+    if (!stopRequestedAt) stopRequestedAt = Date.now();
+  }
+
+  function clearStopRequestState() {
+    stopRequested = false;
+    stopRequestedAt = 0;
+  }
 
   let stats = {
     total:   Number(initialStats.total || 0),
@@ -83,6 +95,7 @@
   const diagnosticLogs = [];
   let diagnosticAutoscroll = true;
   let diagnosticStatusTimer = null;
+  const diagnosticStatusLevels = {};
   let lastSystemStatus = null;
   let lastRelevantWsEventAt = Date.now();
   let lastRelevantWsMode = '';
@@ -165,6 +178,128 @@
     return warnWhenUnavailable ? 'warn' : 'error';
   }
 
+  function diagnosticLevelLabel(level) {
+    return {
+      ok: 'OK',
+      warn: 'WARN',
+      error: 'ERROR',
+      info: 'INFO',
+    }[level] || 'INFO';
+  }
+
+  function diagnosticStatusItems(status) {
+    const queue = status?.queue || {};
+    const queueLevel = hasOrphanedQueueRuntime(status)
+      ? 'error'
+      : (queue.is_locked ? 'warn' : 'ok');
+    const workerAge = queue.worker_heartbeat_age_seconds;
+
+    return [
+      {
+        key: 'django',
+        label: 'Django/Daphne',
+        level: serviceLevel(status?.django),
+        message: status?.django?.message || 'Sin consulta del backend.',
+        detail: status?.django?.action || '',
+      },
+      {
+        key: 'redis',
+        label: 'Redis',
+        level: serviceLevel(status?.redis),
+        message: status?.redis?.message || 'Sin estado Redis.',
+        detail: status?.redis?.error || status?.redis?.action || '',
+      },
+      {
+        key: 'celery',
+        label: 'Celery',
+        level: serviceLevel(status?.celery),
+        message: status?.celery?.message || 'Sin estado Celery.',
+        detail: (status?.celery?.workers || []).join(', ') || status?.celery?.action || '',
+      },
+      {
+        key: 'database',
+        label: 'Base de datos',
+        level: serviceLevel(status?.database),
+        message: status?.database?.message || 'Sin estado DB.',
+        detail: status?.database?.error || status?.database?.action || '',
+      },
+      {
+        key: 'sap',
+        label: 'SAP',
+        level: serviceLevel(status?.sap, true),
+        message: status?.sap?.message || 'Sin estado SAP.',
+        detail: status?.sap?.user ? `user=${status.sap.user}` : (status?.sap?.error || status?.sap?.action || ''),
+      },
+      {
+        key: 'websocket',
+        label: 'WebSocket',
+        level: websocketConnectionLost ? 'error' : 'ok',
+        message: websocketConnectionLost ? 'Desconectado o reintentando.' : 'Canal de eventos activo.',
+        detail: websocketConnectionLost ? 'Revisar Daphne/ASGI/puerto.' : '',
+      },
+      {
+        key: 'queue',
+        label: 'Cola',
+        level: queueLevel,
+        message: `Lock ${queue.is_locked ? 'activo' : 'libre'} · Pendientes ${queue.pending_hus || 0} · Processing ${queue.processing_hus || 0}`,
+        detail: [
+          queue.ready_pallets ? `ready=${queue.ready_pallets}` : '',
+          queue.pdf_pending ? `pdf=${queue.pdf_pending}` : '',
+          workerAge !== null && workerAge !== undefined ? `heartbeat=${workerAge}s` : '',
+        ].filter(Boolean).join(' · '),
+      },
+    ];
+  }
+
+  function logDiagnosticStatusChanges(status, { manual = false } = {}) {
+    const items = diagnosticStatusItems(status);
+
+    items.forEach(item => {
+      const previousLevel = diagnosticStatusLevels[item.key];
+      diagnosticStatusLevels[item.key] = item.level;
+
+      if (!previousLevel && ['warn', 'error'].includes(item.level)) {
+        addDiagnosticLog(item.level, item.label.toUpperCase(), item.message, item.detail);
+        return;
+      }
+
+      if (previousLevel && previousLevel !== item.level) {
+        addDiagnosticLog(
+          item.level,
+          item.label.toUpperCase(),
+          `Estado cambio de ${diagnosticLevelLabel(previousLevel)} a ${diagnosticLevelLabel(item.level)}.`,
+          item.message
+        );
+      }
+    });
+
+    if (manual) {
+      const health = diagnosticHealthFromStatus(status);
+      addDiagnosticLog('info', 'SYSTEM', 'Estado actualizado manualmente.', health.title);
+    }
+  }
+
+  function isSystemStatusPayload(data) {
+    return Boolean(
+      data &&
+      data.django &&
+      data.redis &&
+      data.celery &&
+      data.database &&
+      data.sap &&
+      data.queue
+    );
+  }
+
+  function hasOrphanedQueueRuntime(status = lastSystemStatus) {
+    return Boolean(
+      status?.queue?.is_locked &&
+      status.queue.worker_stale &&
+      status.celery &&
+      !status.celery.ok
+    );
+  }
+
   function diagnosticHealthFromStatus(status) {
     if (!status) {
       return {
@@ -200,6 +335,8 @@
 
   function setDiagnosticSummary(status) {
     const summary = document.getElementById('diag-summary');
+    const statusGrid = document.getElementById('diag-status-grid');
+    const updated = document.getElementById('diag-status-updated');
     if (!summary) return;
 
     const pill = (label, level = 'info') => {
@@ -207,50 +344,98 @@
       return `<span class="diag-pill ${cls}">${escapeHTML(label)}</span>`;
     };
 
+    const health = diagnosticHealthFromStatus(status);
+    const queue = status.queue || {};
     summary.innerHTML = [
-      pill('Django', serviceLevel(status.django)),
-      pill('Redis', serviceLevel(status.redis)),
-      pill('Celery', serviceLevel(status.celery)),
-      pill('DB', serviceLevel(status.database)),
-      pill('SAP', serviceLevel(status.sap, true)),
-      pill(`Lock: ${status.queue?.is_locked ? 'activo' : 'libre'}`, status.queue?.is_locked ? 'warn' : 'ok'),
-      pill(`Pendientes: ${Number(status.queue?.pending_hus || 0)}`, 'ok'),
+      pill(`General: ${diagnosticLevelLabel(health.level)}`, health.level),
+      pill(`Lock: ${queue.is_locked ? 'activo' : 'libre'}`, queue.is_locked ? 'warn' : 'ok'),
+      pill(`Pendientes: ${Number(queue.pending_hus || 0)}`, 'ok'),
+      pill(`Processing: ${Number(queue.processing_hus || 0)}`, queue.processing_hus ? 'warn' : 'ok'),
     ].join('');
+
+    if (statusGrid) {
+      statusGrid.innerHTML = diagnosticStatusItems(status).map(item => {
+        const level = ['ok', 'warn', 'error', 'info'].includes(item.level) ? item.level : 'info';
+        const detail = item.detail ? `<small title="${escapeHTML(item.detail)}">${escapeHTML(item.detail)}</small>` : '';
+        return (
+          `<div class="diag-status-card ${level}">` +
+          `<span class="diag-status-name">${escapeHTML(item.label)}</span>` +
+          `<strong>${diagnosticLevelLabel(level)}</strong>` +
+          `<small title="${escapeHTML(item.message)}">${escapeHTML(item.message)}</small>` +
+          detail +
+          `</div>`
+        );
+      }).join('');
+    }
+
+    if (updated) {
+      updated.textContent = `Actualizado ${diagnosticTimestamp()}`;
+    }
 
     updateDiagnosticMenuFromStatus(status);
   }
 
-  async function refreshSystemStatus() {
-    addDiagnosticLog('info', 'SYSTEM', 'Consultando estado del sistema...');
+  async function refreshSystemStatus(options = {}) {
+    const manual = Boolean(options.manual);
 
     try {
       const res = await nativeFetch('/api/system-status/', {
         headers: csrfHeaders({ 'Accept': 'application/json' }),
       });
       const data = await readJsonResponse(res);
-      lastSystemStatus = data;
-      if (!data.ok) {
-        const critical = !data.redis?.ok || !data.celery?.ok || !data.database?.ok;
-        addDiagnosticLog(critical ? 'error' : 'warn', 'SYSTEM', 'Diagnostico recibido con alertas.');
+
+      if (!isSystemStatusPayload(data)) {
+        addDiagnosticLog(
+          'error',
+          'SYSTEM',
+          data.error || 'No se recibio un payload valido de /api/system-status/.',
+          'No se actualizan estados de servicios para evitar informacion falsa.'
+        );
+        setDiagnosticMenuState('error', 'system-status no disponible. Revisar Django/Daphne/puerto.');
+        return;
       }
 
+      lastSystemStatus = data;
       setDiagnosticSummary(data);
-      addDiagnosticLog(data.django?.ok ? 'ok' : 'error', 'DAPHNE', data.django?.message || 'Sin respuesta Django.', data.django?.action || '');
-      addDiagnosticLog(data.redis?.ok ? 'ok' : 'error', 'REDIS', data.redis?.message || 'Sin estado Redis.', data.redis?.error || data.redis?.action || '');
-      addDiagnosticLog(data.celery?.ok ? 'ok' : 'error', 'CELERY', data.celery?.message || 'Sin estado Celery.', (data.celery?.workers || []).join(', ') || data.celery?.action || '');
-      addDiagnosticLog(data.database?.ok ? 'ok' : 'error', 'DB', data.database?.message || 'Sin estado DB.', data.database?.error || data.database?.action || '');
-      addDiagnosticLog(data.sap?.connected ? 'ok' : 'warn', 'SAP', data.sap?.message || 'Sin estado SAP.', data.sap?.user ? `user=${data.sap.user}` : (data.sap?.error || data.sap?.action || ''));
+      logDiagnosticStatusChanges(data, { manual });
 
       const queue = data.queue || {};
-      addDiagnosticLog(
-        queue.is_locked ? 'warn' : 'ok',
-        'QUEUE',
-        `lock=${queue.is_locked ? 'activo' : 'libre'} pending=${queue.pending_hus || 0} processing=${queue.processing_hus || 0} ready_pallets=${queue.ready_pallets || 0} pdf_pending=${queue.pdf_pending || 0}`,
-        queue.processing_pallet_ids?.length ? `pallets=${queue.processing_pallet_ids.join(',')}` : ''
-      );
-
-      if (queue.last_operational_status?.message) {
+      if (manual && queue.last_operational_status?.message) {
         addDiagnosticLog('info', 'QUEUE_STATUS', queue.last_operational_status.message);
+      }
+
+      if (queue.stop_requested && isRunning) {
+        stopRequested = true;
+        if (!stopRequestedAt) {
+          const ageMs = Number(queue.stop_request_age_seconds || 0) * 1000;
+          stopRequestedAt = Date.now() - ageMs;
+        }
+        const age = Number(queue.stop_request_age_seconds || 0);
+        if (age >= SAFE_STOP_GRACE_MS / 1000) {
+          setFooterStatus('La detencion segura no confirmo cierre. Presiona Detener para liberar la cola.', 'error');
+        }
+        updateButtons();
+      }
+
+      if (hasOrphanedQueueRuntime(data)) {
+        if (!diagnosticStatusLevels.queue_orphan_alerted) {
+          addDiagnosticLog(
+            'error',
+            'QUEUE',
+            'Lock de cola huerfano: Celery no responde y el heartbeat del worker vencio.',
+            'Presiona Detener para liberar la UI y revisar HUs en processing.'
+          );
+          diagnosticStatusLevels.queue_orphan_alerted = true;
+        }
+        clearStopRequestState();
+        setProgBadge('CELERY', 'error');
+        setProgStatus('Celery se detuvo o fue cerrado mientras la cola estaba activa.', 'error');
+        setFooterStatus('Presiona Detener para liberar el lock y revisar la cola.', 'error');
+        document.getElementById('prog-bar').classList.remove('animated', 'waiting', 'done');
+        document.getElementById('prog-bar').classList.add('error');
+        updateButtons();
+      } else {
+        diagnosticStatusLevels.queue_orphan_alerted = false;
       }
     } catch (error) {
       addDiagnosticLog('error', 'SYSTEM', 'No se pudo consultar /api/system-status/.', error.message);
@@ -268,7 +453,7 @@
     addDiagnosticLog('info', 'UI', 'Consola de diagnostico abierta.');
     refreshSystemStatus();
     clearInterval(diagnosticStatusTimer);
-    diagnosticStatusTimer = setInterval(refreshSystemStatus, 15000);
+    diagnosticStatusTimer = setInterval(() => refreshSystemStatus({ silent: true }), 15000);
     refreshIcons();
   }
 
@@ -311,7 +496,8 @@
 
   function formatServiceForReport(label, service, extra = '') {
     if (!service) return `${label}: SIN DATOS`;
-    const state = (service.ok || service.connected) ? 'OK' : 'ERROR';
+    const level = serviceLevel(service).toUpperCase();
+    const state = level === 'INFO' ? ((service.ok || service.connected) ? 'OK' : 'SIN DATOS') : level;
     const parts = [
       `${label}: ${state}`,
       service.message || '',
@@ -556,7 +742,8 @@
   }
 
   function checkProcessingProgressSilence() {
-    if (!isRunning || lastRelevantWsMode === 'waiting') return;
+    const controlledWaiting = lastRelevantWsMode === 'waiting' && !hasOrphanedQueueRuntime();
+    if (!isRunning || controlledWaiting) return;
 
     const elapsed = Date.now() - lastRelevantWsEventAt;
     if (elapsed < NO_PROGRESS_WARNING_MS) return;
@@ -675,7 +862,7 @@
   function handleStatsUpdate(msg) {
     if (Object.prototype.hasOwnProperty.call(msg, 'is_running')) {
       isRunning = Boolean(msg.is_running);
-      if (!isRunning) stopRequested = false;
+      if (!isRunning) clearStopRequestState();
     }
 
     stats = {
@@ -729,7 +916,7 @@
 
   function handleAutoStartResult(data) {
     if (data.auto_started) {
-      stopRequested = false;
+      clearStopRequestState();
       isRunning = true;
       showRunningMode('Pallet cerrado. Proceso reactivado automaticamente.');
       setFooterStatus('El worker continuo tomara el nuevo pallet listo.', 'running');
@@ -794,7 +981,7 @@
 
   function handleQueueCleared(msg) {
     clearSessionCloseCountdown();
-    stopRequested = false;
+    clearStopRequestState();
     const tbody = document.getElementById('queue-tbody');
     tbody.innerHTML = emptyQueueRowHTML();
     Object.keys(palletSepRows).forEach(k => delete palletSepRows[k]);
@@ -840,7 +1027,7 @@
 
   function handleQueueDone(msg) {
     clearSessionCloseCountdown();
-    stopRequested = false;
+    clearStopRequestState();
     if (msg.stats) {
       handleStatsUpdate({ ...msg.stats, is_running: false });
     } else {
@@ -879,7 +1066,7 @@
 
   function handleError(msg) {
     clearSessionCloseCountdown();
-    stopRequested = false;
+    clearStopRequestState();
     isRunning = false;
     setProgBadge('Error: ERROR', 'error');
     document.getElementById('prog-bar').classList.remove('animated', 'waiting');
@@ -1136,7 +1323,7 @@
     const hasPdfWork   = Number(stats.pdf_pending || 0) > 0;
     const hasProcessed = stats.ok > 0 || stats.errors > 0;
     document.getElementById('btn-start').disabled     = isRunning || (!hasPending && !hasPdfWork);
-    document.getElementById('btn-stop').disabled      = !isRunning || stopRequested;
+    document.getElementById('btn-stop').disabled      = !isRunning;
     document.getElementById('btn-clear').disabled     = isRunning;
     document.getElementById('btn-reprocess').disabled = isRunning || hasPending || !hasProcessed;
     const newPalletBtn = document.getElementById('btn-new-pallet');
@@ -1386,7 +1573,7 @@
     }
 
     isRunning = true;
-    stopRequested = false;
+    clearStopRequestState();
     showSapLoginMode('Validando sesion SAP antes de iniciar la cola...');
     updateButtons();
 
@@ -1407,7 +1594,7 @@
       if (!data.ok) {
         flash(`Error: ${data.error}`, 'red');
         isRunning = false;
-        stopRequested = false;
+        clearStopRequestState();
         setProgBadge('EN ESPERA', '');
         setProgStatus('Error al iniciar.', '');
         document.getElementById('prog-bar').classList.remove('animated', 'done', 'error', 'waiting');
@@ -1426,7 +1613,7 @@
     } catch (e) {
       flash(`Error: Error: ${e.message}`, 'red');
       isRunning = false;
-      stopRequested = false;
+      clearStopRequestState();
       setProgBadge('EN ESPERA', '');
       setProgStatus('Error al iniciar.', 'error');
       document.getElementById('prog-bar').classList.remove('animated', 'waiting');
@@ -1437,23 +1624,69 @@
 
   // -- Detener proceso -----------------------------------------------------------
   async function stopProcess() {
-    addDiagnosticLog('warn', 'UI', 'Operador solicito detener el proceso.');
-    stopRequested = true;
-    setProgBadge('DETENIENDO', 'waiting');
-    setProgStatus('Detencion solicitada. Esperando punto seguro del worker.', 'waiting');
-    setFooterStatus('SAP terminara la operacion actual antes de liberar la cola.', 'waiting');
+    const alreadyWaitingForStop = stopRequested;
+    const stopWaitMs = stopRequestedAt ? Date.now() - stopRequestedAt : 0;
+    const forceRecovery = alreadyWaitingForStop || hasOrphanedQueueRuntime();
+    addDiagnosticLog(
+      'warn',
+      'UI',
+      forceRecovery ? 'Operador intento liberar una detencion pendiente.' : 'Operador solicito detener el proceso.',
+      forceRecovery ? `stop_wait=${Math.round(stopWaitMs / 1000)}s` : ''
+    );
+    markStopRequested();
+    setProgBadge(forceRecovery ? 'LIBERANDO' : 'DETENIENDO', 'waiting');
+    setProgStatus(
+      forceRecovery
+        ? 'Revisando si la cola puede liberarse de forma segura.'
+        : 'Detencion solicitada. Esperando punto seguro del worker.',
+      'waiting'
+    );
+    setFooterStatus(
+      forceRecovery
+        ? 'Validando lock, Celery y ultimo heartbeat del worker.'
+        : 'SAP terminara la operacion actual antes de liberar la cola.',
+      'waiting'
+    );
     updateButtons();
 
     try {
       const res = await fetch('/cola/detener/', {
         method: 'POST',
-        headers: { ...csrfHeaders() }
+        headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ force: forceRecovery })
       });
       const data = await readJsonResponse(res);
       if (!data.ok) {
         isRunning = false;
-        stopRequested = false;
+        clearStopRequestState();
         flash(data.error || 'No hay proceso activo.', 'orange');
+        updateButtons();
+        return;
+      }
+      if (data.waiting_for_safe_stop) {
+        const wait = Number(data.force_available_after_seconds || 0);
+        setProgBadge('DETENIENDO', 'waiting');
+        setProgStatus(data.message || 'Detencion segura en curso.', 'waiting');
+        setFooterStatus(
+          wait > 0
+            ? `Esperando cierre seguro. Puedes intentar liberar de nuevo en ${wait}s.`
+            : 'Si no hay avance, presiona Detener otra vez para liberar la cola.',
+          'waiting'
+        );
+        flash(data.message || 'Detencion segura en curso.', 'orange');
+        updateButtons();
+        return;
+      }
+      if (data.recovered) {
+        isRunning = false;
+        clearStopRequestState();
+        if (data.stats) handleStatsUpdate({ ...data.stats, is_running: false });
+        clearSessionCloseCountdown();
+        setProgBadge('Detenido', '');
+        setProgStatus(data.message || 'Cola liberada tras cierre de Celery.', '');
+        setFooterStatus('Revisa la cola antes de reintentar.', '');
+        document.getElementById('prog-bar').classList.remove('animated', 'waiting', 'done', 'error');
+        flash(data.message || 'Cola liberada tras cierre de Celery.', 'orange');
         updateButtons();
         return;
       }
@@ -1462,7 +1695,7 @@
       setFooterStatus('Deteniendo en punto seguro...', 'waiting');
       flash(data.message || 'Detencion solicitada.', 'orange');
     } catch (e) {
-      stopRequested = false;
+      clearStopRequestState();
       flash(`Error al detener: ${e.message}`, 'red');
     }
     updateButtons();
@@ -1502,7 +1735,7 @@
       _visibleSeps.clear();
       if (stickyPallet) stickyPallet.classList.remove('visible');
       isRunning = false;
-      stopRequested = false;
+      clearStopRequestState();
       stats = { total:0, ok:0, errors:0, pending:0, pallets:0, pdf_pending:0 };
       handleStatsUpdate(stats);
       setProgBadge('EN ESPERA', '');
@@ -1570,7 +1803,7 @@
 
     addDiagnosticLog('warn', 'UI', 'Operador inicio reproceso.', `mode=${mode}`);
     isRunning = true;
-    stopRequested = false;
+    clearStopRequestState();
     showSapLoginMode('Validando sesion SAP antes de reprocesar...');
     updateButtons();
 
@@ -1585,7 +1818,7 @@
     } catch (e) {
       flash(`Error al reprocesar: ${e.message}`, 'red');
       isRunning = false;
-      stopRequested = false;
+      clearStopRequestState();
       setProgBadge('EN ESPERA', '');
       setProgStatus('Error al reprocesar.', 'error');
       document.getElementById('prog-bar').classList.remove('animated', 'waiting');
@@ -1622,7 +1855,7 @@
       updateButtons();
     } else {
       isRunning = false;
-      stopRequested = false;
+      clearStopRequestState();
       setProgBadge('EN ESPERA', '');
       setProgStatus('Error al reprocesar.', 'error');
       document.getElementById('prog-bar').classList.remove('animated', 'waiting');

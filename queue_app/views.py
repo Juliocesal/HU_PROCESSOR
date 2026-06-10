@@ -11,18 +11,24 @@ from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST, require_GET
 from django.shortcuts import render
+from django.utils import timezone
 
 from core.hu_origins import detect_origin, is_pallet_separator
 
 from queue_app.models import HUItem, Pallet, ScanLog
 from queue_app.tasks import (
     arm_continuous_queue,
+    clear_queue_runtime_state,
     disarm_continuous_queue,
     get_queue_idle_remaining_seconds,
     get_processing_pallet_ids,
+    get_queue_stop_request_age_seconds,
+    get_queue_worker_heartbeat_age_seconds,
     is_continuous_queue_armed,
     is_queue_locked,
+    is_queue_stop_requested,
     process_queue_task,
+    QUEUE_WORKER_HEARTBEAT_STALE_SECONDS,
     request_queue_stop,
 )
 from queue_app.utils import (
@@ -33,6 +39,7 @@ from queue_app.utils import (
     emit_item_update,
     emit_pallet_created,
     emit_pallet_deleted,
+    emit_queue_done,
     emit_queue_status,
     emit_queue_cleared,
     emit_stats_update,
@@ -42,6 +49,7 @@ from queue_app.utils import (
 log = logging.getLogger(__name__)
 
 QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS = 360
+QUEUE_SAFE_STOP_GRACE_SECONDS = 30
 CELERY_NO_WORKER_MESSAGE = (
     'Celery apagado. Redis responde, pero no hay workers activos. '
     'La cola NO se procesara hasta iniciar Celery.'
@@ -612,16 +620,14 @@ def reprocess_queue(request):
     Equivale a _reprocess() — resetea HUs procesados a pending
     y dispara las tasks de Celery de nuevo.
     """
+    lock_response = _queue_lock_blocker_response('reprocesar')
+    if lock_response:
+        return lock_response
+
     if HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
         return JsonResponse({
             'ok':    False,
             'error': 'Hay HUs procesando — espera a que terminen',
-        }, status=409)
-
-    if is_queue_locked():
-        return JsonResponse({
-            'ok': False,
-            'error': 'Hay una tarea de procesamiento activa. Espera a que termine antes de reprocesar.',
         }, status=409)
 
     try:
@@ -729,11 +735,9 @@ def start_processing(request):
     Inicia el procesamiento de todos los HUs pendientes.
     Se llama desde el botón "Iniciar" en el frontend.
     """
-    if is_queue_locked():
-        return JsonResponse({
-            'ok': False,
-            'error': 'Ya hay una tarea de procesamiento activa',
-        }, status=409)
+    lock_response = _queue_lock_blocker_response('iniciar el proceso')
+    if lock_response:
+        return lock_response
 
     _close_active_pallet_for_processing()
     pending_items = HUItem.objects.filter(
@@ -894,7 +898,8 @@ def system_status(request):
     Redis, Celery, SAP o cola sin convertirse en otro error 500.
     """
     redis_status = _check_redis_status()
-    celery_status = _check_celery_status(redis_status['ok'])
+    queue_status = _queue_diagnostic_snapshot()
+    celery_status = _check_celery_status(redis_status['ok'], queue_status)
     database_status = _check_database_status()
 
     return JsonResponse({
@@ -910,7 +915,7 @@ def system_status(request):
         'celery': celery_status,
         'database': database_status,
         'sap': _check_sap_status_for_diagnostics(),
-        'queue': _queue_diagnostic_snapshot(),
+        'queue': queue_status,
     })
 
 
@@ -965,7 +970,48 @@ def _check_redis_status() -> dict:
         }
 
 
-def _check_celery_status(redis_ok: bool) -> dict:
+def _queue_snapshot_suggests_active_worker(queue_status: dict | None) -> bool:
+    if not queue_status or queue_status.get('error'):
+        return False
+
+    if queue_status.get('worker_heartbeat_alive'):
+        return True
+
+    if queue_status.get('worker_stale'):
+        return False
+
+    if queue_status.get('processing_hus') or queue_status.get('processing_pallet_ids'):
+        return True
+
+    if queue_status.get('idle_remaining_seconds') is not None:
+        return True
+
+    operational_status = queue_status.get('last_operational_status') or {}
+    return bool(
+        queue_status.get('is_locked')
+        and operational_status.get('mode') in {'running', 'waiting'}
+    )
+
+
+def _celery_busy_status(started: float) -> dict:
+    return {
+        'ok': True,
+        'level': 'warn',
+        'message': (
+            'Celery no respondio al ping de control, pero la cola esta activa. '
+            'El worker probablemente esta ocupado en SAP/PDF o en espera controlada.'
+        ),
+        'action': (
+            'Si la UI sigue recibiendo eventos, no reiniciar Celery. '
+            'Si no hay eventos por mas de 45s, revisar worker, SAP y WebSocket.'
+        ),
+        'workers': [],
+        'control_ping_ok': False,
+        'latency_ms': round((time.perf_counter() - started) * 1000, 1),
+    }
+
+
+def _check_celery_status(redis_ok: bool, queue_status: dict | None = None) -> dict:
     if not redis_ok:
         return {
             'ok': False,
@@ -981,28 +1027,42 @@ def _check_celery_status(redis_ok: bool) -> dict:
         ping = current_app.control.inspect(timeout=1).ping() or {}
         workers = sorted(ping.keys())
         if not workers:
+            if _queue_snapshot_suggests_active_worker(queue_status):
+                return _celery_busy_status(started)
+
             return {
                 'ok': False,
+                'level': 'error',
                 'message': CELERY_NO_WORKER_MESSAGE,
                 'action': 'Iniciar el worker Celery antes de procesar o reprocesar.',
                 'workers': [],
+                'control_ping_ok': False,
                 'latency_ms': round((time.perf_counter() - started) * 1000, 1),
             }
 
         return {
             'ok': True,
+            'level': 'ok',
             'message': f'{len(workers)} worker(s) Celery respondieron.',
             'action': 'Celery esta listo para recibir tareas.',
             'workers': workers,
+            'control_ping_ok': True,
             'latency_ms': round((time.perf_counter() - started) * 1000, 1),
         }
     except Exception as exc:
+        if _queue_snapshot_suggests_active_worker(queue_status):
+            status = _celery_busy_status(started)
+            status['error'] = _diagnostic_error_message(exc)
+            return status
+
         return {
             'ok': False,
+            'level': 'error',
             'message': 'No se pudo consultar Celery.',
             'action': 'Revisar worker Celery, broker Redis y permisos de red.',
             'error': _diagnostic_error_message(exc),
             'workers': [],
+            'control_ping_ok': False,
             'latency_ms': round((time.perf_counter() - started) * 1000, 1),
         }
 
@@ -1092,11 +1152,22 @@ def _check_sap_status_for_diagnostics() -> dict:
 
 def _queue_diagnostic_snapshot() -> dict:
     try:
+        heartbeat_age = get_queue_worker_heartbeat_age_seconds()
+        heartbeat_alive = (
+            heartbeat_age is not None
+            and heartbeat_age <= QUEUE_WORKER_HEARTBEAT_STALE_SECONDS
+        )
+        locked = is_queue_locked()
         return {
-            'is_locked': is_queue_locked(),
+            'is_locked': locked,
+            'stop_requested': is_queue_stop_requested(),
+            'stop_request_age_seconds': get_queue_stop_request_age_seconds(),
             'continuous_armed': is_continuous_queue_armed(),
             'processing_pallet_ids': sorted(get_processing_pallet_ids()),
             'idle_remaining_seconds': get_queue_idle_remaining_seconds(),
+            'worker_heartbeat_age_seconds': heartbeat_age,
+            'worker_heartbeat_alive': heartbeat_alive,
+            'worker_stale': bool(locked and not heartbeat_alive),
             'processing_hus': HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).count(),
             'pending_hus': HUItem.objects.filter(status=HUItem.STATUS_PENDING).count(),
             'ready_pallets': Pallet.objects.filter(status=Pallet.STATUS_READY).count(),
@@ -1107,9 +1178,14 @@ def _queue_diagnostic_snapshot() -> dict:
     except Exception as exc:
         return {
             'is_locked': False,
+            'stop_requested': False,
+            'stop_request_age_seconds': None,
             'continuous_armed': False,
             'processing_pallet_ids': [],
             'idle_remaining_seconds': None,
+            'worker_heartbeat_age_seconds': None,
+            'worker_heartbeat_alive': False,
+            'worker_stale': False,
             'processing_hus': 0,
             'pending_hus': 0,
             'ready_pallets': 0,
@@ -1194,6 +1270,123 @@ def iniciar_sap():
     return connected
 
 
+def _queue_runtime_is_orphaned(queue_status: dict, celery_status: dict | None = None) -> bool:
+    return bool(queue_status.get('is_locked') and queue_status.get('worker_stale'))
+
+
+def _stop_request_is_stale(queue_status: dict) -> bool:
+    age = queue_status.get('stop_request_age_seconds')
+    return bool(
+        queue_status.get('is_locked')
+        and queue_status.get('stop_requested')
+        and age is not None
+        and age >= QUEUE_SAFE_STOP_GRACE_SECONDS
+    )
+
+
+def _recover_orphaned_queue_runtime_data(message: str | None = None) -> dict:
+    """
+    Recupera la UI cuando Celery fue cerrado a la fuerza.
+
+    En ese escenario nadie leera QUEUE_STOP_KEY ni liberara el lock en Redis, asi
+    que la recuperacion debe liberar solo el estado runtime y emitir un cierre
+    visual. Las HUs en processing se marcan como error para revision manual.
+    """
+    now = timezone.now()
+    message = message or (
+        'Celery se detuvo mientras la cola estaba activa. '
+        'Se libero el lock y la UI quedo lista para revisar o reintentar.'
+    )
+
+    interrupted_items = list(
+        HUItem.objects
+        .select_related('pallet')
+        .filter(status=HUItem.STATUS_PROCESSING)
+    )
+    affected_pallet_ids = {item.pallet_id for item in interrupted_items}
+
+    for item in interrupted_items:
+        item.status = HUItem.STATUS_ERROR
+        item.error_msg = 'Proceso interrumpido: Celery se cerro antes de confirmar el resultado.'
+        item.processed_at = now
+        if item.processing_started_at and not item.processing_ms:
+            item.processing_ms = max(
+                0,
+                int((now - item.processing_started_at).total_seconds() * 1000),
+            )
+        item.save(update_fields=[
+            'status',
+            'error_msg',
+            'processed_at',
+            'processing_ms',
+        ])
+        emit_item_update(item)
+
+    if affected_pallet_ids:
+        Pallet.objects.filter(pk__in=affected_pallet_ids).update(
+            processing_finished_at=now,
+        )
+
+    clear_queue_runtime_state()
+    emit_stats_update(None)
+    result = {
+        'status': 'stopped',
+        'message': message,
+        'pallets_processed': 0,
+        'hus_processed': 0,
+        'errors': len(interrupted_items),
+    }
+    emit_queue_done(result)
+    log.warning(
+        "detener_queue orphaned_runtime_recovered interrupted_hus=%s pallets=%s",
+        len(interrupted_items),
+        sorted(affected_pallet_ids),
+    )
+    return {
+        'ok': True,
+        'recovered': True,
+        'message': message,
+        'interrupted_hus': len(interrupted_items),
+        'stats': calculate_queue_stats(),
+    }
+
+
+def _recover_orphaned_queue_runtime(message: str | None = None) -> JsonResponse:
+    return JsonResponse(_recover_orphaned_queue_runtime_data(message))
+
+
+def _queue_lock_blocker_response(action: str) -> JsonResponse | None:
+    queue_status = _queue_diagnostic_snapshot()
+    if not queue_status.get('is_locked'):
+        return None
+
+    if _queue_runtime_is_orphaned(queue_status) or _stop_request_is_stale(queue_status):
+        if queue_status.get('processing_hus'):
+            data = _recover_orphaned_queue_runtime_data(
+                'Se libero un lock anterior, pero habia HUs marcadas como processing. '
+                'Revisa esas HUs antes de iniciar otra corrida.'
+            )
+            data['ok'] = False
+            data['error'] = data['message']
+            return JsonResponse(data, status=409)
+
+        clear_queue_runtime_state()
+        emit_stats_update(None)
+        emit_queue_status(
+            'Lock anterior liberado. Puedes iniciar el procesamiento nuevamente.',
+            badge='RECUPERADO',
+            mode='waiting',
+            footer='No habia HUs en processing; se limpio solo el estado runtime.',
+            is_running=False,
+        )
+        return None
+
+    return JsonResponse({
+        'ok': False,
+        'error': f'No se puede {action}: ya hay una tarea de procesamiento activa.',
+    }, status=409)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  DETENER PROCESO
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1206,6 +1399,35 @@ def detener_queue(request):
     En este diseño el stop es principalmente UI.
     Si en el futuro quieres cancelar tasks de Celery, aquí va la lógica.
     """
+    body = _parse_json_body(request)
+    force_requested = bool(body.get('force'))
+    queue_status = _queue_diagnostic_snapshot()
+    redis_status = _check_redis_status()
+    celery_status = _check_celery_status(redis_status['ok'], queue_status)
+    if _queue_runtime_is_orphaned(queue_status, celery_status):
+        return _recover_orphaned_queue_runtime()
+
+    if _stop_request_is_stale(queue_status):
+        message = (
+            'La detencion segura no recibio confirmacion del worker. '
+            'Se libero la cola para evitar que la UI quede bloqueada.'
+        )
+        return _recover_orphaned_queue_runtime(message)
+
+    if force_requested and queue_status.get('stop_requested'):
+        remaining = max(
+            0,
+            QUEUE_SAFE_STOP_GRACE_SECONDS - int(queue_status.get('stop_request_age_seconds') or 0),
+        )
+        return JsonResponse({
+            'ok': True,
+            'waiting_for_safe_stop': True,
+            'message': (
+                f'Detencion segura en curso. Si no termina, podras liberar la cola en {remaining}s.'
+            ),
+            'force_available_after_seconds': remaining,
+        })
+
     stopped = request_queue_stop()
     log.info("detener_queue stop_requested=%s", stopped)
     if not stopped:
@@ -1218,7 +1440,12 @@ def detener_queue(request):
         footer='SAP terminara la operacion actual antes de liberar la cola.',
         is_running=True,
     )
-    return JsonResponse({'ok': True, 'message': 'Detencion solicitada. Esperando cierre seguro.'})
+    return JsonResponse({
+        'ok': True,
+        'message': 'Detencion solicitada. Esperando cierre seguro.',
+        'waiting_for_safe_stop': True,
+        'force_available_after_seconds': QUEUE_SAFE_STOP_GRACE_SECONDS,
+    })
 
 
 @require_POST
@@ -1229,11 +1456,12 @@ def procesar_pendientes(request):
     run_f2 = body.get('run_f2', True)
     run_pdf = body.get('run_pdf', True)
 
+    lock_response = _queue_lock_blocker_response('iniciar el proceso')
+    if lock_response:
+        return lock_response
+
     if HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).exists():
         return JsonResponse({'ok': False, 'error': 'Ya hay HUs procesando'}, status=409)
-
-    if is_queue_locked():
-        return JsonResponse({'ok': False, 'error': 'Ya hay una tarea de procesamiento activa'}, status=409)
 
     _close_active_pallet_for_processing()
     items = HUItem.objects.filter(

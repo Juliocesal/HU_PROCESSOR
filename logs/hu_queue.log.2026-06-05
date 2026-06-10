@@ -1,0 +1,1411 @@
+06:20:10 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+06:20:10 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+06:20:10 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+06:20:10 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+06:22:11 [INFO] queue_app.consumers - ws_connected channel=specific.4e136fd78497478584a4d0f4155f72d8!c951f25617d74bd3a21b6c1736d6eb4d
+06:22:12 [WARNING] django.request - Not Found: /favicon.ico
+06:22:14 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+06:27:07 [INFO] daphne.server - Killed 1 pending application instances
+06:27:12 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=127.0.0.1
+06:27:12 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+06:27:12 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=127.0.0.1
+06:27:12 [INFO] daphne.server - Listening on TCP address 127.0.0.1:8000
+06:27:13 [INFO] queue_app.consumers - ws_connected channel=specific.21ae94e4c5794817ad9ddfde40591a8b!28b071783eb44a98bdee86a71815410d
+07:02:10 [INFO] queue_app.views - scan_hu hu=TH0000268256 pallet=1 origin=THA
+07:02:10 [INFO] queue_app.views - scan_hu hu=TH0000268198 pallet=1 origin=THA
+07:02:10 [INFO] queue_app.views - scan_hu hu=TH0000268258 pallet=1 origin=THA
+07:02:10 [INFO] queue_app.views - scan_hu hu=TH0000268163 pallet=1 origin=THA
+07:02:10 [INFO] queue_app.views - scan_hu hu=TH0000268251 pallet=1 origin=THA
+07:02:10 [INFO] queue_app.views - scan_hu hu=TH0000268315 pallet=1 origin=THA
+07:02:37 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=6 pdf_count=0
+07:14:21 [WARNING] django.security.csrf - Forbidden (CSRF cookie not set.): /
+07:43:26 [INFO] queue_app.views - scan_hu hu=TH0000268308 pallet=2 origin=THA
+07:43:26 [INFO] queue_app.views - scan_hu hu=TH0000268162 pallet=2 origin=THA
+07:43:27 [INFO] queue_app.views - scan_hu hu=TH0000268375 pallet=2 origin=THA
+07:43:27 [INFO] queue_app.views - scan_hu hu=TH0000268369 pallet=2 origin=THA
+07:44:23 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=4 pdf_count=0
+08:11:34 [INFO] queue_app.consumers - ws_disconnected channel=specific.21ae94e4c5794817ad9ddfde40591a8b!28b071783eb44a98bdee86a71815410d code=1001
+08:11:34 [INFO] queue_app.consumers - ws_connected channel=specific.21ae94e4c5794817ad9ddfde40591a8b!2a24c77eaec64371b7e8eaa3040a06c4
+08:11:50 [INFO] daphne.server - Killed 1 pending application instances
+08:17:55 [WARNING] django.request - Conflict: /cola/limpiar/
+08:17:55 [WARNING] django.request - Conflict: /cola/limpiar/
+08:17:55 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:17:55 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+08:17:55 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+08:17:55 [WARNING] django.request - Conflict: /pallet/1/borrar/
+08:17:55 [INFO] queue_app.views - new_pallet created id=2
+08:17:55 [INFO] queue_app.views - new_pallet created id=2
+08:17:55 [INFO] queue_app.views - new_pallet created id=2
+08:17:55 [INFO] queue_app.views - new_pallet created id=2
+08:17:55 [INFO] queue_app.views - reprocess_queue mode=all count=3
+08:17:55 [ERROR] queue_app.views - reprocess_queue celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 636, in reprocess_queue
+    _dispatch_continuous_queue()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 477, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+08:17:55 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+08:17:55 [WARNING] django.request - Bad Request: /cola/reprocesar/
+08:17:55 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+08:17:55 [WARNING] django.request - Conflict: /cola/reprocesar/
+08:17:55 [INFO] core.sap_client - sap_sessions_closed identity=system=LUP user=BOT1 count=1
+08:17:55 [WARNING] core.sap_client - sap_session_disconnected_dialog text=sap gui for windows 770 sap gui for windows 770 sap gui for windows 770 wsaeconnreset: connection reset by peer
+08:17:55 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+08:17:55 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+08:17:55 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+08:17:55 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+08:17:56 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:17:56 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:17:56 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+08:17:56 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+08:17:56 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+08:17:56 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+08:17:56 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:17:56 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+08:17:56 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+08:17:56 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+08:17:56 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:17:56 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+08:17:56 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+08:17:56 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+08:17:56 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+08:17:56 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:17:56 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+08:17:56 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+08:17:56 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+08:17:56 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=TEST
+08:17:56 [WARNING] django.request - Bad Request: /api/sap/iniciar/
+08:17:56 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+08:17:56 [ERROR] queue_app.views - procesar_pendientes celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 1115, in procesar_pendientes
+    _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 477, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+08:17:56 [ERROR] django.request - Service Unavailable: /api/procesar/
+08:17:56 [WARNING] django.request - Conflict: /api/procesar/
+08:17:56 [WARNING] django.request - Conflict: /api/procesar/
+08:17:56 [INFO] queue_app.views - detener_queue stop_requested=True
+08:19:17 [WARNING] django.request - Conflict: /cola/limpiar/
+08:19:17 [WARNING] django.request - Conflict: /cola/limpiar/
+08:19:17 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+08:19:17 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+08:19:17 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+08:19:17 [WARNING] django.request - Conflict: /pallet/1/borrar/
+08:19:17 [INFO] queue_app.views - new_pallet created id=2
+08:19:17 [INFO] queue_app.views - new_pallet created id=2
+08:19:17 [INFO] queue_app.views - new_pallet created id=2
+08:19:17 [INFO] queue_app.views - new_pallet created id=2
+08:19:17 [INFO] queue_app.views - reprocess_queue mode=all count=3
+08:19:17 [ERROR] queue_app.views - reprocess_queue celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 636, in reprocess_queue
+    _dispatch_continuous_queue()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 477, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+08:19:17 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+08:19:17 [WARNING] django.request - Bad Request: /cola/reprocesar/
+08:19:17 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+08:19:17 [WARNING] django.request - Conflict: /cola/reprocesar/
+08:19:17 [INFO] core.sap_client - sap_sessions_closed identity=system=LUP user=BOT1 count=1
+08:19:17 [WARNING] core.sap_client - sap_session_disconnected_dialog text=sap gui for windows 770 sap gui for windows 770 sap gui for windows 770 wsaeconnreset: connection reset by peer
+08:19:17 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+08:19:17 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+08:19:17 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+08:19:17 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+08:19:17 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+08:19:17 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+08:19:17 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:19:17 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+08:19:17 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:19:17 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:19:17 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+08:19:17 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+08:19:17 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+08:19:17 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+08:19:17 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+08:19:17 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+08:19:17 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:19:17 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:19:17 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+08:19:17 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+08:19:17 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+08:19:18 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+08:19:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+08:19:18 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:19:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+08:19:18 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+08:19:18 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+08:19:18 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+08:19:18 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+08:19:18 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+08:19:18 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+08:19:18 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+08:19:18 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+08:19:18 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+08:19:18 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+08:19:18 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=TEST
+08:19:18 [WARNING] django.request - Bad Request: /api/sap/iniciar/
+08:19:18 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+08:19:18 [ERROR] queue_app.views - procesar_pendientes celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 1115, in procesar_pendientes
+    _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 477, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+08:19:18 [ERROR] django.request - Service Unavailable: /api/procesar/
+08:19:18 [WARNING] django.request - Conflict: /api/procesar/
+08:19:18 [WARNING] django.request - Conflict: /api/procesar/
+08:19:18 [INFO] queue_app.views - detener_queue stop_requested=True
+08:24:26 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+08:24:26 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+08:24:26 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+08:24:26 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+08:24:33 [INFO] queue_app.consumers - ws_connected channel=specific.5eb829ecbf0440dc91a10d1d8649a374!0760290306ce4f438481f9b90eb90c12
+08:24:56 [INFO] queue_app.consumers - ws_disconnected channel=specific.5eb829ecbf0440dc91a10d1d8649a374!0760290306ce4f438481f9b90eb90c12 code=1001
+08:24:56 [INFO] queue_app.consumers - ws_connected channel=specific.5eb829ecbf0440dc91a10d1d8649a374!590dc2eacbf54caf8222e31fe5bec6f0
+08:24:56 [WARNING] django.request - Not Found: /favicon.ico
+08:25:43 [INFO] queue_app.views - scan_hu hu=TH0000268232 pallet=3 origin=THA
+08:25:43 [INFO] queue_app.views - scan_hu hu=TH0000268215 pallet=3 origin=THA
+08:25:43 [INFO] queue_app.views - scan_hu hu=TH0000268310 pallet=3 origin=THA
+08:25:43 [INFO] queue_app.views - scan_hu hu=TH0000268252 pallet=3 origin=THA
+08:25:43 [INFO] queue_app.views - scan_hu hu=TH0000268254 pallet=3 origin=THA
+08:25:43 [INFO] queue_app.views - scan_hu hu=TH0000268309 pallet=3 origin=THA
+08:25:43 [INFO] queue_app.views - scan_hu hu=TH0000268207 pallet=3 origin=THA
+08:26:35 [INFO] core.sap_client - sap_multi_logon_option_selected
+08:26:37 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=7 pdf_count=0
+08:29:03 [INFO] queue_app.views - scan_hu hu=TH0000268351 pallet=4 origin=THA
+08:29:03 [INFO] queue_app.views - scan_hu hu=TH0000268384 pallet=4 origin=THA
+08:29:04 [INFO] queue_app.views - scan_hu hu=TH0000268244 pallet=4 origin=THA
+08:29:04 [INFO] queue_app.views - scan_hu hu=TH0000268337 pallet=4 origin=THA
+08:29:04 [INFO] queue_app.views - scan_hu hu=TH0000268160 pallet=4 origin=THA
+08:29:33 [INFO] queue_app.views - new_pallet created id=5
+08:30:14 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+08:30:22 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+08:46:16 [INFO] queue_app.views - scan_hu hu=TH0000268328 pallet=5 origin=THA
+08:46:17 [INFO] queue_app.views - scan_hu hu=TH0000268291 pallet=5 origin=THA
+08:46:17 [INFO] queue_app.views - scan_hu hu=TH0000268353 pallet=5 origin=THA
+08:46:17 [INFO] queue_app.views - scan_hu hu=TH0000268383 pallet=5 origin=THA
+08:46:47 [INFO] core.sap_client - sap_multi_logon_option_selected
+08:46:52 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=4 pdf_count=0
+08:48:41 [INFO] queue_app.consumers - ws_disconnected channel=specific.5eb829ecbf0440dc91a10d1d8649a374!590dc2eacbf54caf8222e31fe5bec6f0 code=1006
+08:50:18 [INFO] queue_app.consumers - ws_connected channel=specific.5eb829ecbf0440dc91a10d1d8649a374!4807d68e74a844cfbe3f72a73ea2dadc
+08:52:38 [ERROR] daphne.server - Exception inside application: Error while reading from localhost:6379 : (10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None)
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 543, in read_response
+    response = await self._parser.read_response(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        disable_decoding=disable_decoding
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\_parsers\resp2.py", line 82, in read_response
+    response = await self._read_response(disable_decoding=disable_decoding)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\_parsers\resp2.py", line 90, in _read_response
+    raw = await self._readline()
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\_parsers\base.py", line 219, in _readline
+    data = await self._stream.readline()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 562, in readline
+    line = await self.readuntil(sep)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 677, in readuntil
+    await self._wait_for_data('readuntil')
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 539, in _wait_for_data
+    await self._waiter
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\selector_events.py", line 1005, in _read_ready__data_received
+    data = self._sock.recv(self.max_size)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 57, in await_many_dispatch
+    await task
+redis.exceptions.ConnectionError: Error while reading from localhost:6379 : (10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None)
+08:52:44 [ERROR] daphne.server - Exception inside application: 'NoneType' object has no attribute '_add_writer'
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 275, in connect
+    await self.retry.call_with_retry(
+        lambda: self._connect(), lambda error: self.disconnect()
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 691, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **self._connection_arguments()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        lambda: protocol, host, port, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1169, in create_connection
+    raise OSError('Multiple exceptions: {}'.format(
+        ', '.join(str(exc) for exc in exceptions)))
+OSError: Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 73, in dispatch
+    await handler(message)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\generic\websocket.py", line 179, in websocket_connect
+    await self.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\consumers.py", line 18, in connect
+    await self.channel_layer.group_add(self.GROUP_NAME, self.channel_name)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 504, in group_add
+    await connection.zadd(group_key, {channel: time.time()})
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 611, in execute_command
+    conn = self.connection or await pool.get_connection(command_name, **options)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1058, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1091, in ensure_connection
+    await connection.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 283, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 57, in await_many_dispatch
+    await task
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 353, in receive
+    message_channel, message = await self.receive_single(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        real_channel
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 408, in receive_single
+    content = await self._brpop_with_clean(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        index, channel_key, timeout=self.brpop_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 244, in _brpop_with_clean
+    await connection.eval(cleanup_script, 0, channel, backup_queue)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 616, in execute_command
+    return await conn.retry.call_with_retry(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<4 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 589, in _send_command_parse_response
+    await conn.send_command(*args)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 499, in send_command
+    await self.send_packed_command(
+        self.pack_command(*args), check_health=kwargs.get("check_health", True)
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 474, in send_packed_command
+    self._writer.writelines(command)
+    ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 343, in writelines
+    self._transport.writelines(data)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\selector_events.py", line 1177, in writelines
+    self._loop._add_writer(self._sock_fd, self._write_ready)
+    ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'NoneType' object has no attribute '_add_writer'
+08:52:50 [ERROR] daphne.server - Exception inside application: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 275, in connect
+    await self.retry.call_with_retry(
+        lambda: self._connect(), lambda error: self.disconnect()
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 691, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **self._connection_arguments()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        lambda: protocol, host, port, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1169, in create_connection
+    raise OSError('Multiple exceptions: {}'.format(
+        ', '.join(str(exc) for exc in exceptions)))
+OSError: Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 73, in dispatch
+    await handler(message)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\generic\websocket.py", line 179, in websocket_connect
+    await self.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\consumers.py", line 18, in connect
+    await self.channel_layer.group_add(self.GROUP_NAME, self.channel_name)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 504, in group_add
+    await connection.zadd(group_key, {channel: time.time()})
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 611, in execute_command
+    conn = self.connection or await pool.get_connection(command_name, **options)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1058, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1091, in ensure_connection
+    await connection.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 283, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 57, in await_many_dispatch
+    await task
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 353, in receive
+    message_channel, message = await self.receive_single(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        real_channel
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 408, in receive_single
+    content = await self._brpop_with_clean(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        index, channel_key, timeout=self.brpop_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 244, in _brpop_with_clean
+    await connection.eval(cleanup_script, 0, channel, backup_queue)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 611, in execute_command
+    conn = self.connection or await pool.get_connection(command_name, **options)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1058, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1091, in ensure_connection
+    await connection.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 283, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+08:52:56 [WARNING] queue_app.tasks - queue_lock_status_failed error=Timeout connecting to server
+08:52:59 [ERROR] daphne.server - Exception inside application: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 275, in connect
+    await self.retry.call_with_retry(
+        lambda: self._connect(), lambda error: self.disconnect()
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 691, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **self._connection_arguments()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        lambda: protocol, host, port, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1169, in create_connection
+    raise OSError('Multiple exceptions: {}'.format(
+        ', '.join(str(exc) for exc in exceptions)))
+OSError: Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 73, in dispatch
+    await handler(message)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\generic\websocket.py", line 179, in websocket_connect
+    await self.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\consumers.py", line 18, in connect
+    await self.channel_layer.group_add(self.GROUP_NAME, self.channel_name)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 504, in group_add
+    await connection.zadd(group_key, {channel: time.time()})
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 611, in execute_command
+    conn = self.connection or await pool.get_connection(command_name, **options)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1058, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1091, in ensure_connection
+    await connection.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 283, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 57, in await_many_dispatch
+    await task
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 353, in receive
+    message_channel, message = await self.receive_single(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        real_channel
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 408, in receive_single
+    content = await self._brpop_with_clean(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        index, channel_key, timeout=self.brpop_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 244, in _brpop_with_clean
+    await connection.eval(cleanup_script, 0, channel, backup_queue)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 611, in execute_command
+    conn = self.connection or await pool.get_connection(command_name, **options)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1058, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1091, in ensure_connection
+    await connection.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 283, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+08:53:00 [WARNING] queue_app.tasks - queue_continuous_arm_check_failed error=Timeout connecting to server
+08:53:04 [WARNING] queue_app.tasks - queue_active_pallets_read_failed error=Timeout connecting to server
+08:53:08 [WARNING] queue_app.tasks - queue_idle_deadline_read_failed error=Timeout connecting to server
+08:53:12 [ERROR] daphne.server - Exception inside application: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 275, in connect
+    await self.retry.call_with_retry(
+        lambda: self._connect(), lambda error: self.disconnect()
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\retry.py", line 59, in call_with_retry
+    return await do()
+           ^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 691, in _connect
+    reader, writer = await asyncio.open_connection(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        **self._connection_arguments()
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\streams.py", line 48, in open_connection
+    transport, _ = await loop.create_connection(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        lambda: protocol, host, port, **kwds)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\asyncio\base_events.py", line 1169, in create_connection
+    raise OSError('Multiple exceptions: {}'.format(
+        ', '.join(str(exc) for exc in exceptions)))
+OSError: Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 50, in await_many_dispatch
+    await dispatch(result)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 73, in dispatch
+    await handler(message)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\generic\websocket.py", line 179, in websocket_connect
+    await self.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\consumers.py", line 18, in connect
+    await self.channel_layer.group_add(self.GROUP_NAME, self.channel_name)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 504, in group_add
+    await connection.zadd(group_key, {channel: time.time()})
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 611, in execute_command
+    conn = self.connection or await pool.get_connection(command_name, **options)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1058, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1091, in ensure_connection
+    await connection.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 283, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py", line 101, in __call__
+    return await self.application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 62, in __call__
+    return await application(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 47, in __call__
+    return await self.inner(dict(scope, cookies=cookies), receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\sessions.py", line 263, in __call__
+    return await self.inner(wrapper.scope, receive, wrapper.send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\auth.py", line 185, in __call__
+    return await super().__call__(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\middleware.py", line 24, in __call__
+    return await self.inner(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\routing.py", line 132, in __call__
+    return await application(
+           ^^^^^^^^^^^^^^^^^^
+    ...<10 lines>...
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 94, in app
+    return await consumer(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\consumer.py", line 58, in __call__
+    await await_many_dispatch(
+        [receive, self.channel_receive], self.dispatch
+    )
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels\utils.py", line 57, in await_many_dispatch
+    await task
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 353, in receive
+    message_channel, message = await self.receive_single(
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+        real_channel
+        ^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 408, in receive_single
+    content = await self._brpop_with_clean(
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        index, channel_key, timeout=self.brpop_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\channels_redis\core.py", line 244, in _brpop_with_clean
+    await connection.eval(cleanup_script, 0, channel, backup_queue)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\client.py", line 611, in execute_command
+    conn = self.connection or await pool.get_connection(command_name, **options)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1058, in get_connection
+    await self.ensure_connection(connection)
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 1091, in ensure_connection
+    await connection.connect()
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\redis\asyncio\connection.py", line 283, in connect
+    raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.
+08:53:12 [WARNING] queue_app.tasks - queue_lock_status_failed error=Timeout connecting to server
+08:53:19 [WARNING] queue_app.tasks - queue_lock_status_failed error=Timeout connecting to server
+08:53:23 [WARNING] queue_app.tasks - queue_continuous_arm_check_failed error=Timeout connecting to server
+08:53:28 [INFO] queue_app.consumers - ws_connected channel=specific.5eb829ecbf0440dc91a10d1d8649a374!a3c0ec53aa66409fb1eb6b2d494f0e22
+08:54:36 [INFO] daphne.server - Killed 2 pending application instances
+08:54:58 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+08:54:58 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+08:54:58 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+08:54:58 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+08:54:58 [INFO] queue_app.consumers - ws_connected channel=specific.1160046c731c45f48b55c5885389133d!d4cda795e4ca4c31950ff16e20074e7e
+09:30:28 [WARNING] django.request - Conflict: /cola/limpiar/
+09:30:28 [WARNING] django.request - Conflict: /cola/limpiar/
+09:30:29 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+09:30:29 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+09:30:29 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+09:30:29 [WARNING] django.request - Conflict: /pallet/1/borrar/
+09:30:29 [INFO] queue_app.views - new_pallet created id=2
+09:30:29 [INFO] queue_app.views - new_pallet created id=2
+09:30:29 [INFO] queue_app.views - new_pallet created id=2
+09:30:29 [INFO] queue_app.views - new_pallet created id=2
+09:30:29 [INFO] queue_app.views - new_pallet created id=2
+09:30:29 [INFO] queue_app.views - reprocess_queue mode=all count=3
+09:30:29 [ERROR] queue_app.views - reprocess_queue celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 701, in reprocess_queue
+    _dispatch_continuous_queue()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+09:30:29 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+09:30:29 [WARNING] django.request - Bad Request: /cola/reprocesar/
+09:30:29 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+09:30:29 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+09:30:29 [WARNING] django.request - Conflict: /cola/reprocesar/
+09:30:29 [INFO] core.sap_client - sap_sessions_closed identity=system=LUP user=BOT1 count=1
+09:30:29 [WARNING] core.sap_client - sap_session_disconnected_dialog text=sap gui for windows 770 sap gui for windows 770 sap gui for windows 770 wsaeconnreset: connection reset by peer
+09:30:29 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+09:30:29 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+09:30:29 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+09:30:29 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+09:30:29 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+09:30:29 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+09:30:29 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+09:30:29 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+09:30:29 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+09:30:29 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+09:30:29 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+09:30:29 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+09:30:29 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+09:30:29 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+09:30:29 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+09:30:30 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+09:30:30 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+09:30:30 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+09:30:30 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+09:30:30 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+09:30:30 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+09:30:30 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+09:30:30 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+09:30:30 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+09:30:30 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+09:30:30 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+09:30:30 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+09:30:30 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+09:30:30 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+09:30:30 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+09:30:30 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+09:30:30 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+09:30:30 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+09:30:30 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+09:30:30 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+09:30:30 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=TEST
+09:30:30 [WARNING] django.request - Bad Request: /api/sap/iniciar/
+09:30:30 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+09:30:30 [ERROR] queue_app.views - procesar_pendientes celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 1259, in procesar_pendientes
+    _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+09:30:30 [ERROR] django.request - Service Unavailable: /api/procesar/
+09:30:30 [ERROR] django.request - Service Unavailable: /api/procesar/
+09:30:30 [WARNING] django.request - Conflict: /api/procesar/
+09:30:30 [WARNING] django.request - Conflict: /api/procesar/
+09:30:30 [INFO] queue_app.views - detener_queue stop_requested=True
+10:04:29 [INFO] queue_app.consumers - ws_disconnected channel=specific.1160046c731c45f48b55c5885389133d!d4cda795e4ca4c31950ff16e20074e7e code=1001
+10:04:29 [INFO] queue_app.consumers - ws_connected channel=specific.1160046c731c45f48b55c5885389133d!ceed4c0873e849a596c43bac1bc2fbb9
+10:04:30 [WARNING] django.request - Not Found: /favicon.ico
+10:05:36 [WARNING] django.request - Conflict: /scan/
+10:05:36 [WARNING] django.request - Conflict: /scan/
+10:05:36 [WARNING] django.request - Conflict: /scan/
+10:05:37 [WARNING] django.request - Conflict: /scan/
+10:05:37 [WARNING] django.request - Conflict: /scan/
+10:05:52 [INFO] queue_app.views - scan_hu hu=C1012089476 pallet=6 origin=BRA/ATL
+10:05:52 [INFO] queue_app.views - scan_hu hu=C1012089475 pallet=6 origin=BRA/ATL
+10:05:53 [INFO] queue_app.views - scan_hu hu=C1012089472 pallet=6 origin=BRA/ATL
+10:05:53 [INFO] queue_app.views - scan_hu hu=C1012089483 pallet=6 origin=BRA/ATL
+10:05:53 [INFO] queue_app.views - scan_hu hu=C1012089481 pallet=6 origin=BRA/ATL
+10:05:54 [INFO] queue_app.views - scan_hu hu=C1012089479 pallet=6 origin=BRA/ATL
+10:05:54 [INFO] queue_app.views - scan_hu hu=C1012089484 pallet=6 origin=BRA/ATL
+10:05:54 [INFO] queue_app.views - scan_hu hu=C1012089478 pallet=6 origin=BRA/ATL
+10:05:55 [INFO] queue_app.views - scan_hu hu=C1012089485 pallet=6 origin=BRA/ATL
+10:06:30 [WARNING] django.request - Conflict: /cola/limpiar/
+10:06:30 [WARNING] django.request - Conflict: /cola/limpiar/
+10:06:30 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+10:06:30 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+10:06:30 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+10:06:30 [WARNING] django.request - Conflict: /pallet/1/borrar/
+10:06:30 [INFO] queue_app.views - new_pallet created id=2
+10:06:30 [INFO] queue_app.views - new_pallet created id=2
+10:06:31 [INFO] queue_app.views - new_pallet created id=2
+10:06:31 [INFO] queue_app.views - new_pallet created id=2
+10:06:31 [INFO] queue_app.views - new_pallet created id=2
+10:06:31 [INFO] queue_app.views - reprocess_queue mode=all count=3
+10:06:31 [ERROR] queue_app.views - reprocess_queue celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 701, in reprocess_queue
+    _dispatch_continuous_queue()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+10:06:31 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+10:06:31 [WARNING] django.request - Bad Request: /cola/reprocesar/
+10:06:31 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+10:06:31 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+10:06:31 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:06:31 [INFO] core.sap_client - sap_sessions_closed identity=system=LUP user=BOT1 count=1
+10:06:31 [WARNING] core.sap_client - sap_session_disconnected_dialog text=sap gui for windows 770 sap gui for windows 770 sap gui for windows 770 wsaeconnreset: connection reset by peer
+10:06:31 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:06:31 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:06:31 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:06:31 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:06:31 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:06:31 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:06:31 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:06:31 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+10:06:31 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:06:31 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:06:31 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+10:06:31 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:06:31 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:06:31 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:06:31 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:06:31 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+10:06:31 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:06:31 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=9 pdf_count=0
+10:06:32 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:06:32 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+10:06:32 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:06:32 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:06:32 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:06:32 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+10:06:32 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:06:32 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:06:32 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:06:32 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+10:06:32 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:06:32 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:06:32 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:06:32 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+10:06:32 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:06:32 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+10:06:32 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:06:32 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:06:32 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=TEST
+10:06:32 [WARNING] django.request - Bad Request: /api/sap/iniciar/
+10:06:32 [WARNING] django.request - Conflict: /api/procesar/
+10:06:32 [ERROR] queue_app.views - procesar_pendientes celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 1259, in procesar_pendientes
+    _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+10:06:32 [ERROR] django.request - Service Unavailable: /api/procesar/
+10:06:32 [ERROR] django.request - Service Unavailable: /api/procesar/
+10:06:32 [WARNING] django.request - Conflict: /api/procesar/
+10:06:32 [WARNING] django.request - Conflict: /api/procesar/
+10:06:32 [INFO] queue_app.views - detener_queue stop_requested=True
+10:06:46 [INFO] queue_app.consumers - ws_disconnected channel=specific.1160046c731c45f48b55c5885389133d!ceed4c0873e849a596c43bac1bc2fbb9 code=1001
+10:06:47 [INFO] queue_app.consumers - ws_connected channel=specific.1160046c731c45f48b55c5885389133d!2b1ce79ccf7f42c980e3d3f609cc31a6
+10:06:47 [WARNING] django.request - Not Found: /favicon.ico
+10:07:02 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+10:07:45 [WARNING] django.request - Conflict: /cola/limpiar/
+10:07:45 [WARNING] django.request - Conflict: /cola/limpiar/
+10:07:45 [WARNING] django.request - Conflict: /cola/limpiar/
+10:07:45 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+10:07:45 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+10:07:45 [WARNING] django.request - Conflict: /pallet/1/borrar/
+10:07:45 [INFO] queue_app.views - new_pallet created id=2
+10:07:45 [INFO] queue_app.views - new_pallet created id=2
+10:07:45 [INFO] queue_app.views - new_pallet created id=2
+10:07:45 [INFO] queue_app.views - new_pallet created id=2
+10:07:45 [INFO] queue_app.views - new_pallet created id=2
+10:07:45 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:07:45 [ERROR] queue_app.views - reprocess_queue celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 701, in reprocess_queue
+    _dispatch_continuous_queue()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+10:07:45 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+10:07:45 [WARNING] django.request - Bad Request: /cola/reprocesar/
+10:07:45 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:07:45 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:07:45 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:07:45 [INFO] core.sap_client - sap_sessions_closed identity=system=LUP user=BOT1 count=1
+10:07:45 [WARNING] core.sap_client - sap_session_disconnected_dialog text=sap gui for windows 770 sap gui for windows 770 sap gui for windows 770 wsaeconnreset: connection reset by peer
+10:07:45 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:07:45 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:07:45 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:07:46 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:07:46 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:07:46 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:07:46 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+10:07:46 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:07:46 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:07:46 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:07:46 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:07:46 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+10:07:46 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:07:46 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:07:46 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:07:46 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+10:07:46 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:07:46 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:07:46 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+10:07:46 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:07:46 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+10:07:46 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:07:46 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:07:46 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=TEST
+10:07:46 [WARNING] django.request - Bad Request: /api/sap/iniciar/
+10:07:46 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+10:07:46 [ERROR] queue_app.views - procesar_pendientes celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 1259, in procesar_pendientes
+    _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+10:07:46 [ERROR] django.request - Service Unavailable: /api/procesar/
+10:07:46 [ERROR] django.request - Service Unavailable: /api/procesar/
+10:07:46 [WARNING] django.request - Conflict: /api/procesar/
+10:07:46 [WARNING] django.request - Conflict: /api/procesar/
+10:07:46 [INFO] queue_app.views - detener_queue stop_requested=True
+10:07:48 [WARNING] core.sap_client - sap_session_not_alive error=(-2147483638, 'The data necessary to complete this operation is not yet available.', None, None)
+10:09:03 [INFO] daphne.server - Killed 2 pending application instances
+10:11:09 [WARNING] django.request - Conflict: /cola/limpiar/
+10:11:09 [WARNING] django.request - Conflict: /cola/limpiar/
+10:11:09 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+10:11:09 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+10:11:09 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+10:11:09 [WARNING] django.request - Conflict: /pallet/1/borrar/
+10:11:09 [INFO] queue_app.views - new_pallet created id=2
+10:11:09 [INFO] queue_app.views - new_pallet created id=2
+10:11:09 [INFO] queue_app.views - new_pallet created id=2
+10:11:09 [INFO] queue_app.views - new_pallet created id=2
+10:11:09 [INFO] queue_app.views - new_pallet created id=2
+10:11:09 [INFO] queue_app.views - reprocess_queue mode=all count=3
+10:11:09 [ERROR] queue_app.views - reprocess_queue celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 701, in reprocess_queue
+    _dispatch_continuous_queue()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+10:11:09 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+10:11:09 [WARNING] django.request - Bad Request: /cola/reprocesar/
+10:11:09 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+10:11:09 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+10:11:09 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:11:09 [INFO] core.sap_client - sap_sessions_closed identity=system=LUP user=BOT1 count=1
+10:11:09 [WARNING] core.sap_client - sap_session_disconnected_dialog text=sap gui for windows 770 sap gui for windows 770 sap gui for windows 770 wsaeconnreset: connection reset by peer
+10:11:09 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:11:09 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:11:09 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:11:10 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:11:10 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:11:10 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:11:10 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+10:11:10 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:11:10 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:11:10 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:11:10 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:11:10 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+10:11:10 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:11:10 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:11:10 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:11:10 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+10:11:10 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:11:10 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:11:10 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+10:11:10 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:11:10 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+10:11:10 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:11:10 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:11:10 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=TEST
+10:11:10 [WARNING] django.request - Bad Request: /api/sap/iniciar/
+10:11:10 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+10:11:10 [ERROR] queue_app.views - procesar_pendientes celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 1259, in procesar_pendientes
+    _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+10:11:10 [ERROR] django.request - Service Unavailable: /api/procesar/
+10:11:10 [ERROR] django.request - Service Unavailable: /api/procesar/
+10:11:10 [WARNING] django.request - Conflict: /api/procesar/
+10:11:10 [WARNING] django.request - Conflict: /api/procesar/
+10:11:10 [INFO] queue_app.views - detener_queue stop_requested=True
+10:12:03 [WARNING] django.request - Conflict: /cola/limpiar/
+10:12:03 [WARNING] django.request - Conflict: /cola/limpiar/
+10:12:03 [INFO] queue_app.views - clear_queue done reset_pallet_id=1
+10:12:03 [INFO] queue_app.views - delete_hu hu=T10045916002 pallet=1
+10:12:03 [WARNING] django.request - Conflict: /hu/T10045916002/borrar/
+10:12:03 [WARNING] django.request - Conflict: /pallet/1/borrar/
+10:12:03 [INFO] queue_app.views - new_pallet created id=2
+10:12:03 [INFO] queue_app.views - new_pallet created id=2
+10:12:03 [INFO] queue_app.views - new_pallet created id=2
+10:12:03 [INFO] queue_app.views - new_pallet created id=2
+10:12:03 [INFO] queue_app.views - new_pallet created id=2
+10:12:04 [INFO] queue_app.views - reprocess_queue mode=all count=3
+10:12:04 [ERROR] queue_app.views - reprocess_queue celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 701, in reprocess_queue
+    _dispatch_continuous_queue()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+10:12:04 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+10:12:04 [WARNING] django.request - Bad Request: /cola/reprocesar/
+10:12:04 [INFO] queue_app.views - reprocess_queue mode=errors count=2
+10:12:04 [ERROR] django.request - Service Unavailable: /cola/reprocesar/
+10:12:04 [WARNING] django.request - Conflict: /cola/reprocesar/
+10:12:04 [INFO] core.sap_client - sap_sessions_closed identity=system=LUP user=BOT1 count=1
+10:12:04 [WARNING] core.sap_client - sap_session_disconnected_dialog text=sap gui for windows 770 sap gui for windows 770 sap gui for windows 770 wsaeconnreset: connection reset by peer
+10:12:04 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:12:04 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=2 origin=THA
+10:12:04 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:12:04 [INFO] queue_app.views - scan_hu hu=TH0000268197 pallet=1 origin=THA
+10:12:04 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:12:04 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[2]
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:12:04 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 0}
+10:12:04 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:12:04 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:12:04 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=1
+10:12:04 [WARNING] queue_app.tasks - process_queue_task pallet_has_errors pallet=1 errors=1
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:12:04 [INFO] queue_app.tasks - process_queue_task done result={'status': 'error', 'message': 'Queue finished with 1 error(s)', 'pallets_processed': 2, 'hus_processed': 2, 'errors': 1}
+10:12:04 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:12:04 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:12:04 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1, 2]
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=2
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:12:04 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=2 hu_count=1
+10:12:05 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=2
+10:12:05 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 2, 'hus_processed': 3, 'errors': 0}
+10:12:05 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:12:05 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:12:05 [INFO] queue_app.tasks - process_queue_task batch_start pallets=[1]
+10:12:05 [INFO] queue_app.tasks - process_queue_task pallet_start pallet=1 hu_count=0
+10:12:05 [INFO] queue_app.tasks - process_queue_task pallet_done pallet=1
+10:12:05 [INFO] queue_app.tasks - process_queue_task done result={'status': 'ok', 'message': 'All pallets were processed and printed successfully', 'pallets_processed': 1, 'hus_processed': 0, 'errors': 0}
+10:12:05 [WARNING] core.sap_client - sap_close_sessions_failed error=(-2147221020, 'Invalid syntax', None, None)
+10:12:05 [INFO] queue_app.tasks - process_queue_task sap_idle_close closed=0
+10:12:05 [INFO] queue_app.views - iniciar_sap_endpoint conexion exitosa user=TEST
+10:12:05 [WARNING] django.request - Bad Request: /api/sap/iniciar/
+10:12:05 [INFO] queue_app.views - procesar_pendientes sequential_task_started count=0 pdf_count=1
+10:12:05 [ERROR] queue_app.views - procesar_pendientes celery_dispatch_failed
+Traceback (most recent call last):
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 1259, in procesar_pendientes
+    _dispatch_continuous_queue(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\queue_app\views.py", line 486, in _dispatch_continuous_queue
+    process_queue_task.delay(
+    ~~~~~~~~~~~~~~~~~~~~~~~~^
+        run_f1=run_f1,
+        ^^^^^^^^^^^^^^
+    ...<3 lines>...
+        idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1167, in __call__
+    return self._mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1171, in _mock_call
+    return self._execute_mock_call(*args, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Users\LOPEZHEJ\AppData\Local\Programs\Python\Python313\Lib\unittest\mock.py", line 1226, in _execute_mock_call
+    raise effect
+RuntimeError: Redis down
+10:12:05 [ERROR] django.request - Service Unavailable: /api/procesar/
+10:12:05 [ERROR] django.request - Service Unavailable: /api/procesar/
+10:12:05 [WARNING] django.request - Conflict: /api/procesar/
+10:12:05 [WARNING] django.request - Conflict: /api/procesar/
+10:12:05 [INFO] queue_app.views - detener_queue stop_requested=True
+10:26:20 [INFO] daphne.cli - Starting server at tcp:port=8000:interface=0.0.0.0
+10:26:20 [INFO] daphne.server - HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+10:26:20 [INFO] daphne.server - Configuring endpoint tcp:port=8000:interface=0.0.0.0
+10:26:20 [INFO] daphne.server - Listening on TCP address 0.0.0.0:8000
+10:26:28 [INFO] queue_app.consumers - ws_connected channel=specific.19ec17c20be343919b396d71e3e6f7fd!9e2e22aa0cdb4d94b2f7995dd28953c7
+10:26:29 [WARNING] django.request - Not Found: /favicon.ico
+11:34:13 [INFO] queue_app.consumers - ws_disconnected channel=specific.19ec17c20be343919b396d71e3e6f7fd!9e2e22aa0cdb4d94b2f7995dd28953c7 code=1006
+17:43:57 [INFO] queue_app.consumers - ws_connected channel=specific.19ec17c20be343919b396d71e3e6f7fd!9eab724fccf94639a5b3a612fdd1eb99
+17:44:33 [INFO] queue_app.consumers - ws_disconnected channel=specific.19ec17c20be343919b396d71e3e6f7fd!9eab724fccf94639a5b3a612fdd1eb99 code=1006
+17:44:35 [INFO] queue_app.consumers - ws_connected channel=specific.19ec17c20be343919b396d71e3e6f7fd!ed05c8bb42f04201bb20fffd9e177a7a
+18:32:05 [WARNING] daphne.server - Application instance <Task pending name='Task-775' coro=<ASGIStaticFilesHandler.__call__() running at C:\Users\LOPEZHEJ\OneDrive - Luxottica Group S.p.A\Desktop\DJANGO NEXHUS\venv\Lib\site-packages\django\contrib\staticfiles\handlers.py:101> wait_for=<Future pending cb=[Task.task_wakeup()]>> for connection <WebSocketProtocol client=['127.0.0.1', 51453] path=b'/ws/queue/'> took too long to shut down and was killed.
+18:32:49 [INFO] queue_app.consumers - ws_connected channel=specific.19ec17c20be343919b396d71e3e6f7fd!9232cb193d41493da90c7432bb591bbe
+18:33:10 [INFO] queue_app.consumers - ws_disconnected channel=specific.19ec17c20be343919b396d71e3e6f7fd!9232cb193d41493da90c7432bb591bbe code=1006
+18:33:21 [INFO] queue_app.consumers - ws_connected channel=specific.19ec17c20be343919b396d71e3e6f7fd!8a116cb3edeb4536ba49a8a0789f83bb
+18:33:23 [INFO] queue_app.consumers - ws_disconnected channel=specific.19ec17c20be343919b396d71e3e6f7fd!8a116cb3edeb4536ba49a8a0789f83bb code=1006
+18:33:27 [INFO] queue_app.consumers - ws_connected channel=specific.19ec17c20be343919b396d71e3e6f7fd!cf481a6043a94321bb0afe9296386a9f
+18:34:42 [INFO] queue_app.consumers - ws_disconnected channel=specific.19ec17c20be343919b396d71e3e6f7fd!cf481a6043a94321bb0afe9296386a9f code=1006
+18:34:43 [INFO] queue_app.consumers - ws_connected channel=specific.19ec17c20be343919b396d71e3e6f7fd!a2af3478d9df4bfea3b823e980e09b90
