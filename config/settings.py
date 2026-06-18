@@ -7,9 +7,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 ALLOWED_HOSTS = [
-    host.strip()
-    for host in config('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
-    if host.strip()
+    "localhost",
+    "127.0.0.1",
+    "10.107.77.183",
 ]
 
 INSTALLED_APPS = [
@@ -103,6 +103,26 @@ DATABASES = {
 }
 
 REDIS_URL = config('REDIS_URL', default='redis://localhost:6379/0')
+
+# Panel de soporte para controlar procesos locales desde Diagnostico.
+# Mantener deshabilitado si no existe una clave privada en .env.
+NEXHUS_SERVICE_CONTROL_PASSWORD = config('NEXHUS_SERVICE_CONTROL_PASSWORD', default='')
+NEXHUS_SERVICE_CONTROL_ENABLED = config(
+    'NEXHUS_SERVICE_CONTROL_ENABLED',
+    default=bool(NEXHUS_SERVICE_CONTROL_PASSWORD),
+    cast=bool,
+)
+NEXHUS_REDIS_EXE = config(
+    'NEXHUS_REDIS_EXE',
+    default=r'C:\Users\LOPEZHEJ\Downloads\Redis-x64-5.0.14.1\redis-server.exe',
+)
+NEXHUS_DAPHNE_BIND = config('NEXHUS_DAPHNE_BIND', default='0.0.0.0')
+NEXHUS_DAPHNE_PORT = config('NEXHUS_DAPHNE_PORT', default=8000, cast=int)
+NEXHUS_DAPHNE_SELF_STOP_ENABLED = config(
+    'NEXHUS_DAPHNE_SELF_STOP_ENABLED',
+    default=False,
+    cast=bool,
+)
 
 # Channels y Celery comparten Redis para mantener cola y eventos UI sincronizados.
 CHANNEL_LAYERS = {

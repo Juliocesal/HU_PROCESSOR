@@ -33,10 +33,11 @@
         <span>Exportar CSV</span>
       </div>
       <div class="ham-sep"></div>
-      <div class="ham-item" onclick="window.print()">
-        <i data-lucide="printer"></i>
-        <span>Imprimir</span>
+      <div class="ham-item" onclick="window.location.href='/documentation/'">
+        <i data-lucide="book-open-text"></i>
+        <span>Documentación</span>
       </div>
+      <div class="ham-sep"></div>
       <div class="ham-item" onclick="openDiagnosticConsole()">
         <i data-lucide="square-terminal"></i>
         <span>Diagnóstico</span>
@@ -142,7 +143,9 @@
     <div class="scan-auto-row">
       <input type="checkbox" id="chk-auto" style="accent-color:var(--blue-hover);width:14px;height:14px;">
       <label for="chk-auto">Iniciar proceso automáticamente al escanear primer HU</label>
-      <div class="kpi-value" id="pal-lbl">{{ stats.pallets }}</div>
+      <span class="scan-pal-lbl" id="pal-lbl">
+        Pallets: {{ stats.pallets_done|default:"0" }}/{{ stats.pallets_total|default:"0" }} · Tiempo total: {{ stats.pallets_processing_display|default:"0s" }}
+      </span>
     </div>
   </div>
 </div>
@@ -308,6 +311,22 @@
 <!-- Flash bar -->
 <div id="flash-bar"></div>
 
+<div class="confirm-toast" id="confirm-toast" aria-hidden="true">
+  <div class="confirm-toast-card" role="dialog" aria-modal="false" aria-labelledby="confirm-toast-title">
+    <div class="confirm-toast-icon">
+      <i data-lucide="triangle-alert"></i>
+    </div>
+    <div class="confirm-toast-copy">
+      <strong id="confirm-toast-title">Confirmar acción</strong>
+      <span id="confirm-toast-message">¿Deseas continuar?</span>
+    </div>
+    <div class="confirm-toast-actions">
+      <button type="button" class="confirm-toast-btn secondary" id="confirm-toast-cancel">Cancelar</button>
+      <button type="button" class="confirm-toast-btn danger" id="confirm-toast-accept">Limpiar</button>
+    </div>
+  </div>
+</div>
+
 <!-- 
      FOOTER BAR
       -->
@@ -375,6 +394,10 @@
           <i data-lucide="activity"></i>
           <span>Estado</span>
         </button>
+        <button type="button" class="diag-btn" id="svc-toggle" onclick="toggleServiceControlPanel()">
+          <i data-lucide="server-cog"></i>
+          <span>Servicios</span>
+        </button>
         <button type="button" class="diag-btn" id="diag-pause" onclick="toggleDiagnosticAutoscroll()">
           <i data-lucide="pause"></i>
           <span>Pausar</span>
@@ -409,6 +432,43 @@
           <strong>INFO</strong>
           <small>Abre o actualiza el estado del sistema.</small>
         </div>
+      </div>
+    </section>
+    <section class="svc-panel" id="svc-panel" aria-label="Control de servicios" hidden>
+      <div class="svc-login" id="svc-login">
+        <div>
+          <strong>Servicios del sistema</strong>
+          <span>Ingresa la clave de soporte.</span>
+        </div>
+        <div class="svc-login-row">
+          <input type="password" id="svc-password" placeholder="Clave de soporte" autocomplete="current-password">
+          <button type="button" class="diag-btn" onclick="loginServiceControl()">
+            <i data-lucide="log-in"></i>
+            <span>Entrar</span>
+          </button>
+        </div>
+      </div>
+      <div class="svc-dashboard" id="svc-dashboard" hidden>
+        <div class="svc-head">
+          <div>
+            <strong>Servicios locales</strong>
+            <span id="svc-updated">Sin consulta</span>
+          </div>
+          <div class="svc-actions">
+            <button type="button" class="diag-btn" onclick="refreshServiceControlStatus()">
+              <i data-lucide="refresh-cw"></i>
+              <span>Actualizar</span>
+            </button>
+            <button type="button" class="diag-btn" onclick="logoutServiceControl()">
+              <i data-lucide="log-out"></i>
+              <span>Salir</span>
+            </button>
+          </div>
+        </div>
+        <div class="svc-grid" id="svc-grid"></div>
+      </div>
+      <div class="svc-note" id="svc-note">
+        Daphne solo muestra estado. Para reiniciarlo usa consola o supervisor del servidor.
       </div>
     </section>
     <div class="diag-log-head">

@@ -31,6 +31,11 @@
   let sessionCloseCountdownTimer = null;
   let websocketConnectionLost = false;
   let lastSapConnected = null;
+  let sapStatusCheckRunning = false;
+  let sapStatusFailureCount = 0;
+  let sapStatusPollTimer = null;
+  let sapStatusPollDelayMs = 5000;
+  let lastSapStatus = '';
   const _visibleSeps = new Set();
   let _stickyObserver = null;
   const tableWrap = document.getElementById('table-wrap');
@@ -60,6 +65,10 @@
     errors:  Number(initialStats.errors || 0),
     pending: Number(initialStats.pending || 0),
     pallets: Number(initialStats.pallets || 0),
+    pallets_total: Number(initialStats.pallets_total || 0),
+    pallets_done: Number(initialStats.pallets_done || 0),
+    pallets_processing_seconds: Number(initialStats.pallets_processing_seconds || 0),
+    pallets_processing_display: initialStats.pallets_processing_display || '',
     pdf_pending: Number(initialStats.pdf_pending || 0)
   };
 
@@ -97,12 +106,42 @@
   let diagnosticStatusTimer = null;
   const diagnosticStatusLevels = {};
   let lastSystemStatus = null;
+  let serviceControlAuthenticated = false;
+  let serviceControlTimer = null;
+  let serviceControlBusy = false;
+  const SERVICE_ACTION_LABELS = {
+    start: 'Prender',
+    stop: 'Apagar',
+    pause: 'Pausar',
+    resume: 'Reanudar',
+    restart: 'Reiniciar',
+  };
   let lastRelevantWsEventAt = Date.now();
   let lastRelevantWsMode = '';
   let lastNoProgressWarningAt = 0;
+  let lastWebSocketCloseLogAt = 0;
+  let iconRefreshFrame = null;
   const nativeFetch = window.fetch.bind(window);
+  const FETCH_TIMEOUTS = {
+    startProcess: 15000,
+    reprocessQueue: 15000,
+    clearQueue: 10000,
+    stopProcess: 10000,
+    scanPastedLine: 10000,
+    queueSnapshot: 8000,
+    checkSAP: 4000,
+    serviceControl: 8000,
+  };
   const NO_PROGRESS_WARNING_MS = 45000;
   const NO_PROGRESS_WARNING_COOLDOWN_MS = 60000;
+  const SAP_STATUS_BASE_POLL_MS = 5000;
+  const SAP_STATUS_MAX_POLL_MS = 60000;
+  const SCAN_OUTBOX_STORAGE_KEY = 'nexhus.scanOutbox.v1';
+  const UI_STATUS_STORAGE_KEY = 'nexhus.uiStatus.v1';
+  const SCAN_OUTBOX_MAX_ITEMS = 1000;
+  const SCAN_BATCH_MAX_ITEMS = 100;
+  const SCAN_RETRY_BASE_MS = 2000;
+  const SCAN_RETRY_MAX_MS = 30000;
   const RELEVANT_WS_EVENTS = new Set([
     'item_update',
     'queue_status',
@@ -110,6 +149,12 @@
     'queue_done',
     'error',
   ]);
+  let wsResyncPending = false;
+  let snapshotRequestRunning = false;
+  let scanOutbox = loadScanOutbox();
+  let scanOutboxProcessing = false;
+  let scanOutboxTimer = null;
+  let scanOutboxHadFailures = false;
 
   function sanitizeDiagnosticText(value) {
     return String(value ?? '')
@@ -121,14 +166,63 @@
     return new Date().toLocaleTimeString('es-MX', { hour12: false });
   }
 
+  async function fetchWithTimeout(resource, init = {}, timeoutMs = 10000, label = 'Solicitud HTTP') {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const started = performance.now();
+    const url = typeof resource === 'string' ? resource : resource?.url || label;
+
+    try {
+      const response = await nativeFetch(resource, { ...init, signal: controller.signal });
+      if (!response.ok) {
+        addDiagnosticLog(
+          response.status >= 500 ? 'error' : 'warn',
+          'HTTP',
+          `${response.status} ${response.statusText || ''}`,
+          url
+        );
+      }
+      return response;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        const seconds = Math.round(timeoutMs / 1000);
+        const message = `${label} tardó más de ${seconds}s. Backend/Daphne no respondió a tiempo.`;
+        addDiagnosticLog('error', 'HTTP_TIMEOUT', message, url);
+        throw new Error(message);
+      }
+      addDiagnosticLog('error', 'HTTP', 'Fallo de conexión HTTP.', `${url} ${error.message}`);
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+      const elapsed = performance.now() - started;
+      if (elapsed > 5000) {
+        addDiagnosticLog('warn', 'HTTP', `Solicitud lenta (${Math.round(elapsed)} ms).`, url);
+      }
+    }
+  }
+
   function addDiagnosticLog(level, source, message, detail = '') {
+    const now = Date.now();
     const entry = {
       ts: diagnosticTimestamp(),
+      at: now,
       level: String(level || 'info').toLowerCase(),
       source: sanitizeDiagnosticText(source || 'UI'),
       message: sanitizeDiagnosticText(message),
       detail: sanitizeDiagnosticText(detail),
     };
+
+    const previous = diagnosticLogs[diagnosticLogs.length - 1];
+    if (
+      previous &&
+      previous.level === entry.level &&
+      previous.source === entry.source &&
+      previous.message === entry.message &&
+      previous.detail === entry.detail &&
+      now - (previous.at || 0) < 15000
+    ) {
+      return;
+    }
 
     diagnosticLogs.push(entry);
     if (diagnosticLogs.length > DIAG_MAX_LINES) diagnosticLogs.shift();
@@ -155,7 +249,7 @@
     }
   }
 
-  function setDiagnosticMenuState(level = 'info', title = 'Estado de diagnostico pendiente') {
+  function setDiagnosticMenuState(level = 'info', title = 'Estado de diagnóstico pendiente') {
     const dot = document.getElementById('diag-menu-dot');
     if (!dot) return;
 
@@ -388,8 +482,8 @@
         addDiagnosticLog(
           'error',
           'SYSTEM',
-          data.error || 'No se recibio un payload valido de /api/system-status/.',
-          'No se actualizan estados de servicios para evitar informacion falsa.'
+          data.error || 'No se recibió un payload válido de /api/system-status/.',
+          'No se actualizan estados de servicios para evitar información falsa.'
         );
         setDiagnosticMenuState('error', 'system-status no disponible. Revisar Django/Daphne/puerto.');
         return;
@@ -412,7 +506,7 @@
         }
         const age = Number(queue.stop_request_age_seconds || 0);
         if (age >= SAFE_STOP_GRACE_MS / 1000) {
-          setFooterStatus('La detencion segura no confirmo cierre. Presiona Detener para liberar la cola.', 'error');
+          setFooterStatus('La detención segura no confirmó cierre. Presiona Detener para liberar la cola.', 'error');
         }
         updateButtons();
       }
@@ -422,7 +516,7 @@
           addDiagnosticLog(
             'error',
             'QUEUE',
-            'Lock de cola huerfano: Celery no responde y el heartbeat del worker vencio.',
+            'Lock de cola huérfano: Celery no responde y el heartbeat del worker venció.',
             'Presiona Detener para liberar la UI y revisar HUs en processing.'
           );
           diagnosticStatusLevels.queue_orphan_alerted = true;
@@ -450,7 +544,7 @@
     if (!panel) return;
     panel.classList.add('open');
     panel.setAttribute('aria-hidden', 'false');
-    addDiagnosticLog('info', 'UI', 'Consola de diagnostico abierta.');
+    addDiagnosticLog('info', 'UI', 'Consola de diagnóstico abierta.');
     refreshSystemStatus();
     clearInterval(diagnosticStatusTimer);
     diagnosticStatusTimer = setInterval(() => refreshSystemStatus({ silent: true }), 15000);
@@ -462,8 +556,14 @@
     if (!panel) return;
     panel.classList.remove('open');
     panel.setAttribute('aria-hidden', 'true');
+    const servicePanel = document.getElementById('svc-panel');
+    const windowEl = panel.querySelector('.diag-window');
+    if (servicePanel) servicePanel.hidden = true;
+    if (windowEl) windowEl.classList.remove('services-open');
     clearInterval(diagnosticStatusTimer);
     diagnosticStatusTimer = null;
+    clearInterval(serviceControlTimer);
+    serviceControlTimer = null;
   }
 
   function clearDiagnosticConsole() {
@@ -533,6 +633,180 @@
     ].join('\n');
   }
 
+  function toggleServiceControlPanel() {
+    const panel = document.getElementById('svc-panel');
+    const windowEl = document.querySelector('.diag-window');
+    if (!panel) return;
+
+    const willOpen = panel.hidden;
+    panel.hidden = !willOpen;
+    if (windowEl) windowEl.classList.toggle('services-open', willOpen);
+    if (willOpen) {
+      addDiagnosticLog('info', 'SERVICES', 'Panel de servicios abierto.');
+      refreshServiceControlStatus({ silentAuth: true });
+      serviceControlTimer = setInterval(
+        () => refreshServiceControlStatus({ silent: true, silentAuth: true }),
+        10000
+      );
+    } else {
+      clearInterval(serviceControlTimer);
+      serviceControlTimer = null;
+    }
+    refreshIcons();
+  }
+
+  function renderServiceControlAuth(message = '') {
+    const login = document.getElementById('svc-login');
+    const dashboard = document.getElementById('svc-dashboard');
+    const grid = document.getElementById('svc-grid');
+    const updated = document.getElementById('svc-updated');
+
+    serviceControlAuthenticated = false;
+    if (login) login.hidden = false;
+    if (dashboard) dashboard.hidden = true;
+    if (grid) grid.innerHTML = '';
+    if (updated) updated.textContent = 'Sin consulta';
+    if (message) addDiagnosticLog('warn', 'SERVICES', message);
+    refreshIcons();
+  }
+
+  function renderServiceControlDashboard(services = {}) {
+    const login = document.getElementById('svc-login');
+    const dashboard = document.getElementById('svc-dashboard');
+    const grid = document.getElementById('svc-grid');
+    const updated = document.getElementById('svc-updated');
+
+    serviceControlAuthenticated = true;
+    if (login) login.hidden = true;
+    if (dashboard) dashboard.hidden = false;
+    if (updated) updated.textContent = `Actualizado ${diagnosticTimestamp()}`;
+    if (!grid) return;
+
+    const ordered = ['daphne', 'redis', 'celery']
+      .map(key => services[key])
+      .filter(Boolean);
+
+    grid.innerHTML = ordered.map(service => {
+      const level = ['ok', 'warn', 'error'].includes(service.level) ? service.level : 'info';
+      const actions = service.actions || {};
+      const buttons = ['start', 'stop', 'pause', 'resume', 'restart'].filter(action => (
+        Boolean(actions[action])
+      )).map(action => (
+        `<button type="button" class="svc-action-btn" ` +
+        `onclick="serviceControlAction('${escapeHTML(service.key)}','${action}')">` +
+        `${SERVICE_ACTION_LABELS[action] || action}</button>`
+      )).join('');
+
+      const actionHTML = buttons || '<span class="svc-no-actions">Sin acciones disponibles</span>';
+
+      return `
+        <article class="svc-card ${level}">
+          <div class="svc-card-title">
+            <strong>${escapeHTML(service.label || service.key)}</strong>
+            <span class="svc-state">${escapeHTML(service.state || 'unknown')}</span>
+          </div>
+          <p>${escapeHTML(service.message || 'Sin estado.')}</p>
+          <small title="${escapeHTML(service.detail || '')}">${escapeHTML(service.detail || '')}</small>
+          <div class="svc-card-actions">${actionHTML}</div>
+        </article>
+      `;
+    }).join('');
+
+    refreshIcons();
+  }
+
+  async function loginServiceControl() {
+    const input = document.getElementById('svc-password');
+    const password = input ? input.value : '';
+    if (!password) {
+      flash('Ingresa la clave de soporte.', 'orange');
+      return;
+    }
+
+    try {
+      const res = await fetchWithTimeout('/api/service-control/login/', {
+        method: 'POST',
+        headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ password }),
+      }, FETCH_TIMEOUTS.serviceControl, 'Login servicios');
+      const data = await readJsonResponse(res);
+
+      if (!data.ok) {
+        renderServiceControlAuth(data.error || 'No se pudo autenticar.');
+        flash(data.error || 'Login de soporte rechazado.', 'orange');
+        return;
+      }
+
+      if (input) input.value = '';
+      addDiagnosticLog('ok', 'SERVICES', 'Login de soporte aceptado.');
+      renderServiceControlDashboard(data.services || {});
+    } catch (error) {
+      renderServiceControlAuth('No se pudo conectar al control de servicios.');
+      flash(error.message, 'red');
+    }
+  }
+
+  async function logoutServiceControl() {
+    try {
+      await fetchWithTimeout('/api/service-control/logout/', {
+        method: 'POST',
+        headers: csrfHeaders(),
+      }, FETCH_TIMEOUTS.serviceControl, 'Logout servicios');
+    } catch (error) {
+      addDiagnosticLog('warn', 'SERVICES', 'Logout local con error HTTP.', error.message);
+    }
+    renderServiceControlAuth();
+  }
+
+  async function refreshServiceControlStatus(options = {}) {
+    const panel = document.getElementById('svc-panel');
+    if (!panel || panel.hidden || serviceControlBusy) return;
+
+    try {
+      const res = await fetchWithTimeout('/api/service-control/status/', {
+        headers: csrfHeaders({ 'Accept': 'application/json' }),
+      }, FETCH_TIMEOUTS.serviceControl, 'Estado servicios');
+      const data = await readJsonResponse(res);
+
+      if (!data.ok) {
+        if (!options.silentAuth) {
+          renderServiceControlAuth(data.error || 'Login de soporte requerido.');
+        }
+        return;
+      }
+
+      renderServiceControlDashboard(data.services || {});
+      if (!options.silent) addDiagnosticLog('info', 'SERVICES', 'Estado de servicios actualizado.');
+    } catch (error) {
+      addDiagnosticLog('error', 'SERVICES', 'No se pudo consultar servicios.', error.message);
+    }
+  }
+
+  async function serviceControlAction(service, action) {
+    if (serviceControlBusy) return;
+    serviceControlBusy = true;
+    addDiagnosticLog('warn', 'SERVICES', `Accion solicitada: ${service}.${action}`);
+
+    try {
+      const res = await fetchWithTimeout(`/api/service-control/${service}/${action}/`, {
+        method: 'POST',
+        headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({}),
+      }, FETCH_TIMEOUTS.serviceControl, 'Accion servicio');
+      const data = await readJsonResponse(res);
+
+      if (data.services) renderServiceControlDashboard(data.services);
+      addDiagnosticLog(data.ok ? 'ok' : 'warn', 'SERVICES', data.message || 'Accion finalizada.', data.action || '');
+      flash(data.message || 'Accion de servicio finalizada.', data.ok ? 'green' : 'orange');
+    } catch (error) {
+      addDiagnosticLog('error', 'SERVICES', 'Accion de servicio fallida.', error.message);
+      flash(error.message, 'red');
+    } finally {
+      serviceControlBusy = false;
+      setTimeout(() => refreshServiceControlStatus({ silent: true }), 2500);
+    }
+  }
+
   window.fetch = async (resource, init) => {
     const started = performance.now();
     const url = typeof resource === 'string' ? resource : resource?.url || 'fetch';
@@ -549,7 +823,7 @@
       }
       return response;
     } catch (error) {
-      addDiagnosticLog('error', 'HTTP', 'Fallo de conexion HTTP.', `${url} ${error.message}`);
+        addDiagnosticLog('error', 'HTTP', 'Fallo de conexión HTTP.', `${url} ${error.message}`);
       throw error;
     } finally {
       const elapsed = performance.now() - started;
@@ -561,7 +835,14 @@
 
   function refreshIcons() {
     if (!window.lucide) return;
-    window.lucide.createIcons({ attrs: { 'stroke-width': 2 } });
+    if (!document.querySelector('[data-lucide]')) return;
+    if (iconRefreshFrame) return;
+
+    iconRefreshFrame = requestAnimationFrame(() => {
+      iconRefreshFrame = null;
+      if (!window.lucide || !document.querySelector('[data-lucide]')) return;
+      window.lucide.createIcons({ attrs: { 'stroke-width': 2 } });
+    });
   }
 
   function palletHeaderHTML(palletId, originCode, count, processingTime = '') {
@@ -626,7 +907,7 @@
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
       const countdown = formatCountdown(remaining);
       setProgStatus(`${baseMessage} SAP se cerrara en ${countdown} si no cierras otro pallet.`, 'waiting');
-      setFooterStatus(`${baseFooter} Cierre automatico de SAP en ${countdown}.`, 'waiting');
+      setFooterStatus(`${baseFooter} Cierre automático de SAP en ${countdown}.`, 'waiting');
       if (remaining <= 0) clearSessionCloseCountdown();
     };
 
@@ -664,6 +945,27 @@
     palletTimerFrame = requestAnimationFrame(tick);
   }
 
+  function stopPalletTimerLoopIfIdle() {
+    if ([...palletTimers.values()].some(timer => !timer.endMs)) return;
+    if (!palletTimerFrame) return;
+
+    cancelAnimationFrame(palletTimerFrame);
+    palletTimerFrame = null;
+  }
+
+  function removePalletTimer(palletId) {
+    palletTimers.delete(String(palletId));
+    stopPalletTimerLoopIfIdle();
+  }
+
+  function clearPalletTimers() {
+    palletTimers.clear();
+    if (palletTimerFrame) {
+      cancelAnimationFrame(palletTimerFrame);
+      palletTimerFrame = null;
+    }
+  }
+
   function syncPalletTimer(palletId, startedAt, receiptDoneAt, displayValue = '') {
     const start = parseServerDate(startedAt);
     if (!start) return;
@@ -696,7 +998,7 @@
 
     if (msg.type === 'queue_status') {
       const level = msg.mode === 'error' ? 'error' : (msg.mode === 'waiting' ? 'warn' : 'info');
-      addDiagnosticLog(level, msg.badge || 'QUEUE', msg.message || 'Actualizacion de cola.', msg.footer || '');
+      addDiagnosticLog(level, msg.badge || 'QUEUE', msg.message || 'Actualización de cola.', msg.footer || '');
       return;
     }
 
@@ -757,7 +1059,8 @@
       'No hay eventos nuevos desde hace 45s.',
       'Posible Celery detenido, SAP bloqueado o WebSocket sin eventos.'
     );
-    setDiagnosticMenuState('warn', 'Proceso sin eventos recientes. Revisar consola de diagnostico.');
+    setDiagnosticMenuState('warn', 'Proceso sin eventos recientes. Revisar consola de diagnóstico.');
+    resyncQueueUI({ source: 'watchdog', silent: true, notify: false });
   }
 
   function connectWS() {
@@ -772,7 +1075,14 @@
       addDiagnosticLog('ok', 'WEBSOCKET', 'Conectado a /ws/queue/.');
       updateDiagnosticMenuFromStatus();
       if (wasReconnecting) {
+        wsResyncPending = true;
         setFooterStatus('Conexion en vivo restablecida.', isRunning ? 'running' : 'done');
+        addDiagnosticLog('info', 'SYNC', 'WebSocket reconectado. Esperando snapshot inicial.');
+        setTimeout(() => {
+          if (wsResyncPending) {
+            resyncQueueUI({ source: 'ws_reconnect_fallback', notify: true });
+          }
+        }, 2500);
       }
     };
 
@@ -781,7 +1091,11 @@
       const delay = Math.min(1000 * 2 ** wsRetry, 30000); // max 30s
       wsRetry++;
       console.warn(`WS cerrado. Reintentando en ${delay/1000}s...`);
-      addDiagnosticLog('error', 'WEBSOCKET', 'Conexion cerrada. Reintentando...', `delay=${delay / 1000}s. Revisar Daphne/ASGI/puerto.`);
+      const now = Date.now();
+      if (wsRetry <= 2 || now - lastWebSocketCloseLogAt > 30000) {
+        addDiagnosticLog('error', 'WEBSOCKET', 'Conexión cerrada. Reintentando...', `delay=${delay / 1000}s. Revisar Daphne/ASGI/puerto.`);
+        lastWebSocketCloseLogAt = now;
+      }
       setDiagnosticMenuState('error', 'WebSocket desconectado. Revisar Daphne/ASGI/puerto.');
       setFooterStatus(`Actualizaciones en vivo desconectadas. Reintentando en ${delay / 1000}s.`, 'waiting');
       setTimeout(connectWS, delay);
@@ -791,11 +1105,17 @@
       console.error('WS error', e);
       addDiagnosticLog('error', 'WEBSOCKET', 'Error de WebSocket.', 'Revisar Daphne/ASGI/puerto.');
       setDiagnosticMenuState('error', 'WebSocket con error. Revisar Daphne/ASGI/puerto.');
-      setFooterStatus('Error de WebSocket. Esperando reconexion automatica.', 'waiting');
+      setFooterStatus('Error de WebSocket. Esperando reconexión automática.', 'waiting');
     };
 
     ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
+      let msg;
+      try {
+        msg = JSON.parse(e.data);
+      } catch (error) {
+        addDiagnosticLog('error', 'WEBSOCKET', 'Mensaje WebSocket inválido.', error.message);
+        return;
+      }
       markRelevantWebSocketEvent(msg);
       logWebSocketDiagnostic(msg);
       switch (msg.type) {
@@ -820,23 +1140,193 @@
 
   // -- Handlers WebSocket --------------------------------------------------------
 
-  function handleInitialState(msg) {
+  function snapshotImpliesRunning(snapshot) {
+    const snapshotStats = snapshot?.stats || {};
+    if (Object.prototype.hasOwnProperty.call(snapshotStats, 'is_running')) {
+      return Boolean(snapshotStats.is_running);
+    }
+
+    const queueStatus = snapshot?.queue_status || {};
+    const mode = String(queueStatus.mode || '');
+    return Boolean(mode && !['done', 'idle', 'error', 'stopped'].includes(mode));
+  }
+
+  function clearTableForSnapshot() {
     const tbody = document.getElementById('queue-tbody');
     tbody.innerHTML = '';
     palletSepRows = {};
     _visibleSeps.clear();
+    palletTimers.clear();
     if (stickyPallet) stickyPallet.classList.remove('visible');
+  }
 
-    if (msg.items && msg.items.length > 0) {
-      msg.items.forEach(item => updateOrCreateRow(item));
-    } else {
-      tbody.innerHTML = emptyQueueRowHTML();
+  function applyIdleSnapshotStatus(snapshotStats = {}) {
+    clearSessionCloseCountdown();
+    clearStopRequestState();
+
+    if (scanOutbox.length) {
+      updateScanOutboxStatus();
+      return;
     }
-    if (msg.stats) handleStatsUpdate(msg.stats);
-    if (msg.queue_status) handleQueueStatus(msg.queue_status);
-    else if (isRunning) showRunningMode('Proceso activo. Puedes seguir escaneando HUs.');
+
+    if (applyLocalUiStatus()) return;
+
+    const total = Number(snapshotStats.total || 0);
+    const pending = Number(snapshotStats.pending || 0);
+    const pdfPending = Number(snapshotStats.pdf_pending || 0);
+    const errors = Number(snapshotStats.errors || 0);
+    const ok = Number(snapshotStats.ok || 0);
+    const bar = document.getElementById('prog-bar');
+
+    bar.classList.remove('animated', 'waiting', 'done', 'error');
+
+    if (!total) {
+      setProgBadge('EN ESPERA', '');
+      setProgStatus('En espera.', '');
+      setFooterStatus('En espera.', '');
+      return;
+    }
+
+    if (pending || pdfPending) {
+      setProgBadge('EN ESPERA', 'waiting');
+      setProgStatus('Hay trabajo pendiente listo para procesar.', 'waiting');
+      setFooterStatus('UI sincronizada. Puedes iniciar el proceso.', 'waiting');
+      bar.classList.add('waiting');
+      return;
+    }
+
+    if (errors) {
+      setProgBadge('Completado con errores', 'error');
+      setProgStatus('Cola finalizada con errores.', 'error');
+      setFooterStatus('UI sincronizada con backend.', 'error');
+      bar.classList.add('error');
+      return;
+    }
+
+    if (ok) {
+      setProgBadge('Completado', 'done');
+      setProgStatus('Cola finalizada correctamente.', 'done');
+      setFooterStatus('UI sincronizada con backend.', 'done');
+      bar.classList.add('done');
+    }
+  }
+
+  function applyQueueSnapshot(snapshot, options = {}) {
+    const source = options.source || 'snapshot';
+    const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
+    const snapshotStats = snapshot?.stats || {};
+    const queueStatus = snapshot?.queue_status || null;
+    const snapshotRunning = snapshotImpliesRunning(snapshot);
+
+    if (!snapshotRunning) {
+      clearTableForSnapshot();
+    } else {
+      const empty = document.getElementById('empty-row');
+      if (empty && items.length) empty.remove();
+    }
+
+    const seenHuCodes = new Set();
+    items.forEach(item => {
+      if (!item || !item.hu_code) return;
+      seenHuCodes.add(String(item.hu_code));
+      updateOrCreateRow(item);
+    });
+
+    if (!snapshotRunning) {
+      document.querySelectorAll('#queue-tbody tr[data-hu]').forEach(row => {
+        if (!seenHuCodes.has(String(row.dataset.hu || ''))) row.remove();
+      });
+      document.querySelectorAll('tr.pallet-sep').forEach(sep => {
+        const palletId = sep.dataset.palletId;
+        if (!document.querySelector(`tr[data-pallet="${palletId}"]`)) {
+          sep.remove();
+          delete palletSepRows[palletId];
+          removePalletTimer(palletId);
+        }
+      });
+    }
+
+    if (!items.length) ensureEmptyQueueMessage();
+
+    handleStatsUpdate(snapshotStats);
+    if (queueStatus) {
+      handleQueueStatus({ ...queueStatus, stats: snapshotStats });
+    } else if (!snapshotRunning) {
+      isRunning = false;
+      applyIdleSnapshotStatus(snapshotStats);
+      updateButtons();
+    } else {
+      isRunning = true;
+      showRunningMode('Proceso activo. UI sincronizada con backend.');
+      updateButtons();
+    }
+
     updateStickyPallet();
     refreshIcons();
+    lastRelevantWsEventAt = Date.now();
+
+    addDiagnosticLog('ok', 'SYNC', 'Snapshot aplicado correctamente.', `source=${source} items=${items.length}`);
+    if (options.notify) {
+      flash('UI resincronizada desde backend.', 'green');
+    }
+  }
+
+  async function resyncQueueUI(options = {}) {
+    if (snapshotRequestRunning) return;
+    snapshotRequestRunning = true;
+
+    const source = options.source || 'manual';
+    addDiagnosticLog('info', 'SYNC', 'Snapshot solicitado.', `source=${source}`);
+    if (!options.silent) {
+      setFooterStatus('Resincronizando UI desde backend...', 'waiting');
+      rememberLocalUiStatus({
+        badge: 'SYNC',
+        mode: 'waiting',
+        message: 'Resincronizando UI desde backend...',
+        footer: 'Consultando estado actual de la cola.',
+        ttlMs: 15000,
+      });
+    }
+
+    try {
+      const res = await fetchWithTimeout(
+        '/api/queue-snapshot/',
+        {},
+        FETCH_TIMEOUTS.queueSnapshot,
+        'Snapshot de cola'
+      );
+      const data = await readJsonResponse(res);
+      if (data.ok === false) {
+        throw new Error(data.error || 'Snapshot rechazado por backend.');
+      }
+      applyQueueSnapshot(data, {
+        source,
+        notify: options.notify !== false && !options.silent,
+      });
+      if (!scanOutbox.length) clearLocalUiStatus();
+    } catch (error) {
+      addDiagnosticLog('error', 'SYNC', 'Snapshot fallido.', error.message);
+      if (!options.silent) {
+        setFooterStatus('No se pudo resincronizar la UI.', 'error');
+        flash(`Error al resincronizar: ${error.message}`, 'red');
+      }
+    } finally {
+      snapshotRequestRunning = false;
+      updateButtons();
+    }
+  }
+
+  async function manualResyncQueueUI() {
+    await resyncQueueUI({ source: 'manual', notify: true });
+  }
+
+  function handleInitialState(msg) {
+    const wasReconnectSnapshot = wsResyncPending;
+    wsResyncPending = false;
+    applyQueueSnapshot(msg, {
+      source: wasReconnectSnapshot ? 'ws_reconnect' : 'ws_initial',
+      notify: wasReconnectSnapshot,
+    });
   }
 
   function handleItemUpdate(msg) {
@@ -871,6 +1361,10 @@
       errors:  Number(msg.errors || 0),
       pending: Number(msg.pending || 0),
       pallets: Number(msg.pallets || 0),
+      pallets_total: Number(msg.pallets_total || 0),
+      pallets_done: Number(msg.pallets_done || 0),
+      pallets_processing_seconds: Number(msg.pallets_processing_seconds || 0),
+      pallets_processing_display: msg.pallets_processing_display || '',
       pdf_pending: Number(msg.pdf_pending || 0)
     };
 
@@ -885,7 +1379,7 @@
     if (kpiPend)  kpiPend.textContent  = stats.pending;
 
     const palLbl = document.getElementById('pal-lbl');
-    if (palLbl) palLbl.textContent = `Pallets activos: ${stats.pallets}`;
+    if (palLbl) palLbl.textContent = palletProgressText(stats);
 
     const errCard = document.querySelector('.kpi-card.kpi-err');
     if (errCard) errCard.classList.toggle('has-errors', stats.errors > 0);
@@ -907,8 +1401,8 @@
   function showSapLoginMode(message) {
     clearSessionCloseCountdown();
     setProgBadge('SAP', 'running');
-    setProgStatus(message || 'Validando sesion SAP e iniciando sesion si es necesario...', 'running');
-    setFooterStatus('Validando SAP. Si la sesion esta cerrada, se abrira automaticamente.', 'running');
+    setProgStatus(message || 'Validando sesión SAP e iniciando sesión si es necesario...', 'running');
+    setFooterStatus('Validando SAP. Si la sesión está cerrada, se abrirá automáticamente.', 'running');
     const bar = document.getElementById('prog-bar');
     bar.classList.add('animated');
     bar.classList.remove('done', 'error', 'waiting');
@@ -918,10 +1412,10 @@
     if (data.auto_started) {
       clearStopRequestState();
       isRunning = true;
-      showRunningMode('Pallet cerrado. Proceso reactivado automaticamente.');
+      showRunningMode('Pallet cerrado. Proceso reactivado automáticamente.');
       setFooterStatus('El worker continuo tomara el nuevo pallet listo.', 'running');
       updateButtons();
-      flash('Proceso reactivado automaticamente.', 'green');
+      flash('Proceso reactivado automáticamente.', 'green');
       return;
     }
 
@@ -935,6 +1429,7 @@
 
   function handleReceiptDone(msg) {
     updatePalletPdfCells(msg);
+    if (msg.stats) handleStatsUpdate(msg.stats);
     if (msg.status !== 'ok') {
       setProgBadge('REVISION', 'error');
       setProgStatus(`ZE16/PDF: ${msg.message}`, 'error');
@@ -986,9 +1481,16 @@
     tbody.innerHTML = emptyQueueRowHTML();
     Object.keys(palletSepRows).forEach(k => delete palletSepRows[k]);
     _visibleSeps.clear();
+    clearPalletTimers();
+    clearLocalUiStatus();
     if (stickyPallet) stickyPallet.classList.remove('visible');
     isRunning = false;
-    handleStatsUpdate(msg.stats || { total:0, ok:0, errors:0, pending:0, pallets:0, pdf_pending:0 });
+    handleStatsUpdate(msg.stats || {
+      total:0, ok:0, errors:0, pending:0, pallets:0,
+      pallets_total:0, pallets_done:0,
+      pallets_processing_seconds:0, pallets_processing_display:'0s',
+      pdf_pending:0,
+    });
     setProgBadge('EN ESPERA', '');
     setProgStatus('Cola limpiada. Listo para escanear.', '');
     setFooterStatus('En espera.', '');
@@ -1057,10 +1559,20 @@
   }
 
   function handlePalletDone(msg) {
+    if (msg.processing_time_display || msg.processing_started_at) {
+      syncPalletTimer(
+        msg.pallet_id,
+        msg.processing_started_at,
+        msg.processing_finished_at || msg.receipt_done_at,
+        msg.processing_time_display
+      );
+    }
     updatePalletSep(msg.pallet_id);
+    if (msg.stats) handleStatsUpdate(msg.stats);
     if (isRunning) {
-      setProgStatus(`Pallet P${String(msg.pallet_id).padStart(2, '0')} terminado. Preparando siguiente paso.`, 'running');
-      setFooterStatus(`Pallet P${String(msg.pallet_id).padStart(2, '0')} terminado.`, 'running');
+      const timerText = msg.processing_time_display ? ` en ${msg.processing_time_display}` : '';
+      setProgStatus(`Pallet P${String(msg.pallet_id).padStart(2, '0')} terminado${timerText}. Preparando siguiente paso.`, 'running');
+      setFooterStatus(`${palletProgressText()} · Pallet P${String(msg.pallet_id).padStart(2, '0')} terminado${timerText}.`, 'running');
     }
   }
 
@@ -1134,8 +1646,27 @@
     return `<span class="cell-status status-pending">${iconHTML('clock-3')}Pendiente</span>`;
   }
 
+  function placeRowUnderPallet(row, palletId) {
+    const tbody = document.getElementById('queue-tbody');
+    const normalizedPalletId = String(palletId);
+    const palletRows = Array
+      .from(tbody.querySelectorAll(`tr[data-pallet="${normalizedPalletId}"]`))
+      .filter(candidate => candidate !== row);
+
+    if (palletRows.length) {
+      palletRows[palletRows.length - 1].after(row);
+      return;
+    }
+
+    const sep = palletSepRows[normalizedPalletId] ||
+      document.querySelector(`tr.pallet-sep[data-pallet-id="${normalizedPalletId}"]`);
+    if (sep) sep.after(row);
+    else tbody.appendChild(row);
+  }
+
   function updateOrCreateRow(item) {
     const existing = document.getElementById(`row-${item.hu_code}`);
+    const normalizedPalletId = String(item.pallet_id);
 
     if (!existing) {
       // Quitar fila vacía
@@ -1152,13 +1683,24 @@
       tr.dataset.status = item.status;
       tr.innerHTML = buildRowHTML(item);
       document.getElementById('queue-tbody').appendChild(tr);
+      placeRowUnderPallet(tr, normalizedPalletId);
       tr.scrollIntoView({ block: 'nearest' });
     } else {
+      const previousPalletId = String(existing.dataset.pallet || '');
       existing.dataset.status = item.status;
+      existing.dataset.pallet = item.pallet_id;
+      if (existing.cells[0]) {
+        existing.cells[0].textContent = `P${String(item.pallet_id).padStart(2, '0')}`;
+      }
       existing.cells[1].innerHTML = originBadgeHTML(item.origin_code);
       existing.cells[3].innerHTML = statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f1');
       existing.cells[4].innerHTML = statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f2');
       existing.cells[5].innerHTML = pdfCellHTML(item.status, item.pdf_status, item.pdf_display, item.pdf_msg);
+      if (previousPalletId !== normalizedPalletId) {
+        ensurePalletSep(item.pallet_id, item.origin_code);
+        placeRowUnderPallet(existing, normalizedPalletId);
+        updatePalletSep(previousPalletId);
+      }
     }
 
     syncPalletTimer(
@@ -1317,6 +1859,86 @@
     el.className = 'footer-status ' + (mode || '');
   }
 
+  function palletProgressText(currentStats = stats) {
+    const done = Number(currentStats.pallets_done || 0);
+    const total = Number(currentStats.pallets_total || 0);
+    const duration = currentStats.pallets_processing_display || formatElapsedFromMs(
+      Number(currentStats.pallets_processing_seconds || 0) * 1000
+    );
+    return `Pallets: ${done}/${total} · Tiempo total: ${duration}`;
+  }
+
+  function rememberLocalUiStatus(payload = {}) {
+    try {
+      localStorage.setItem(UI_STATUS_STORAGE_KEY, JSON.stringify({
+        badge: payload.badge || 'INFO',
+        mode: payload.mode || '',
+        message: payload.message || '',
+        footer: payload.footer || payload.message || '',
+        expiresAt: Date.now() + Number(payload.ttlMs || 30000),
+      }));
+    } catch (error) {
+      // El estado visual local es auxiliar; si falla no debe afectar escaneo.
+    }
+  }
+
+  function clearLocalUiStatus() {
+    try {
+      localStorage.removeItem(UI_STATUS_STORAGE_KEY);
+    } catch (error) {
+      // Sin accion: limpiar este estado es mejor esfuerzo.
+    }
+  }
+
+  function applyLocalUiStatus() {
+    try {
+      const payload = JSON.parse(localStorage.getItem(UI_STATUS_STORAGE_KEY) || '{}');
+      if (!payload.message || Date.now() > Number(payload.expiresAt || 0)) {
+        clearLocalUiStatus();
+        return false;
+      }
+      setProgBadge(payload.badge || 'INFO', payload.mode || '');
+      setProgStatus(payload.message, payload.mode || '');
+      setFooterStatus(payload.footer || payload.message, payload.mode || '');
+      return true;
+    } catch (error) {
+      clearLocalUiStatus();
+      return false;
+    }
+  }
+
+  let confirmToastResolve = null;
+
+  function closeConfirmToast(accepted) {
+    const toast = document.getElementById('confirm-toast');
+    if (toast) {
+      toast.classList.remove('show');
+      toast.setAttribute('aria-hidden', 'true');
+    }
+    if (confirmToastResolve) {
+      confirmToastResolve(Boolean(accepted));
+      confirmToastResolve = null;
+    }
+  }
+
+  function showConfirmToast({ title, message, confirmText = 'Aceptar', cancelText = 'Cancelar' }) {
+    const toast = document.getElementById('confirm-toast');
+    if (!toast) return Promise.resolve(window.confirm(message || title || 'Confirmar'));
+
+    document.getElementById('confirm-toast-title').textContent = title || 'Confirmar accion';
+    document.getElementById('confirm-toast-message').textContent = message || 'Deseas continuar?';
+    document.getElementById('confirm-toast-accept').textContent = confirmText;
+    document.getElementById('confirm-toast-cancel').textContent = cancelText;
+    toast.classList.add('show');
+    toast.setAttribute('aria-hidden', 'false');
+    refreshIcons();
+
+    if (confirmToastResolve) confirmToastResolve(false);
+    return new Promise(resolve => {
+      confirmToastResolve = resolve;
+    });
+  }
+
   // -- Botones -------------------------------------------------------------------
   function updateButtons() {
     const hasPending   = stats.pending > 0;
@@ -1351,68 +1973,385 @@
     document.querySelectorAll(`tr[data-pallet="${normalizedPalletId}"]`).forEach(row => row.remove());
     if (sep) sep.remove();
     delete palletSepRows[normalizedPalletId];
+    removePalletTimer(normalizedPalletId);
   }
 
-  // -- Scan ----------------------------------------------------------------------
-  document.getElementById('scan-input').addEventListener('keydown', async (e) => {
-    if (e.key !== 'Enter') return;
-    const raw = e.target.value.trim();
-    e.target.value = '';
-    if (!raw) return;
-
-    // Separador de pallet
-    if (isPalletSeparator(raw)) {
-      newPallet();
-      return;
-    }
-
-    // Validar longitud (igual que PyQt: 10-15 chars)
-    if (raw.length < 10 || raw.length > 15) {
-      setHint(`Error: Código inválido: '${raw}' tiene ${raw.length} chars. Rango: 10-15`, 'warn');
-      flash(`Error: Código HU inválido: ${raw.length} caracteres`, 'orange');
-      return;
-    }
-
-    const res = await fetch('/scan/', {
-      method: 'POST',
-      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        code:   raw,
-        run_f1: document.getElementById('chk-f1').checked,
-        run_f2: document.getElementById('chk-f2').checked,
-      }),
-    });
-
-    const data = await readJsonResponse(res);
-    if (data.ok) {
-      setHint(`OK  ${raw}  ->  Pallet ${data.pallet_id}  [${data.origin}]`, 'ok');
-      flash(`OK  ${raw}  ->  Pallet ${data.pallet_id}  [${data.origin}]`, 'green');
-      if (data.stats) handleStatsUpdate(data.stats);
-      handleAutoStartResult(data);
-      // Auto-start solo si chk-auto está activado Y el sistema está completamente inactivo
-      if (!isRunning && document.getElementById('chk-auto').checked && (stats.pending > 0 || data.ok)) {
-        // Auto-iniciar SOLO una vez después de agregar el primer HU
-        if (!window._autoStarted) {
-          window._autoStarted = true;
-          setTimeout(() => {
-            startProcess();
-            // Resetear bandera tras 2 segundos (para permitir nuevo auto-start después)
-            setTimeout(() => { window._autoStarted = false; }, 2000);
-          }, 500);
-        }
-      }
-    } else {
-      const color = data.type === 'duplicate' ? 'warn' : 'error';
-      setHint(`Error: ${data.error}`, color);
-      flash(`Error: ${data.error}`, data.type === 'duplicate' ? 'orange' : 'red');
-    }
-  });
-
-  // -- Pegado multiple por Ctrl+V ------------------------------------------------
+  // -- Scan no-loss --------------------------------------------------------------
   const scanInputForPaste = document.getElementById('scan-input');
   let ctrlVPastePending = false;
   let bulkPasteRunning = false;
 
+  function loadScanOutbox() {
+    try {
+      const raw = localStorage.getItem(SCAN_OUTBOX_STORAGE_KEY);
+      const parsed = JSON.parse(raw || '[]');
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter(entry => entry && typeof entry.code === 'string' && entry.code.trim())
+        .slice(0, SCAN_OUTBOX_MAX_ITEMS);
+    } catch (error) {
+      return [];
+    }
+  }
+
+  function saveScanOutbox() {
+    try {
+      localStorage.setItem(
+        SCAN_OUTBOX_STORAGE_KEY,
+        JSON.stringify(scanOutbox.slice(0, SCAN_OUTBOX_MAX_ITEMS))
+      );
+    } catch (error) {
+      addDiagnosticLog('error', 'SCAN', 'No se pudo guardar la cola local de escaneo.', error.message);
+    }
+  }
+
+  function getCurrentScanOptions() {
+    return {
+      run_f1: Boolean(document.getElementById('chk-f1')?.checked),
+      run_f2: Boolean(document.getElementById('chk-f2')?.checked),
+      run_pdf: true,
+    };
+  }
+
+  function validateScannedCode(raw) {
+    if (isPalletSeparator(raw)) return { ok: true };
+    if (raw.length < 10 || raw.length > 15) {
+      return {
+        ok: false,
+        message: `Código inválido: '${raw}' tiene ${raw.length} chars. Rango: 10-15`,
+      };
+    }
+    return { ok: true };
+  }
+
+  function enqueueScanCode(rawCode, source = 'scan', options = {}) {
+    const raw = String(rawCode || '').trim();
+    if (!raw) return false;
+
+    const validation = validateScannedCode(raw);
+    if (!validation.ok) {
+      if (!options.silent) {
+        setHint(`Error: ${validation.message}`, 'warn');
+        flash(`Error: Código HU inválido: ${raw.length} caracteres`, 'orange');
+      }
+      return false;
+    }
+
+    if (scanOutbox.length >= SCAN_OUTBOX_MAX_ITEMS) {
+      setHint('Cola local llena. Espera a que se sincronicen los HUs pendientes.', 'error', 0);
+      flash('Cola local de escaneo llena. Revisa conexión.', 'red');
+      addDiagnosticLog('error', 'SCAN', 'Cola local de escaneo llena.', `max=${SCAN_OUTBOX_MAX_ITEMS}`);
+      return false;
+    }
+
+    scanOutbox.push({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      code: raw,
+      source,
+      options: getCurrentScanOptions(),
+      attempts: 0,
+      createdAt: Date.now(),
+      nextAttemptAt: 0,
+      lastError: '',
+    });
+    saveScanOutbox();
+
+    if (!options.silent) {
+      setHint(`Capturado ${raw}. Guardando en servidor...`, 'idle', 0);
+    }
+    updateScanOutboxStatus();
+    scheduleScanOutboxProcessing(0);
+    return true;
+  }
+
+  function clearScanSavingFeedback() {
+    const savingText = 'lectura(s) de escaneo';
+    const mode = isRunning ? 'running' : '';
+    const message = isRunning ? 'Escaneo guardado. Proceso activo.' : 'Escaneo guardado. En espera.';
+    const prog = document.getElementById('prog-status');
+    const footer = document.getElementById('footer-status');
+
+    if (prog?.textContent.includes(savingText)) setProgStatus(message, mode);
+    if (footer?.textContent.includes(savingText)) setFooterStatus(message, mode);
+  }
+
+  function updateScanOutboxStatus() {
+    const pending = scanOutbox.length;
+    if (!pending) {
+      if (scanOutboxHadFailures) {
+        setHint('Todos los HUs pendientes fueron guardados.', 'ok');
+        setFooterStatus('Escaneo sincronizado.', isRunning ? 'running' : 'done');
+        addDiagnosticLog('ok', 'SCAN', 'Cola local de escaneo sincronizada.');
+      } else {
+        clearScanSavingFeedback();
+      }
+      scanOutboxHadFailures = false;
+      clearLocalUiStatus();
+      return;
+    }
+
+    const hasFailures = scanOutbox.some(entry => entry.lastError);
+    const first = scanOutbox[0];
+    const message = hasFailures
+      ? `${pending} HU(s) pendientes por guardar. Reintentando...`
+      : `Guardando ${pending} lectura(s) de escaneo...`;
+    setHint(message, hasFailures ? 'warn' : 'idle', 0);
+    setFooterStatus(
+      hasFailures ? `${message} Último error: ${first.lastError || 'sin detalle'}` : message,
+      hasFailures ? 'waiting' : (isRunning ? 'running' : 'waiting')
+    );
+    rememberLocalUiStatus({
+      badge: hasFailures ? 'PENDIENTE' : 'SCAN',
+      mode: hasFailures ? 'waiting' : (isRunning ? 'running' : 'waiting'),
+      message,
+      footer: hasFailures ? `${message} Ultimo error: ${first.lastError || 'sin detalle'}` : message,
+      ttlMs: 60000,
+    });
+  }
+
+  function scheduleScanOutboxProcessing(delayMs = 0) {
+    clearTimeout(scanOutboxTimer);
+    scanOutboxTimer = setTimeout(processScanOutbox, Math.max(0, delayMs));
+  }
+
+  function nextScanRetryDelay(attempts) {
+    return Math.min(SCAN_RETRY_MAX_MS, SCAN_RETRY_BASE_MS * (2 ** Math.min(attempts, 4)));
+  }
+
+  function isScanRetryableFailure(data) {
+    if (!data) return true;
+    if (data.retryable === true) return true;
+    const status = Number(data.status || data.status_code || 0);
+    return status >= 500 || status === 0 || status === 408 || status === 429;
+  }
+
+  function maybeAutoStartAfterScan(data) {
+    if (!data?.ok || isRunning || !document.getElementById('chk-auto')?.checked) return;
+    if (!(stats.pending > 0 || data.ok)) return;
+    if (window._autoStarted) return;
+
+    window._autoStarted = true;
+    setTimeout(() => {
+      startProcess();
+      setTimeout(() => { window._autoStarted = false; }, 2000);
+    }, 500);
+  }
+
+  function handleScanServerResult(entry, data) {
+    const code = entry.code;
+    if (data.resolved_duplicate) {
+      setHint(`HU ${code} ya estaba registrado. Cola local sincronizada.`, 'ok');
+      if (entry.source !== 'paste') {
+        flash(`HU ${code} confirmado en servidor.`, 'green');
+      }
+      if (data.stats) handleStatsUpdate(data.stats);
+      return;
+    }
+
+    if (data.ok) {
+      const okMessage = isPalletSeparator(code)
+        ? (data.message || `Pallet ${data.pallet_id} listo.`)
+        : `OK  ${code}  ->  Pallet ${data.pallet_id}  [${data.origin || 'OK'}]`;
+      setHint(okMessage, 'ok');
+      if (entry.source !== 'paste') {
+        flash(okMessage, 'green');
+      }
+      if (data.stats) handleStatsUpdate(data.stats);
+      handleAutoStartResult(data);
+      if (data.needs_resync) {
+        resyncQueueUI({ source: 'scan_response', silent: true, notify: false });
+      }
+      maybeAutoStartAfterScan(data);
+      return;
+    }
+
+    const message = data.error || data.message || 'Escaneo rechazado por el servidor.';
+    const color = data.type === 'duplicate' ? 'warn' : 'error';
+    setHint(`Error: ${message}`, color);
+    if (entry.source !== 'paste' || data.type !== 'duplicate') {
+      flash(`Error: ${message}`, data.type === 'duplicate' ? 'orange' : 'red');
+    }
+  }
+
+  async function postScannedEntry(entry) {
+    const body = {
+      code: entry.code,
+      ...(entry.options || getCurrentScanOptions()),
+    };
+    const res = await fetchWithTimeout('/scan/', {
+      method: 'POST',
+      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(body),
+    }, FETCH_TIMEOUTS.scanPastedLine, 'Escaneo HU');
+    return await readJsonResponse(res);
+  }
+
+  async function postScannedBatch(entries) {
+    const res = await fetchWithTimeout('/scan/batch/', {
+      method: 'POST',
+      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        items: entries.map(entry => ({
+          id: entry.id,
+          code: entry.code,
+          options: entry.options || getCurrentScanOptions(),
+        })),
+      }),
+    }, FETCH_TIMEOUTS.scanPastedLine, 'Escaneo HU batch');
+    return await readJsonResponse(res);
+  }
+
+  function markScanEntryForRetry(entry, errorMessage) {
+    entry.attempts = Number(entry.attempts || 0) + 1;
+    entry.lastError = errorMessage || 'Error de conexion';
+    entry.nextAttemptAt = Date.now() + nextScanRetryDelay(entry.attempts);
+    scanOutboxHadFailures = true;
+
+    if (entry.attempts === 1 || entry.attempts % 5 === 0) {
+      flash(`HU pendiente por guardar: ${entry.code}. Reintentando.`, 'orange');
+      addDiagnosticLog(
+        'warn',
+        'SCAN',
+        'Escaneo pendiente por fallo temporal.',
+        `${entry.code} attempts=${entry.attempts} error=${entry.lastError}`
+      );
+    }
+  }
+
+  function dueScanOutboxEntries() {
+    const now = Date.now();
+    const due = [];
+    for (const entry of scanOutbox) {
+      if (Number(entry.nextAttemptAt || 0) > now) break;
+      due.push(entry);
+      if (due.length >= SCAN_BATCH_MAX_ITEMS) break;
+    }
+    return due;
+  }
+
+  function applyScanBatchResult(entries, data) {
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const resultById = new Map(results.map(result => [String(result.id || ''), result]));
+    const consumedIds = new Set();
+    let savedOrResolved = 0;
+
+    for (const entry of entries) {
+      const result = resultById.get(String(entry.id || ''));
+      if (!result) {
+        markScanEntryForRetry(entry, 'Respuesta batch incompleta');
+        continue;
+      }
+
+      if (result.ok || !isScanRetryableFailure(result)) {
+        consumedIds.add(entry.id);
+        savedOrResolved += 1;
+        handleScanServerResult(
+          { ...entry, source: 'paste' },
+          result.type === 'duplicate' ? { ...result, resolved_duplicate: true } : result
+        );
+      } else {
+        markScanEntryForRetry(entry, result.error || result.message || `HTTP ${result.status_code || 500}`);
+      }
+    }
+
+    if (consumedIds.size) {
+      scanOutbox = scanOutbox.filter(entry => !consumedIds.has(entry.id));
+    }
+    if (data?.stats) handleStatsUpdate(data.stats);
+    if (savedOrResolved) {
+      setHint(`${savedOrResolved} HU(s) pendientes guardados en servidor.`, 'ok');
+      setFooterStatus('Escaneo sincronizado con servidor.', isRunning ? 'running' : 'done');
+      resyncQueueUI({ source: 'scan_batch', silent: true, notify: false });
+    }
+  }
+
+  async function processScanOutbox() {
+    if (scanOutboxProcessing || !scanOutbox.length) return;
+
+    const dueEntries = dueScanOutboxEntries();
+    if (!dueEntries.length) {
+      updateScanOutboxStatus();
+      const nextWait = Math.max(0, Number(scanOutbox[0].nextAttemptAt || 0) - Date.now());
+      scheduleScanOutboxProcessing(nextWait);
+      return;
+    }
+
+    if (dueEntries.length > 1) {
+      scanOutboxProcessing = true;
+      try {
+        const data = await postScannedBatch(dueEntries);
+        if (!data?.ok || !Array.isArray(data.results)) {
+          throw new Error(data?.error || data?.message || 'Respuesta batch invalida');
+        }
+        applyScanBatchResult(dueEntries, data);
+        saveScanOutbox();
+      } catch (error) {
+        dueEntries.forEach(entry => markScanEntryForRetry(entry, error.message || 'Error de conexion'));
+        saveScanOutbox();
+      } finally {
+        scanOutboxProcessing = false;
+        updateScanOutboxStatus();
+        if (scanOutbox.length) {
+          const nextWait = Math.max(0, Number(scanOutbox[0].nextAttemptAt || 0) - Date.now());
+          scheduleScanOutboxProcessing(nextWait);
+        }
+      }
+      return;
+    }
+
+    const entry = dueEntries[0];
+    const waitMs = Math.max(0, Number(entry.nextAttemptAt || 0) - Date.now());
+    if (waitMs > 0) {
+      updateScanOutboxStatus();
+      scheduleScanOutboxProcessing(waitMs);
+      return;
+    }
+
+    scanOutboxProcessing = true;
+    try {
+      const data = await postScannedEntry(entry);
+      const resolvedDuplicate = data?.type === 'duplicate' && Number(entry.attempts || 0) > 0;
+      if (data.ok || resolvedDuplicate || !isScanRetryableFailure(data)) {
+        scanOutbox.shift();
+        saveScanOutbox();
+        handleScanServerResult(entry, resolvedDuplicate ? { ...data, resolved_duplicate: true } : data);
+      } else {
+        throw new Error(data.error || data.message || `HTTP ${data.status || 500}`);
+      }
+    } catch (error) {
+      entry.attempts = Number(entry.attempts || 0) + 1;
+      entry.lastError = error.message || 'Error de conexión';
+      entry.nextAttemptAt = Date.now() + nextScanRetryDelay(entry.attempts);
+      scanOutboxHadFailures = true;
+      saveScanOutbox();
+
+      if (entry.attempts === 1 || entry.attempts % 5 === 0) {
+        flash(`HU pendiente por guardar: ${entry.code}. Reintentando.`, 'orange');
+        addDiagnosticLog(
+          'warn',
+          'SCAN',
+          'Escaneo pendiente por fallo temporal.',
+          `${entry.code} attempts=${entry.attempts} error=${entry.lastError}`
+        );
+      }
+    } finally {
+      scanOutboxProcessing = false;
+      updateScanOutboxStatus();
+      if (scanOutbox.length) {
+        const nextWait = Math.max(0, Number(scanOutbox[0].nextAttemptAt || 0) - Date.now());
+        scheduleScanOutboxProcessing(nextWait);
+      }
+    }
+  }
+
+  document.getElementById('scan-input').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const raw = e.target.value.trim();
+    e.target.value = '';
+    enqueueScanCode(raw, 'scan');
+  });
+
+  // -- Pegado multiple por Ctrl+V ------------------------------------------------
   function getPastedLines(text) {
     return String(text || '')
       .replace(/\r/g, '\n')
@@ -1421,76 +2360,37 @@
       .filter(Boolean);
   }
 
-  async function postScannedCode(code) {
-    const res = await fetch('/scan/', {
-      method: 'POST',
-      headers: csrfHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        code,
-        run_f1: document.getElementById('chk-f1').checked,
-        run_f2: document.getElementById('chk-f2').checked,
-      }),
-    });
-    return await readJsonResponse(res);
-  }
-
   async function scanPastedLines(codes) {
     if (bulkPasteRunning) return;
 
     bulkPasteRunning = true;
     scanInputForPaste.value = '';
-    scanInputForPaste.disabled = true;
-    setHint(`Pegando ${codes.length} HUs...`, 'idle');
-    setFooterStatus(`Pegando ${codes.length} HUs en la cola.`, isRunning ? 'running' : 'waiting');
-    addDiagnosticLog('info', 'SCAN', 'Pegado multiple detectado.', `lines=${codes.length}`);
+    addDiagnosticLog('info', 'SCAN', 'Pegado múltiple detectado.', `lines=${codes.length}`);
 
-    let okCount = 0;
-    let errorCount = 0;
-    let firstError = '';
-
-    try {
-      for (const code of codes) {
-        setHint(`Pegando HU ${code}...`, 'idle');
-        const data = await postScannedCode(code);
-        if (data.ok) {
-          okCount++;
-          if (data.stats) handleStatsUpdate(data.stats);
-          handleAutoStartResult(data);
-        } else {
-          errorCount++;
-          if (!firstError) firstError = `${code}: ${data.error || 'rechazado'}`;
-        }
+    let queuedCount = 0;
+    let invalidCount = 0;
+    for (const code of codes) {
+      if (enqueueScanCode(code, 'paste', { silent: true })) {
+        queuedCount++;
+      } else {
+        invalidCount++;
       }
-    } catch (error) {
-      errorCount++;
-      if (!firstError) firstError = error.message || 'Error de conexion';
-    } finally {
-      scanInputForPaste.disabled = false;
-      scanInputForPaste.focus();
-      bulkPasteRunning = false;
-      updateButtons();
     }
 
-    if (errorCount === 0) {
-      setHint(`OK: ${okCount} HUs agregados desde pegado`, 'ok');
-      setFooterStatus(`${okCount} HUs agregados desde pegado.`, isRunning ? 'running' : '');
-      addDiagnosticLog('ok', 'SCAN', 'Pegado multiple finalizado.', `ok=${okCount}`);
-      flash(`OK: ${okCount} HUs agregados`, 'green');
-    } else {
-      setHint(`Pegado parcial: ${okCount} OK, ${errorCount} con error. ${firstError}`, 'warn');
-      setFooterStatus(`Pegado parcial: ${okCount} OK, ${errorCount} con error.`, 'waiting');
-      addDiagnosticLog('warn', 'SCAN', 'Pegado multiple parcial.', `ok=${okCount} errors=${errorCount} first=${firstError}`);
-      flash(`Pegado parcial: ${okCount} OK, ${errorCount} con error`, okCount ? 'orange' : 'red');
+    bulkPasteRunning = false;
+    scanInputForPaste.focus();
+    updateButtons();
+
+    if (queuedCount) {
+      setHint(`${queuedCount} lectura(s) agregadas a sincronización local.`, 'idle', 0);
+      setFooterStatus(`${queuedCount} lectura(s) listas para guardar en servidor.`, isRunning ? 'running' : 'waiting');
+      flash(`${queuedCount} lectura(s) capturadas`, 'green');
+      scheduleScanOutboxProcessing(0);
     }
 
-    if (okCount > 0 && !isRunning && document.getElementById('chk-auto').checked) {
-      if (!window._autoStarted) {
-        window._autoStarted = true;
-        setTimeout(() => {
-          startProcess();
-          setTimeout(() => { window._autoStarted = false; }, 2000);
-        }, 500);
-      }
+    if (invalidCount) {
+      flash(`${invalidCount} línea(s) omitidas por formato inválido`, queuedCount ? 'orange' : 'red');
+      addDiagnosticLog('warn', 'SCAN', 'Pegado con líneas inválidas.', `invalid=${invalidCount}`);
     }
   }
 
@@ -1518,7 +2418,7 @@
     const wasRunning = isRunning;
     addDiagnosticLog('info', 'UI', 'Solicitud de nuevo pallet.', wasRunning ? 'proceso_activo=true' : 'proceso_activo=false');
     if (wasRunning) {
-      showSapLoginMode('Cerrando pallet y validando sesion SAP para continuar...');
+      showSapLoginMode('Cerrando pallet y validando sesión SAP para continuar...');
       updateButtons();
     }
 
@@ -1537,7 +2437,7 @@
     } catch (e) {
       setHint(`Error: ${e.message}`, 'warn');
       setProgStatus('No se pudo cerrar o crear el pallet.', 'error');
-      setFooterStatus('Revisa conexion con Django y vuelve a intentar.', 'error');
+      setFooterStatus('Revisa conexión con Django y vuelve a intentar.', 'error');
       flash(`Error: ${e.message}`, 'red');
       return;
     }
@@ -1574,11 +2474,11 @@
 
     isRunning = true;
     clearStopRequestState();
-    showSapLoginMode('Validando sesion SAP antes de iniciar la cola...');
+    showSapLoginMode('Validando sesión SAP antes de iniciar la cola...');
     updateButtons();
 
     try {
-      const res = await fetch('/api/procesar/', {
+      const res = await fetchWithTimeout('/api/procesar/', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1588,7 +2488,7 @@
           run_f1: document.getElementById('chk-f1').checked,
           run_f2: document.getElementById('chk-f2').checked,
         }),
-      });
+      }, FETCH_TIMEOUTS.startProcess, 'Inicio de proceso');
       const data = await readJsonResponse(res);
 
       if (!data.ok) {
@@ -1615,7 +2515,8 @@
       isRunning = false;
       clearStopRequestState();
       setProgBadge('EN ESPERA', '');
-      setProgStatus('Error al iniciar.', 'error');
+      setProgStatus(e.message || 'Error al iniciar.', 'error');
+      setFooterStatus('No se pudo confirmar el inicio. Revisa Daphne/Celery/Redis y vuelve a intentar.', 'error');
       document.getElementById('prog-bar').classList.remove('animated', 'waiting');
       document.getElementById('prog-bar').classList.add('error');
       updateButtons();
@@ -1630,7 +2531,7 @@
     addDiagnosticLog(
       'warn',
       'UI',
-      forceRecovery ? 'Operador intento liberar una detencion pendiente.' : 'Operador solicito detener el proceso.',
+      forceRecovery ? 'Operador intentó liberar una detención pendiente.' : 'Operador solicitó detener el proceso.',
       forceRecovery ? `stop_wait=${Math.round(stopWaitMs / 1000)}s` : ''
     );
     markStopRequested();
@@ -1644,17 +2545,17 @@
     setFooterStatus(
       forceRecovery
         ? 'Validando lock, Celery y ultimo heartbeat del worker.'
-        : 'SAP terminara la operacion actual antes de liberar la cola.',
+        : 'SAP terminará la operación actual antes de liberar la cola.',
       'waiting'
     );
     updateButtons();
 
     try {
-      const res = await fetch('/cola/detener/', {
+      const res = await fetchWithTimeout('/cola/detener/', {
         method: 'POST',
         headers: csrfHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ force: forceRecovery })
-      });
+      }, FETCH_TIMEOUTS.stopProcess, 'Detener proceso');
       const data = await readJsonResponse(res);
       if (!data.ok) {
         isRunning = false;
@@ -1696,6 +2597,9 @@
       flash(data.message || 'Detencion solicitada.', 'orange');
     } catch (e) {
       clearStopRequestState();
+      setProgBadge('SIN RESPUESTA', 'error');
+      setProgStatus(e.message || 'No se pudo confirmar la detención.', 'error');
+      setFooterStatus('El backend no confirmó la detención. Si el proceso sigue activo, intenta Detener nuevamente.', 'error');
       flash(`Error al detener: ${e.message}`, 'red');
     }
     updateButtons();
@@ -1703,28 +2607,35 @@
   // -- Limpiar -------------------------------------------------------------------
   async function clearQueue() {
     if (isRunning) {
-      flash('No se puede limpiar mientras el proceso esta activo.', 'orange');
+      flash('No se puede limpiar mientras el proceso está activo.', 'orange');
       return;
     }
-    if (!confirm('Esto eliminará todas las HUs.\n¿Continuar?')) return;
+    const confirmed = await showConfirmToast({
+      title: 'Limpiar HUs',
+      message: 'Esto eliminara todas las HUs de la cola y reiniciara los pallets. Esta accion no se puede deshacer.',
+      confirmText: 'Limpiar HUs',
+      cancelText: 'Cancelar',
+    });
+    if (!confirmed) return;
 
-    addDiagnosticLog('warn', 'UI', 'Operador solicito limpiar la cola.', `total=${stats.total}`);
+    addDiagnosticLog('warn', 'UI', 'Operador solicitó limpiar la cola.', `total=${stats.total}`);
     setProgBadge('LIMPIANDO', 'waiting');
     setProgStatus('Limpiando cola...', 'waiting');
     setFooterStatus('Eliminando HUs y reiniciando contadores.', 'waiting');
 
     let data;
     try {
-      const res  = await fetch('/cola/limpiar/', {
+      const res  = await fetchWithTimeout('/cola/limpiar/', {
         method: 'POST',
         headers: { ...csrfHeaders() }
-      });
+      }, FETCH_TIMEOUTS.clearQueue, 'Limpiar cola');
       data = await readJsonResponse(res);
     } catch (e) {
       setProgBadge('EN ESPERA', '');
-      setProgStatus('No se pudo limpiar la cola.', 'error');
-      setFooterStatus('Revisa conexion con Django y vuelve a intentar.', 'error');
+      setProgStatus(e.message || 'No se pudo limpiar la cola.', 'error');
+      setFooterStatus('Revisa conexión con Django y vuelve a intentar.', 'error');
       flash(`Error: ${e.message}`, 'red');
+      updateButtons();
       return;
     }
 
@@ -1733,10 +2644,17 @@
       refreshIcons();
       Object.keys(palletSepRows).forEach(k => delete palletSepRows[k]);
       _visibleSeps.clear();
+      clearPalletTimers();
+      clearLocalUiStatus();
       if (stickyPallet) stickyPallet.classList.remove('visible');
       isRunning = false;
       clearStopRequestState();
-      stats = { total:0, ok:0, errors:0, pending:0, pallets:0, pdf_pending:0 };
+      stats = {
+        total:0, ok:0, errors:0, pending:0, pallets:0,
+        pallets_total:0, pallets_done:0,
+        pallets_processing_seconds:0, pallets_processing_display:'0s',
+        pdf_pending:0,
+      };
       handleStatsUpdate(stats);
       setProgBadge('EN ESPERA', '');
       setProgStatus('Cola limpiada. Listo para escanear.', '');
@@ -1799,28 +2717,37 @@
     const message = isErrorsOnly
       ? 'Marcará solo los HUs con error como Pendientes para reprocesar.\n¿Continuar?'
       : 'Marcará todos los HUs procesados como Pendientes para reprocesar.\n¿Continuar?';
-    if (!confirm(message)) return;
+    const confirmed = await showConfirmToast({
+      title: isErrorsOnly ? 'Reprocesar errores' : 'Reprocesar lista completa',
+      message: isErrorsOnly
+        ? 'Marcara solo los HUs con error como pendientes para reprocesar.'
+        : 'Marcara todos los HUs procesados como pendientes para reprocesar.',
+      confirmText: 'Reprocesar',
+      cancelText: 'Cancelar',
+    });
+    if (!confirmed) return;
 
     addDiagnosticLog('warn', 'UI', 'Operador inicio reproceso.', `mode=${mode}`);
     isRunning = true;
     clearStopRequestState();
-    showSapLoginMode('Validando sesion SAP antes de reprocesar...');
+    showSapLoginMode('Validando sesión SAP antes de reprocesar...');
     updateButtons();
 
     let data;
     try {
-      const res  = await fetch('/cola/reprocesar/', {
+      const res  = await fetchWithTimeout('/cola/reprocesar/', {
         method: 'POST',
         headers: csrfHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ mode })
-      });
+      }, FETCH_TIMEOUTS.reprocessQueue, 'Reproceso');
       data = await readJsonResponse(res);
     } catch (e) {
       flash(`Error al reprocesar: ${e.message}`, 'red');
       isRunning = false;
       clearStopRequestState();
       setProgBadge('EN ESPERA', '');
-      setProgStatus('Error al reprocesar.', 'error');
+      setProgStatus(e.message || 'Error al reprocesar.', 'error');
+      setFooterStatus('No se pudo confirmar el reproceso. Revisa Daphne/Celery/Redis y vuelve a intentar.', 'error');
       document.getElementById('prog-bar').classList.remove('animated', 'waiting');
       document.getElementById('prog-bar').classList.add('error');
       updateButtons();
@@ -1866,7 +2793,7 @@
   }
   async function deleteHU(huCode) {
     if (isRunning) {
-      flash('No se puede borrar mientras el proceso esta activo.', 'orange');
+      flash('No se puede borrar mientras el proceso está activo.', 'orange');
       return;
     }
     const row = document.getElementById(`row-${huCode}`);
@@ -1903,6 +2830,7 @@
           const sep = document.querySelector(`tr.pallet-sep[data-pallet-id="${palletId}"]`);
           if (sep) sep.remove();
           delete palletSepRows[palletId];
+          removePalletTimer(palletId);
         } else {
           if (data.pdf_reset) {
             updatePalletPdfCells({
@@ -2007,33 +2935,128 @@
   }
 
   // -- SAP Status polling (equivale al QTimer de _check_sap) --------------------
+  function sapStatusLogConfig(status, data = {}) {
+    const configs = {
+      connected: {
+        level: 'ok',
+        label: `CONECTADO${data.user ? ' - ' + data.user : ''}`,
+        message: 'SAP conectado.',
+      },
+      disconnected: {
+        level: 'warn',
+        label: 'Sin sesión SAP',
+        message: 'SAP desconectado.',
+      },
+      timeout: {
+        level: 'warn',
+        label: 'SAP sin confirmar',
+        message: 'SAP no respondió a tiempo.',
+      },
+      stale: {
+        level: 'warn',
+        label: 'SAP sin confirmar',
+        message: 'Verificación SAP pausada temporalmente.',
+      },
+      unavailable: {
+        level: 'error',
+        label: 'SAP no disponible',
+        message: 'SAP no disponible para verificacion.',
+      },
+      unknown: {
+        level: 'warn',
+        label: 'Estado SAP no confirmado',
+        message: 'Estado SAP no confirmado.',
+      },
+    };
+    return configs[status] || configs.unknown;
+  }
+
+  function updateSapIndicator(data = {}) {
+    const status = data.status || (data.connected ? 'connected' : 'disconnected');
+    const config = sapStatusLogConfig(status, data);
+    document.getElementById('conn-dot').className = `conn-dot ${status === 'connected' ? 'ok' : ''}`;
+    document.getElementById('conn-label').textContent = config.label;
+    return { status, config };
+  }
+
+  function applySapStatusBackoff(reason) {
+    sapStatusFailureCount += 1;
+    const multiplier = 2 ** Math.min(sapStatusFailureCount, 4);
+    const nextDelay = Math.min(SAP_STATUS_MAX_POLL_MS, SAP_STATUS_BASE_POLL_MS * multiplier);
+    if (nextDelay !== sapStatusPollDelayMs) {
+      addDiagnosticLog(
+        'warn',
+        'SAP',
+        'Verificación SAP pausada temporalmente.',
+        `próxima consulta en ${Math.round(nextDelay / 1000)}s; motivo=${reason}`
+      );
+    }
+    sapStatusPollDelayMs = nextDelay;
+  }
+
+  function resetSapStatusBackoff() {
+    if (sapStatusFailureCount > 0 || sapStatusPollDelayMs !== SAP_STATUS_BASE_POLL_MS) {
+      addDiagnosticLog('ok', 'SAP', 'Verificación SAP recuperada.');
+    }
+    sapStatusFailureCount = 0;
+    sapStatusPollDelayMs = SAP_STATUS_BASE_POLL_MS;
+  }
+
+  function scheduleNextSapCheck(delayMs = sapStatusPollDelayMs) {
+    clearTimeout(sapStatusPollTimer);
+    sapStatusPollTimer = setTimeout(async () => {
+      await checkSAP();
+      scheduleNextSapCheck();
+    }, delayMs);
+  }
+
   async function checkSAP() {
+    if (sapStatusCheckRunning) return Boolean(lastSapConnected);
+    sapStatusCheckRunning = true;
     try {
-      const res  = await fetch('/api/sap-status/');
+      const res  = await fetchWithTimeout(
+        '/api/sap-status/',
+        {},
+        FETCH_TIMEOUTS.checkSAP,
+        'Consulta de estado SAP'
+      );
       const data = await readJsonResponse(res);
-      document.getElementById('conn-dot').className   = `conn-dot ${data.connected ? 'ok' : ''}`;
-      document.getElementById('conn-label').textContent = data.connected
-        ? `CONECTADO${data.user ? ' - ' + data.user : ''}`
-        : 'Sin sesión SAP';
-      if (lastSapConnected !== Boolean(data.connected)) {
-        addDiagnosticLog(
-          data.connected ? 'ok' : 'warn',
-          'SAP',
-          data.connected ? 'Sesion SAP detectada.' : 'Sesion SAP no disponible.',
-          data.user ? `user=${data.user}` : data.error || ''
-        );
-        lastSapConnected = Boolean(data.connected);
+      const { status, config } = updateSapIndicator(data);
+      const connected = status === 'connected';
+      const shouldBackoff = ['timeout', 'stale', 'unavailable', 'unknown'].includes(status);
+
+      if (shouldBackoff) {
+        applySapStatusBackoff(status);
+      } else {
+        resetSapStatusBackoff();
       }
-      return Boolean(data.connected);
+
+      if (lastSapStatus !== status || lastSapConnected !== connected) {
+        addDiagnosticLog(
+          config.level,
+          'SAP',
+          config.message,
+          data.user ? `user=${data.user}` : data.message || data.error || ''
+        );
+      }
+
+      lastSapStatus = status;
+      lastSapConnected = connected;
+      return connected;
     } catch (error) {
+      applySapStatusBackoff('http_error');
+      updateSapIndicator({ status: 'unavailable' });
       if (lastSapConnected !== false) {
         addDiagnosticLog('error', 'SAP', 'No se pudo consultar /api/sap-status/.', error.message);
       }
+      lastSapStatus = 'unavailable';
       lastSapConnected = false;
+    } finally {
+      sapStatusCheckRunning = false;
     }
     return false;
   }
-  setInterval(checkSAP, 5000);
+  scheduleNextSapCheck(SAP_STATUS_BASE_POLL_MS);
 
   async function ensureSapReady() {
     try {
@@ -2042,9 +3065,9 @@
       if (data.connected) return true;
     } catch {}
 
-    flash('Inicializando SAP e iniciando sesion...', 'orange');
+    flash('Inicializando SAP e iniciando sesión...', 'orange');
     setProgBadge('SAP', 'running');
-    setProgStatus('Inicializando SAP e iniciando sesion...', 'running');
+    setProgStatus('Inicializando SAP e iniciando sesión...', 'running');
     setFooterStatus('Inicializando SAP...', 'running');
 
     try {
@@ -2062,14 +3085,14 @@
 
       flash(`Error SAP: ${data.error}`, 'red');
       setProgBadge('EN ESPERA', '');
-      setProgStatus(data.error || 'SAP sin sesion activa.', 'error');
-      setFooterStatus('SAP sin sesion activa.', 'error');
+      setProgStatus(data.error || 'SAP sin sesión activa.', 'error');
+      setFooterStatus('SAP sin sesión activa.', 'error');
       return false;
     } catch (e) {
       flash(`Error SAP: ${e.message}`, 'red');
       setProgBadge('EN ESPERA', '');
       setProgStatus('No se pudo inicializar SAP.', 'error');
-      setFooterStatus('SAP sin sesion activa.', 'error');
+      setFooterStatus('SAP sin sesión activa.', 'error');
       return false;
     }
   }
@@ -2092,17 +3115,45 @@
     }
   });
 
+  function installResyncMenuAction() {
+    const menu = document.getElementById('ham-menu');
+    if (!menu || document.getElementById('ham-resync')) return;
+
+    const item = document.createElement('div');
+    item.className = 'ham-item ham-item-help';
+    item.id = 'ham-resync';
+    item.title = 'Actualiza la pantalla con la información real del servidor. Úsalo si la tabla, botones o progreso se ven congelados.';
+    item.innerHTML = `
+      ${iconHTML('refresh-cw')}
+      <span class="ham-item-copy">
+        <strong>Resincronizar UI</strong>
+        <small>Actualiza la pantalla con datos del servidor. Úsalo si ves estados congelados o botones incorrectos.</small>
+      </span>
+    `;
+    item.addEventListener('click', () => {
+      menu.style.display = 'none';
+      manualResyncQueueUI();
+    });
+
+    const diagnosticItem = Array
+      .from(menu.querySelectorAll('.ham-item'))
+      .find(el => (el.textContent || '').includes('Diagn'));
+    menu.insertBefore(item, diagnosticItem || menu.firstChild);
+    refreshIcons();
+  }
+
   // -- Scan hint -----------------------------------------------------------------
   let _hintTimer = null;
-  function setHint(msg, type) {
+  function setHint(msg, type, timeoutMs = 2500) {
     const el = document.getElementById('scan-hint');
     el.textContent = msg;
     el.className = `scan-hint ${type}`;
     clearTimeout(_hintTimer);
+    if (!timeoutMs) return;
     _hintTimer = setTimeout(() => {
       el.textContent = 'Presiona Enter para confirmar - Escribe PALLET para separar';
       el.className = 'scan-hint idle';
-    }, 2500);
+    }, timeoutMs);
   }
 
   // -- Pipeline phase cards ------------------------------------------------------
@@ -2205,7 +3256,7 @@
   async function ctxDeletePallet() {
     if (!_ctxTargetPallet) return;
     if (isRunning) {
-      flash('No se puede borrar mientras el proceso esta activo.', 'orange');
+      flash('No se puede borrar mientras el proceso está activo.', 'orange');
       return;
     }
     if (!confirm(`¿Borrar el pallet P${String(_ctxTargetPallet).padStart(2,'0')} completo?`)) return;
@@ -2234,6 +3285,7 @@
       });
       if (sep) sep.remove();
       delete palletSepRows[_ctxTargetPallet];
+      removePalletTimer(_ctxTargetPallet);
       stats.pallets = Math.max(0, stats.pallets - 1);
       handleStatsUpdate(stats);
       updateStickyPallet();
@@ -2339,11 +3391,22 @@
     });
 
     initializePhaseToggleCards();
+    const confirmAccept = document.getElementById('confirm-toast-accept');
+    const confirmCancel = document.getElementById('confirm-toast-cancel');
+    if (confirmAccept) confirmAccept.addEventListener('click', () => closeConfirmToast(true));
+    if (confirmCancel) confirmCancel.addEventListener('click', () => closeConfirmToast(false));
+    installResyncMenuAction();
     updatePhaseCards();
     updateButtons();
     initStickyObserver();
     updateStickyPallet();
+    applyLocalUiStatus();
     checkSAP();
+    if (scanOutbox.length) {
+      scanOutboxHadFailures = true;
+      updateScanOutboxStatus();
+      scheduleScanOutboxProcessing(500);
+    }
     refreshIcons();
   }
 

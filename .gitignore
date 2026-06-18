@@ -17,3 +17,4 @@ sqlite-wal-repair-*/
 
 logs/
 staticfiles/
+tmp/

@@ -65,6 +65,10 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'errors': event['errors'],
             'pending': event['pending'],
             'pallets': event['pallets'],
+            'pallets_total': event.get('pallets_total', 0),
+            'pallets_done': event.get('pallets_done', 0),
+            'pallets_processing_seconds': event.get('pallets_processing_seconds', 0),
+            'pallets_processing_display': event.get('pallets_processing_display', ''),
             'pdf_pending': event.get('pdf_pending', 0),
             'is_running': event.get('is_running', False),
         })
@@ -84,6 +88,7 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'processing_started_at': event.get('processing_started_at', ''),
             'processing_finished_at': event.get('processing_finished_at', ''),
             'receipt_done_at': event.get('receipt_done_at', ''),
+            'stats': event.get('stats', {}),
         })
 
     async def queue_status(self, event):
@@ -115,6 +120,11 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'type': 'pallet_done',
             'pallet_id': event['pallet_id'],
             'hu_count': event['hu_count'],
+            'processing_time_display': event.get('processing_time_display', ''),
+            'processing_started_at': event.get('processing_started_at', ''),
+            'processing_finished_at': event.get('processing_finished_at', ''),
+            'receipt_done_at': event.get('receipt_done_at', ''),
+            'stats': event.get('stats', {}),
         })
 
     async def pallet_created(self, event):
@@ -169,42 +179,6 @@ class QueueConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _get_initial_state(self):
-        from queue_app.models import HUItem
-        from queue_app.utils import calculate_queue_operational_status, calculate_queue_stats
+        from queue_app.views import _build_queue_snapshot_payload
 
-        items = HUItem.objects.select_related('pallet').order_by('added_at')
-        return {
-            'items': [{
-                'hu_code': item.hu_code,
-                'status': item.status,
-                'f1_display': item.f1_display,
-                'f2_display': item.f2_display,
-                'phase1_msg': item.phase1_msg,
-                'phase2_msg': item.phase2_msg,
-                'phase2_ms': item.phase2_ms,
-                'pallet_id': item.pallet_id,
-                'origin_code': item.origin_code,
-                'pdf_status': item.pallet.pdf_status,
-                'pdf_display': item.pallet.pdf_display,
-                'pdf_msg': item.pallet.pdf_msg,
-                'pdf_ms': item.pallet.pdf_ms,
-                'processing_time_display': item.pallet.processing_time_display,
-                'processing_started_at': (
-                    item.pallet.processing_started_at.isoformat()
-                    if item.pallet.processing_started_at
-                    else ''
-                ),
-                'processing_finished_at': (
-                    item.pallet.processing_finished_at.isoformat()
-                    if item.pallet.processing_finished_at
-                    else ''
-                ),
-                'receipt_done_at': (
-                    item.pallet.receipt_done_at.isoformat()
-                    if item.pallet.receipt_done_at
-                    else ''
-                ),
-            } for item in items],
-            'stats': calculate_queue_stats(),
-            'queue_status': calculate_queue_operational_status(),
-        }
+        return _build_queue_snapshot_payload()

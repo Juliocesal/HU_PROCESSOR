@@ -1,0 +1,448 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Documentación | HUFlow Engine</title>
+  <link rel="stylesheet" href="{% static 'queue_app/css/documentation.css' %}">
+  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+  <header class="doc-topbar" id="top">
+    <div class="doc-brand">
+      <a class="doc-back" href="/" aria-label="Volver a la cola">
+        <i data-lucide="arrow-left"></i>
+      </a>
+      <div>
+        <strong>SAP</strong>
+        <span>Logistics &gt; HUFlow Engine</span>
+      </div>
+    </div>
+    <a class="doc-primary-link" href="/">Volver a la cola</a>
+  </header>
+
+  <main class="doc-shell" id="contenido">
+    <section class="doc-hero" aria-labelledby="doc-title">
+      <div>
+        <p class="doc-eyebrow">Manual técnico y operativo</p>
+        <h1 id="doc-title">Documentación del Proyecto</h1>
+        <p>
+          Guía central para operar, mantener y continuar el desarrollo de HUFlow Engine:
+          escaneo de HUs, pallets, SAP, cola de procesamiento, diagnóstico e impresión.
+        </p>
+      </div>
+      <div class="doc-hero-card">
+        <span>Estado del documento</span>
+        <strong>Versión operativa</strong>
+        <small>Última actualización: {% now "Y-m-d" %}</small>
+      </div>
+    </section>
+
+    <div class="doc-layout">
+      <aside class="doc-sidebar" aria-label="Índice de documentación">
+        <strong>Contenido</strong>
+        <nav id="doc-toc">
+          <a href="#introduccion">1. Introducción</a>
+          <a href="#arquitectura">2. Arquitectura General</a>
+          <a href="#flujo-operativo">3. Flujo Operativo</a>
+          <a href="#tecnologias">4. Tecnologías Utilizadas</a>
+          <a href="#instalacion">5. Instalación</a>
+          <a href="#configuracion">6. Configuración</a>
+          <a href="#estructura">7. Estructura del Proyecto</a>
+          <a href="#negocio">8. Procesos de Negocio</a>
+          <a href="#sap">9. Integración SAP</a>
+          <a href="#api">10. API Interna</a>
+          <a href="#websockets">11. WebSockets</a>
+          <a href="#database">12. Base de Datos</a>
+          <a href="#errores">13. Manejo de Errores</a>
+          <a href="#diagnostico">14. Diagnóstico del Sistema</a>
+          <a href="#seguridad">15. Seguridad</a>
+          <a href="#mantenimiento">16. Mantenimiento</a>
+          <a href="#troubleshooting">17. Solución de Problemas</a>
+          <a href="#versiones">18. Historial de Versiones</a>
+          <a href="#creditos">19. Créditos</a>
+        </nav>
+      </aside>
+
+      <article class="doc-content">
+        <section class="doc-card doc-section" id="introduccion">
+          <h2>1. Introducción</h2>
+          <div class="doc-grid">
+            <div>
+              <h3>Objetivo del sistema</h3>
+              <p>
+                HUFlow Engine centraliza el escaneo de HUs, la agrupación por pallet y
+                el procesamiento secuencial en SAP hasta generar e imprimir el recibo PDF.
+              </p>
+            </div>
+            <div>
+              <h3>Problema que resuelve</h3>
+              <p>
+                Reduce trabajo manual, evita saltos de impresión, mantiene trazabilidad y
+                sincroniza la UI con el backend mientras SAP, Celery y WebSockets trabajan.
+              </p>
+            </div>
+            <div>
+              <h3>Beneficios</h3>
+              <p>
+                Operación más rápida, menos errores de captura, visibilidad en tiempo real
+                y mejor soporte cuando hay fallas de SAP, Redis, Celery, base de datos o impresión.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="doc-card doc-section" id="arquitectura">
+          <h2>2. Arquitectura General</h2>
+          <div class="doc-stack">
+            <div class="doc-flow">
+              <span>Frontend</span>
+              <span>Django</span>
+              <span>Redis</span>
+              <span>Celery</span>
+              <span>SAP GUI</span>
+              <span>PDF/Impresora</span>
+            </div>
+            <p>
+              El frontend renderiza la cola y escucha eventos por WebSocket. Django recibe escaneos,
+              valida datos, persiste HUs/pallets y despacha tareas. Redis funciona como broker,
+              storage de locks y canal de coordinación. Celery ejecuta SAP GUI Automation en modo
+              secuencial. Daphne sirve HTTP y WebSockets mediante ASGI.
+            </p>
+            <ul class="doc-list">
+              <li><strong>Frontend:</strong> HTML, CSS y JavaScript para escaneo, tabla, progreso, diagnóstico y resincronización.</li>
+              <li><strong>Backend:</strong> vistas Django, modelos, utilidades de cola y endpoints internos.</li>
+              <li><strong>Base de datos:</strong> SQLite actual, con ruta de migración a SQL Server para históricos.</li>
+              <li><strong>Redis:</strong> broker Celery, locks, heartbeat y estado runtime.</li>
+              <li><strong>Celery:</strong> worker único recomendado para evitar sesiones SAP concurrentes.</li>
+              <li><strong>Daphne/Channels:</strong> servidor ASGI y WebSockets de actualización en tiempo real.</li>
+              <li><strong>SAP GUI Scripting:</strong> automatiza transacciones F1, F2 y ZE16.</li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="doc-card doc-section" id="flujo-operativo">
+          <h2>3. Flujo Operativo</h2>
+          <ol class="doc-steps">
+            <li><strong>Escaneo de HU:</strong> el operador escanea o pega HUs en el input principal.</li>
+            <li><strong>Validaciones:</strong> se detecta origen, duplicados, longitud y separadores de pallet.</li>
+            <li><strong>Creación de pallets:</strong> ITA, FHR y BRA/ATL operan como single-HU; THA y CNA pueden agruparse.</li>
+            <li><strong>Envío a cola:</strong> el botón Iniciar Proceso despacha la tarea a Celery si hay worker activo.</li>
+            <li><strong>Procesamiento SAP:</strong> el worker ejecuta F1 y F2 de forma secuencial.</li>
+            <li><strong>Receipt:</strong> después de F2 se usa ZE16 para generar el documento.</li>
+            <li><strong>Impresión PDF:</strong> `pdf_receipt.py` crea el PDF y lo manda a SumatraPDF/impresora.</li>
+          </ol>
+          <pre class="doc-code"><code>Operador
+  ↓ escanea HU
+Frontend
+  ↓ POST /scan/
+Django
+  ↓ guarda HU y pallet
+Base de datos
+  ↓ evento WebSocket
+UI actualizada
+  ↓ iniciar proceso
+Celery
+  ↓ SAP F1/F2/ZE16
+PDF + impresora
+  ↓ queue_done
+UI finalizada</code></pre>
+        </section>
+
+        <section class="doc-card doc-section" id="tecnologias">
+          <h2>4. Tecnologías Utilizadas</h2>
+          <div class="doc-tags">
+            <span>Python</span><span>Django</span><span>SQLite</span><span>Redis</span>
+            <span>Celery</span><span>Daphne</span><span>Channels</span><span>HTML</span>
+            <span>CSS</span><span>JavaScript</span><span>SAP GUI Scripting</span><span>SumatraPDF</span>
+          </div>
+        </section>
+
+        <section class="doc-card doc-section" id="instalacion">
+          <h2>5. Instalación</h2>
+          <h3>Requisitos</h3>
+          <ul class="doc-list">
+            <li>Windows con usuario interactivo abierto.</li>
+            <li>Python, SAP GUI, Redis para Windows y SumatraPDF.</li>
+            <li>Acceso de red al servidor y puerto definido para Daphne.</li>
+          </ul>
+          <h3>Crear entorno virtual e instalar dependencias</h3>
+          <pre class="doc-code"><code>python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt</code></pre>
+          <h3>Configurar Redis</h3>
+          <pre class="doc-code"><code>cd /d C:\Users\LOPEZHEJ\Downloads\Redis-x64-5.0.14.1
+redis-server.exe</code></pre>
+          <h3>Ejecutar Daphne</h3>
+          <pre class="doc-code"><code>venv\Scripts\activate
+daphne -b 0.0.0.0 -p 8000 config.asgi:application</code></pre>
+          <h3>Ejecutar Celery</h3>
+          <pre class="doc-code"><code>venv\Scripts\activate
+celery -A config worker -l info -P solo --concurrency=1</code></pre>
+        </section>
+
+        <section class="doc-card doc-section" id="configuracion">
+          <h2>6. Configuración</h2>
+          <p>
+            La configuración principal vive en `config/settings.py` y variables de entorno.
+            En producción deben revisarse `DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, Redis,
+            usuario SAP e impresora.
+          </p>
+          <div class="doc-grid">
+            <div><h3>Redis</h3><p>Define broker, result backend, locks y señales runtime.</p></div>
+            <div><h3>SAP</h3><p>Usa credenciales configuradas por variable de entorno. No exponer passwords en UI o logs.</p></div>
+            <div><h3>Impresoras</h3><p>Configurar SumatraPDF, impresora predeterminada y permisos del usuario Windows.</p></div>
+          </div>
+        </section>
+
+        <section class="doc-card doc-section" id="estructura">
+          <h2>7. Estructura del Proyecto</h2>
+          <pre class="doc-code"><code>DJANGO NEXHUS/
+├─ config/                 ASGI, settings, Celery y rutas globales
+├─ core/                   SAP client, origenes HU y helpers compartidos
+├─ queue_app/              App principal de cola, modelos, vistas, tasks y consumers
+│  ├─ static/queue_app/    CSS, JavaScript e iconos de UI
+│  ├─ migrations/          Historial de cambios del esquema Django
+│  ├─ models.py            Pallet, HUItem y ScanLog
+│  ├─ views.py             Endpoints HTTP y acciones de operador
+│  ├─ tasks.py             Worker Celery y flujo SAP/PDF
+│  ├─ consumers.py         WebSocket para estado en tiempo real
+│  └─ service_control.py   Diagnostico y control local de servicios
+├─ templates/queue_app/    Pantallas Django
+├─ docs/                   Documentos de migracion y operacion
+├─ logs/                   Archivos de log locales
+└─ manage.py               CLI Django</code></pre>
+        </section>
+
+        <section class="doc-card doc-section" id="negocio">
+          <h2>8. Procesos de Negocio</h2>
+          <div class="doc-grid">
+            <div><h3>Order Acknowledge</h3><p>Primer paso SAP ejecutado en ZMOVEINBHU para reconocer el HU.</p></div>
+            <div><h3>Separazione</h3><p>Segundo paso SAP ejecutado en ZMMTIJSEP para completar separación.</p></div>
+            <div><h3>Putaway</h3><p>Proceso posterior/logístico relacionado con ubicación física del inventario.</p></div>
+            <div><h3>Receipts</h3><p>Documento final generado desde ZE16 y enviado a PDF/impresora.</p></div>
+            <div><h3>HUs</h3><p>Handling Units escaneadas y guardadas como `HUItem`.</p></div>
+            <div><h3>Pallets</h3><p>Agrupación operativa de HUs con reglas por origen.</p></div>
+          </div>
+        </section>
+
+        <section class="doc-card doc-section" id="sap">
+          <h2>9. Integración SAP</h2>
+          <p>
+            SAP GUI Scripting controla una sesión SAP abierta en Windows. El worker Celery debe correr
+            en una sesión interactiva y con `--pool=solo --concurrency=1` para evitar conflictos.
+          </p>
+          <table class="doc-table">
+            <thead><tr><th>Transacción</th><th>Uso</th><th>Estado</th></tr></thead>
+            <tbody>
+              <tr><td>ZMOVEINBHU</td><td>F1 / Order Acknowledge por HU.</td><td>Activa</td></tr>
+              <tr><td>ZMMTIJSEP</td><td>F2 / Separazione por HU.</td><td>Activa</td></tr>
+              <tr><td>ZE16</td><td>Generación de receipt/PDF.</td><td>Activa</td></tr>
+              <tr><td>LQUA</td><td>Consulta logística de stock/ubicación cuando aplique.</td><td>Referencia</td></tr>
+              <tr><td>SP01</td><td>Spool antiguo.</td><td>Legado; no usado en el flujo actual ZE16-only.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="doc-card doc-section" id="api">
+          <h2>10. API Interna</h2>
+          <table class="doc-table">
+            <thead><tr><th>Método</th><th>URL</th><th>Uso</th><th>Parámetros</th></tr></thead>
+            <tbody>
+              <tr><td>GET</td><td>/</td><td>Renderiza cola principal.</td><td>-</td></tr>
+              <tr><td>GET</td><td>/documentation/</td><td>Renderiza esta documentación.</td><td>-</td></tr>
+              <tr><td>POST</td><td>/scan/</td><td>Registra HU o separador.</td><td>`code`, opciones F1/F2/auto-start.</td></tr>
+              <tr><td>POST</td><td>/pallet/nuevo/</td><td>Crea/cierra pallet operativo.</td><td>Opciones de ejecución.</td></tr>
+              <tr><td>POST</td><td>/hu/&lt;hu_code&gt;/borrar/</td><td>Elimina HU permitido.</td><td>HU por URL.</td></tr>
+              <tr><td>POST</td><td>/pallet/&lt;id&gt;/borrar/</td><td>Elimina pallet permitido.</td><td>Pallet por URL.</td></tr>
+              <tr><td>POST</td><td>/cola/limpiar/</td><td>Limpia cola cuando es seguro.</td><td>-</td></tr>
+              <tr><td>POST</td><td>/cola/reprocesar/</td><td>Regresa HUs a pendiente.</td><td>`scope`: all o errors.</td></tr>
+              <tr><td>POST</td><td>/cola/iniciar/</td><td>Inicia cola continua.</td><td>Opciones F1/F2.</td></tr>
+              <tr><td>POST</td><td>/cola/detener/</td><td>Solicita detención segura.</td><td>-</td></tr>
+              <tr><td>GET</td><td>/api/queue-snapshot/</td><td>Snapshot para resincronizar UI.</td><td>-</td></tr>
+              <tr><td>GET</td><td>/api/sap-status/</td><td>Estado rápido/cacheado de SAP.</td><td>-</td></tr>
+              <tr><td>GET</td><td>/api/system-status/</td><td>Diagnóstico Django, Redis, Celery, DB y cola.</td><td>-</td></tr>
+              <tr><td>GET</td><td>/exportar/</td><td>Descarga CSV de la cola.</td><td>-</td></tr>
+            </tbody>
+          </table>
+          <pre class="doc-code"><code>Ejemplo POST /scan/
+{
+  "code": "TH0000268197",
+  "run_f1": true,
+  "run_f2": true,
+  "auto_start": false
+}</code></pre>
+        </section>
+
+        <section class="doc-card doc-section" id="websockets">
+          <h2>11. WebSockets</h2>
+          <p>
+            Channels conecta el navegador al grupo de actualizaciones de cola. Al conectar,
+            el cliente recibe `initial_state`; durante el proceso recibe eventos incrementales.
+          </p>
+          <div class="doc-tags">
+            <span>initial_state</span><span>item_update</span><span>stats_update</span>
+            <span>queue_status</span><span>receipt_done</span><span>pallet_done</span>
+            <span>queue_done</span><span>pallet_created</span><span>hu_deleted</span>
+            <span>pallet_deleted</span><span>queue_cleared</span><span>error</span>
+          </div>
+          <pre class="doc-code"><code>{
+  "type": "item_update",
+  "hu_code": "TH0000268197",
+  "status": "ok",
+  "pallet_id": 1,
+  "phase1_msg": "Ya se hizo el Acknowledge",
+  "phase2_msg": "OK",
+  "pdf_display": "OK (8.7s)"
+}</code></pre>
+        </section>
+
+        <section class="doc-card doc-section" id="database">
+          <h2>12. Base de Datos</h2>
+          <table class="doc-table">
+            <thead><tr><th>Modelo</th><th>Campos clave</th><th>Propósito</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Pallet</td>
+                <td>id, origin_code, status, created_at, processing_started_at, processing_finished_at, pdf_status, pdf_msg, pdf_ms</td>
+                <td>Agrupa HUs y mide ciclo completo F1-F2-PDF.</td>
+              </tr>
+              <tr>
+                <td>HUItem</td>
+                <td>hu_code, pallet, origin_code, status, phase1_msg, phase2_msg, error_msg, processing_ms, pdf_status</td>
+                <td>Registro principal por HU escaneado y procesado.</td>
+              </tr>
+              <tr>
+                <td>ScanLog</td>
+                <td>hu_code, scanned_at, result, message</td>
+                <td>Auditoría ligera de lecturas, duplicados y errores de escaneo.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="doc-card doc-section" id="errores">
+          <h2>13. Manejo de Errores</h2>
+          <ul class="doc-list">
+            <li><strong>HTTP 500:</strong> debe mostrarse en toast/diagnóstico y no perder el escaneo cuando sea recuperable.</li>
+            <li><strong>Redis desconectado:</strong> bloquea dispatch de Celery y actualiza diagnóstico.</li>
+            <li><strong>Celery detenido:</strong> no se debe iniciar proceso; el diagnóstico debe marcarlo como error.</li>
+            <li><strong>SAP no disponible:</strong> usar estado cacheado/timeout y evitar congelar Daphne.</li>
+            <li><strong>Impresora sin conexión:</strong> registrar error PDF/impresión y dejar HU/pallet trazable.</li>
+          </ul>
+        </section>
+
+        <section class="doc-card doc-section" id="diagnostico">
+          <h2>14. Diagnóstico del Sistema</h2>
+          <p>
+            El panel de diagnóstico permite ver estado de Django/Daphne, Redis, Celery, SAP,
+            WebSocket, cola, base de datos y servicios locales. Sirve para soporte cuando la UI
+            parece esperando o cuando un backend externo dejó de responder.
+          </p>
+          <div class="doc-grid">
+            <div><h3>Django/Daphne</h3><p>Confirma que el backend HTTP responde.</p></div>
+            <div><h3>Redis</h3><p>Confirma broker y locks runtime.</p></div>
+            <div><h3>Celery</h3><p>Confirma workers activos antes de procesar.</p></div>
+            <div><h3>SAP</h3><p>Confirma sesión SAP disponible o estado no confirmado.</p></div>
+            <div><h3>WebSocket</h3><p>Confirma canal de eventos en tiempo real.</p></div>
+            <div><h3>Base de datos</h3><p>Confirma lectura/escritura y reporta errores readonly.</p></div>
+          </div>
+        </section>
+
+        <section class="doc-card doc-section" id="seguridad">
+          <h2>15. Seguridad</h2>
+          <ul class="doc-list">
+            <li>Activar autenticación y permisos por rol antes de exponer el sistema fuera del entorno controlado.</li>
+            <li>No mostrar passwords SAP, `SECRET_KEY`, tokens o rutas sensibles cuando `DEBUG=False`.</li>
+            <li>Usar `ALLOWED_HOSTS` exactos para el servidor LAN.</li>
+            <li>Revisar CSRF en endpoints críticos si se habilitan usuarios autenticados.</li>
+            <li>Con HTTPS, activar cookies seguras y HSTS según política de IT.</li>
+          </ul>
+        </section>
+
+        <section class="doc-card doc-section" id="mantenimiento">
+          <h2>16. Mantenimiento</h2>
+          <ul class="doc-list">
+            <li><strong>Respaldos:</strong> copiar base SQLite actual o plan SQL Server antes de cambios.</li>
+            <li><strong>Logs:</strong> revisar logs de Django, Celery, diagnóstico y SAP al investigar fallas.</li>
+            <li><strong>Actualizaciones:</strong> probar cambios con cola de ejemplo antes de producción.</li>
+            <li><strong>Limpieza:</strong> definir política de histórico para HUs procesados y errores.</li>
+          </ul>
+        </section>
+
+        <section class="doc-card doc-section" id="troubleshooting">
+          <h2>17. Solución de Problemas</h2>
+          <table class="doc-table">
+            <thead><tr><th>Problema</th><th>Causa</th><th>Solución</th></tr></thead>
+            <tbody>
+              <tr><td>La UI queda en procesando</td><td>Evento WebSocket perdido o worker detenido.</td><td>Usar Resincronizar UI y revisar diagnóstico Celery/WebSocket.</td></tr>
+              <tr><td>Celery no procesa</td><td>Worker apagado aunque Redis responda.</td><td>Iniciar Celery con `-P solo --concurrency=1`.</td></tr>
+              <tr><td>SAP no encuentra campo HU</td><td>SAP quedó en pantalla incorrecta, popup o sesión inválida.</td><td>Cerrar/reabrir sesión SAP y verificar login automático.</td></tr>
+              <tr><td>attempt to write a readonly database</td><td>Permisos de archivo/carpeta SQLite o OneDrive bloqueando escritura.</td><td>Revisar permisos, ubicación de DB y mover a ruta estable/SQL Server.</td></tr>
+              <tr><td>No imprime PDF</td><td>SumatraPDF o impresora no disponible.</td><td>Validar ruta de SumatraPDF, impresora predeterminada y permisos.</td></tr>
+              <tr><td>Otro equipo no abre la app</td><td>Daphne ligado a localhost o puerto bloqueado.</td><td>Ejecutar `daphne -b 0.0.0.0 -p 8000` y abrir puerto LAN.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="doc-card doc-section" id="versiones">
+          <h2>18. Historial de Versiones</h2>
+          <table class="doc-table">
+            <thead><tr><th>Versión</th><th>Fecha</th><th>Cambios</th></tr></thead>
+            <tbody>
+              <tr><td>0.1</td><td>2026-05</td><td>Cola inicial de HUs, pallets y procesamiento SAP.</td></tr>
+              <tr><td>0.2</td><td>2026-06</td><td>WebSockets, diagnóstico, cola continua y PDF ZE16-only.</td></tr>
+              <tr><td>0.3</td><td>{% now "Y-m-d" %}</td><td>Documentación integrada en la aplicación.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="doc-card doc-section" id="creditos">
+          <h2>19. Créditos</h2>
+          <p>
+            <strong>Autor del sistema:</strong> Julio López Herrera.
+            <br>
+            <strong>Tecnologías:</strong> Python, Django, Channels, Celery, Redis, SAP GUI Scripting,
+            JavaScript, CSS y SumatraPDF.
+            <br>
+            <strong>Contacto:</strong> soporte interno / propietario del servidor.
+          </p>
+        </section>
+      </article>
+    </div>
+  </main>
+
+  <a class="doc-backtop" href="#top" aria-label="Volver arriba">
+    <i data-lucide="arrow-up"></i>
+    <span>Volver arriba</span>
+  </a>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', function () {
+      if (window.lucide) {
+        window.lucide.createIcons();
+      }
+
+      const links = Array.from(document.querySelectorAll('#doc-toc a'));
+      const sections = links
+        .map(link => document.querySelector(link.getAttribute('href')))
+        .filter(Boolean);
+
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          links.forEach(link => link.classList.toggle(
+            'active',
+            link.getAttribute('href') === '#' + entry.target.id
+          ));
+        });
+      }, { rootMargin: '-25% 0px -65% 0px' });
+
+      sections.forEach(section => observer.observe(section));
+    });
+  </script>
+</body>
+</html>

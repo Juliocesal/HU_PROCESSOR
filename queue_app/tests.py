@@ -4,21 +4,31 @@ from unittest.mock import patch
 
 
 from asgiref.sync import async_to_sync
-from django.test import TestCase
+from django.db import DatabaseError
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 
 from core.sap_client import SAPClient
 from core.ze16_client import ZE16Client
+from queue_app import service_control
 from queue_app.consumers import QueueConsumer
 from queue_app.models import HUItem, Pallet
-from queue_app.tasks import process_queue_task
-from queue_app.utils import emit_queue_done, emit_queue_status
+from queue_app.tasks import _get_ze16_receipts_with_retries, process_queue_task
+from queue_app.utils import emit_queue_done, emit_queue_status, pallets_ready_for_pdf_queryset
 from queue_app.views import (
     CELERY_NO_WORKER_MESSAGE,
     QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
     _check_celery_status,
 )
+
+
+class DocumentationPageTests(TestCase):
+    def test_documentation_page_renders(self):
+        response = self.client.get('/documentation/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Documentación del Proyecto')
 
 
 
@@ -138,6 +148,69 @@ class SystemStatusTests(TestCase):
         self.assertFalse(status['ok'])
         self.assertEqual(status['level'], 'error')
         self.assertEqual(status['message'], CELERY_NO_WORKER_MESSAGE)
+
+
+class ServiceControlTests(TestCase):
+    @override_settings(
+        NEXHUS_SERVICE_CONTROL_ENABLED=False,
+        NEXHUS_SERVICE_CONTROL_PASSWORD='',
+    )
+    def test_service_control_status_requires_configuration(self):
+        response = self.client.get('/api/service-control/status/')
+
+        self.assertEqual(response.status_code, 403)
+        payload = response.json()
+        self.assertFalse(payload['ok'])
+        self.assertFalse(payload['enabled'])
+
+
+    @override_settings(
+        NEXHUS_SERVICE_CONTROL_ENABLED=True,
+        NEXHUS_SERVICE_CONTROL_PASSWORD='secret',
+    )
+    def test_service_control_login_accepts_configured_password(self):
+        with patch('queue_app.views.get_services_status', return_value={}):
+            response = self.client.post(
+                '/api/service-control/login/',
+                data='{"password": "secret"}',
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertTrue(payload['authenticated'])
+
+
+    @override_settings(
+        NEXHUS_SERVICE_CONTROL_ENABLED=True,
+        NEXHUS_SERVICE_CONTROL_PASSWORD='secret',
+    )
+    def test_service_control_action_requires_login(self):
+        response = self.client.post('/api/service-control/redis/start/')
+
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(response.json()['authenticated'])
+
+
+    def test_redis_running_exposes_restart_only(self):
+        fake_client = SimpleNamespace(info=lambda section=None: {'redis_version': '5.0.14.1'})
+
+        with patch('queue_app.service_control._redis_client', return_value=fake_client):
+            status = service_control._redis_status()
+
+        self.assertEqual(status['state'], 'running')
+        self.assertFalse(status['actions']['start'])
+        self.assertFalse(status['actions']['stop'])
+        self.assertTrue(status['actions']['restart'])
+
+
+    def test_daphne_status_does_not_expose_control_actions(self):
+        with patch('queue_app.service_control._tcp_port_open', return_value=True):
+            status = service_control._daphne_status()
+
+        self.assertEqual(status['state'], 'running')
+        self.assertFalse(any(status['actions'].values()))
 
 
 
@@ -883,6 +956,48 @@ class StartProcessingTests(TestCase):
 
 
 class ScanHuTests(TestCase):
+    def test_scan_database_error_returns_retryable_json(self):
+        with patch(
+            'queue_app.views._get_or_create_active_pallet',
+            side_effect=DatabaseError('database locked'),
+        ):
+            response = self.client.post(
+                '/scan/',
+                data='{"code": "TH0000268197"}',
+                content_type='application/json',
+            )
+
+
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()
+        self.assertFalse(payload['ok'])
+        self.assertTrue(payload['retryable'])
+        self.assertEqual(payload['type'], 'database_error')
+        self.assertEqual(HUItem.objects.count(), 0)
+
+
+    def test_scan_auto_start_failure_does_not_drop_saved_hu(self):
+        with (
+            patch('queue_app.views._auto_start_queue_after_pallet_close', side_effect=RuntimeError('celery down')),
+            patch('queue_app.views.emit_item_update'),
+            patch('queue_app.views.emit_stats_update'),
+            patch('queue_app.views.emit_current_queue_status_if_available'),
+        ):
+            response = self.client.post(
+                '/scan/',
+                data='{"code": "2972200143"}',
+                content_type='application/json',
+            )
+
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertFalse(payload['auto_started'])
+        self.assertEqual(payload['auto_start_reason'], 'auto_start_failed')
+        self.assertEqual(HUItem.objects.filter(hu_code='2972200143').count(), 1)
+
+
     def test_scan_response_includes_updated_stats_for_current_ui_state(self):
         with (
             patch('queue_app.views.is_queue_locked', return_value=False),
@@ -903,6 +1018,33 @@ class ScanHuTests(TestCase):
         self.assertEqual(payload['stats']['total'], 1)
         self.assertEqual(payload['stats']['pending'], 1)
         self.assertEqual(payload['stats']['pallets'], 1)
+
+
+    def test_scan_batch_processes_pending_browser_outbox(self):
+        with (
+            patch('queue_app.views.is_queue_locked', return_value=False),
+            patch('queue_app.views.emit_item_update'),
+            patch('queue_app.views.emit_stats_update'),
+            patch('queue_app.views.emit_current_queue_status_if_available'),
+        ):
+            response = self.client.post(
+                '/scan/batch/',
+                data=(
+                    '{"items": ['
+                    '{"id": "a", "code": "TH0000268197", "options": {}},'
+                    '{"id": "b", "code": "TH0000268256", "options": {}}'
+                    ']}'
+                ),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['saved'], 2)
+        self.assertEqual(payload['retryable'], 0)
+        self.assertEqual(HUItem.objects.count(), 2)
+        self.assertEqual(payload['stats']['pending'], 2)
 
 
     def test_scan_is_allowed_when_worker_lock_is_active(self):
@@ -1485,3 +1627,47 @@ class ZE16NormalizationTests(TestCase):
 
         self.assertEqual(client._normalize_hu('TH0000267998'), 'TH0000267998')
         self.assertEqual(client._normalize_hu('ELPS1234567'), 'ELPS1234567')
+
+
+class ZE16ReceiptRetryTests(TestCase):
+    @override_settings(
+        SAP_ZE16_RECEIPT_MAX_ATTEMPTS=3,
+        SAP_ZE16_RECEIPT_RETRY_DELAY_SECONDS=0,
+    )
+    def test_empty_receipts_stop_after_configured_attempts(self):
+        class EmptyZE16:
+            def __init__(self):
+                self.calls = 0
+
+            def get_receipts_for_pallet(self, hu_codes):
+                self.calls += 1
+                return {}
+
+        ze16 = EmptyZE16()
+
+        receipts, attempts = _get_ze16_receipts_with_retries(
+            ze16,
+            ['C1016958421'],
+            pallet_id=2,
+            hu_count=1,
+        )
+
+        self.assertEqual(receipts, {})
+        self.assertEqual(attempts, 3)
+        self.assertEqual(ze16.calls, 3)
+
+
+    def test_pdf_error_pallet_is_not_selected_again_until_reprocessed(self):
+        pallet = Pallet.objects.create(
+            status=Pallet.STATUS_READY,
+            pdf_status=Pallet.PDF_STATUS_ERROR,
+            pdf_msg='ZE16: sin Receipt IDs para pallet 2 tras 4 intento(s)',
+        )
+        HUItem.objects.create(
+            hu_code='C1016958421',
+            pallet=pallet,
+            origin_code='BRA/ATL',
+            status=HUItem.STATUS_OK,
+        )
+
+        self.assertNotIn(pallet, list(pallets_ready_for_pdf_queryset()))

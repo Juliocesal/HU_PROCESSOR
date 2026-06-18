@@ -123,11 +123,6 @@ def is_pallet_separator(scanned_value: str) -> bool:
     return scanned_value.strip().upper() == PALLET_SEPARATOR_CODE
 
 
-def needs_auto_pallet(hu_code: str) -> bool:
-    """Devuelve True cuando la regla de negocio exige una HU por pallet."""
-    return detect_origin(hu_code).auto_pallet
-
-
 def resolve_effective_origin(origin: Origin, pallet_size: int) -> Origin:
     """
     Devuelve el perfil de tiempos que debe usarse para ZE16/PDF del pallet.

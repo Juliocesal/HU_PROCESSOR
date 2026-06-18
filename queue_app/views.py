@@ -2,11 +2,14 @@ import csv
 import json
 import logging
 import os
+import secrets
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime
 from django.conf import settings
 from django.core.management.color import no_style
-from django.db import connection
+from django.db import connection, transaction, IntegrityError, DatabaseError
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST, require_GET
@@ -16,11 +19,18 @@ from django.utils import timezone
 from core.hu_origins import detect_origin, is_pallet_separator
 
 from queue_app.models import HUItem, Pallet, ScanLog
+from queue_app.service_control import (
+    execute_service_action,
+    get_services_status,
+    service_control_enabled,
+    service_control_not_configured_message,
+)
 from queue_app.tasks import (
     arm_continuous_queue,
     clear_queue_runtime_state,
     disarm_continuous_queue,
     get_queue_idle_remaining_seconds,
+    get_queue_lock_owner,
     get_processing_pallet_ids,
     get_queue_stop_request_age_seconds,
     get_queue_worker_heartbeat_age_seconds,
@@ -60,6 +70,11 @@ CELERY_START_BLOCKED_MESSAGE = (
 )
 HU_CODE_MIN_LENGTH = 10
 HU_CODE_MAX_LENGTH = 15
+SCAN_BATCH_MAX_ITEMS = 100
+SAP_STATUS_CACHE_TTL_SECONDS = 10
+SAP_STATUS_STALE_SECONDS = 60
+SAP_STATUS_TIMEOUT_SECONDS = 1.5
+SAP_STATUS_CIRCUIT_BREAKER_SECONDS = 20
 REPROCESS_ERROR_STATUSES = [HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
 REPROCESS_ALL_STATUSES = [
     HUItem.STATUS_OK,
@@ -67,6 +82,13 @@ REPROCESS_ALL_STATUSES = [
     HUItem.STATUS_ERROR,
     HUItem.STATUS_HU_NOT_FOUND,
 ]
+
+_sap_status_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sap-status')
+_sap_status_lock = threading.Lock()
+_sap_status_future = None
+_sap_status_cache = None
+_sap_status_circuit_until = 0.0
+_sap_status_last_log = {}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -93,6 +115,11 @@ def queue_view(request):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
+def documentation_view(request):
+    """Renderiza la documentacion operativa y tecnica del proyecto."""
+    return render(request, 'queue_app/documentation.html')
+
+
 @require_POST
 def scan_hu(request):
     """
@@ -114,7 +141,18 @@ def scan_hu(request):
 
     # ── Separador de pallet ───────────────────────────────────────────────────
     if is_pallet_separator(raw):
-        result = _new_pallet_logic(**run_options)
+        try:
+            result = _new_pallet_logic(**run_options)
+        except DatabaseError as exc:
+            return _scan_retryable_error_response(
+                raw,
+                exc,
+                status=503,
+                error_type='database_error',
+            )
+        except Exception as exc:
+            return _scan_retryable_error_response(raw, exc)
+
         if result.get('ok'):
             result['stats'] = _get_stats()
         return JsonResponse(result)
@@ -130,33 +168,83 @@ def scan_hu(request):
             'type':    'validation_error',
         }, status=400)
 
+    origin = detect_origin(raw)
+    try:
+        with transaction.atomic():
+
     # ── Duplicado ─────────────────────────────────────────────────────────────
-    if HUItem.objects.filter(hu_code=raw).exists():
-        ScanLog.objects.create(hu_code=raw, result='duplicate', message='Ya existe en cola')
-        return JsonResponse({
-            'ok':    False,
-            'error': f'Duplicado: {raw}',
-            'type':  'duplicate',
-        }, status=409)
+            if HUItem.objects.select_for_update().filter(hu_code=raw).exists():
+                ScanLog.objects.create(
+                    hu_code=raw,
+                    result='duplicate',
+                    message='HU ya registrado.',
+                )
+                log.info("scan_hu duplicate hu=%s", raw)
+                return JsonResponse({
+                    'ok': False,
+                    'error': 'HU ya registrado.',
+                    'message': 'HU ya registrado.',
+                    'type': 'duplicate',
+                }, status=409)
 
     # ── Crear HUItem en DB ────────────────────────────────────────────────────
-    origin  = detect_origin(raw)
-    pallet  = _get_or_create_active_pallet(raw, origin)
-    item    = HUItem.objects.create(
-        hu_code     = raw,
-        pallet      = pallet,
-        origin_code = origin.code,
-        status      = HUItem.STATUS_PENDING,
-    )
-    ScanLog.objects.create(hu_code=raw, result='queued', message=f'Pallet {pallet.pk}')
+            pallet = _get_or_create_active_pallet(raw, origin)
+            item = HUItem.objects.create(
+                hu_code=raw,
+                pallet=pallet,
+                origin_code=origin.code,
+                status=HUItem.STATUS_PENDING,
+            )
+            ScanLog.objects.create(
+                hu_code=raw,
+                result='queued',
+                message=f'Pallet {pallet.pk}',
+            )
+            if origin.auto_pallet:
+                _mark_pallet_ready(pallet)
+    except IntegrityError:
+        log.warning("scan_hu duplicate_concurrent hu=%s", raw)
+        _record_duplicate_scan(raw, 'Este HU fue escaneado por otra estacion.')
+        return JsonResponse({
+            'ok': False,
+            'error': 'Este HU fue escaneado por otra estacion.',
+            'message': 'Este HU fue escaneado por otra estacion.',
+            'type': 'duplicate',
+        }, status=409)
+    except DatabaseError as exc:
+        return _scan_retryable_error_response(
+            raw,
+            exc,
+            status=503,
+            error_type='database_error',
+        )
+    except Exception as exc:
+        return _scan_retryable_error_response(raw, exc)
+
     auto_start_result = {}
     if origin.auto_pallet:
-        _mark_pallet_ready(pallet)
-        auto_start_result = _auto_start_queue_after_pallet_close(**run_options)
+        try:
+            auto_start_result = _auto_start_queue_after_pallet_close(**run_options)
+        except Exception as exc:
+            log.exception("scan_hu auto_start_failed hu=%s", raw)
+            auto_start_result = {
+                'auto_started': False,
+                'auto_start_reason': 'auto_start_failed',
+                'auto_start_error': _diagnostic_error_message(exc),
+            }
 
-    emit_item_update(item)
-    emit_stats_update(item.pallet)
-    emit_current_queue_status_if_available()
+    response_warnings = []
+    needs_resync = False
+    try:
+        emit_item_update(item)
+        emit_stats_update(item.pallet)
+        emit_current_queue_status_if_available()
+    except Exception as exc:
+        log.exception("scan_hu websocket_emit_failed hu=%s", raw)
+        needs_resync = True
+        response_warnings.append(
+            'El HU se guardo, pero la UI necesita resincronizarse.'
+        )
 
     log.info("scan_hu hu=%s pallet=%s origin=%s", raw, pallet.pk, origin.code)
 
@@ -167,6 +255,8 @@ def scan_hu(request):
         'origin':    origin.label,
         'status':    item.status,
         'stats':     _get_stats(),
+        'warnings':  response_warnings,
+        'needs_resync': needs_resync,
         **auto_start_result,
     })
 
@@ -174,6 +264,192 @@ def scan_hu(request):
 # ══════════════════════════════════════════════════════════════════════════════
 #  PALLET — crear nuevo pallet manualmente
 # ══════════════════════════════════════════════════════════════════════════════
+
+
+def _process_scan_batch_entry(entry, default_options: dict) -> dict:
+    """Procesa una lectura pendiente del navegador y devuelve resultado individual."""
+    if isinstance(entry, dict):
+        raw = str(entry.get('code', '')).strip()
+        entry_id = str(entry.get('id', '')).strip()
+        option_payload = entry.get('options') if isinstance(entry.get('options'), dict) else default_options
+    else:
+        raw = str(entry or '').strip()
+        entry_id = ''
+        option_payload = default_options
+
+    run_options = _run_options_from_payload(option_payload)
+    if not raw:
+        return {
+            'id': entry_id,
+            'code': raw,
+            'ok': False,
+            'error': 'Codigo vacio',
+            'type': 'validation_error',
+            'status_code': 400,
+        }
+
+    if is_pallet_separator(raw):
+        try:
+            result = _new_pallet_logic(**run_options)
+        except DatabaseError as exc:
+            result = _scan_retryable_error_payload(
+                raw,
+                exc,
+                status=503,
+                error_type='database_error',
+            )
+            result.update({'id': entry_id, 'code': raw, 'status_code': 503})
+            return result
+        except Exception as exc:
+            result = _scan_retryable_error_payload(raw, exc)
+            result.update({'id': entry_id, 'code': raw, 'status_code': 503})
+            return result
+
+        if result.get('ok'):
+            result['stats'] = _get_stats()
+        result.update({'id': entry_id, 'code': raw, 'status_code': 200})
+        return result
+
+    if not (HU_CODE_MIN_LENGTH <= len(raw) <= HU_CODE_MAX_LENGTH):
+        return {
+            'id': entry_id,
+            'code': raw,
+            'ok': False,
+            'error': (
+                f"Codigo HU invalido: '{raw}' tiene {len(raw)} caracteres. "
+                f"Rango permitido: {HU_CODE_MIN_LENGTH}-{HU_CODE_MAX_LENGTH}"
+            ),
+            'type': 'validation_error',
+            'status_code': 400,
+        }
+
+    origin = detect_origin(raw)
+    try:
+        with transaction.atomic():
+            if HUItem.objects.select_for_update().filter(hu_code=raw).exists():
+                ScanLog.objects.create(
+                    hu_code=raw,
+                    result='duplicate',
+                    message='HU ya registrado.',
+                )
+                log.info("scan_hu_batch duplicate hu=%s", raw)
+                return {
+                    'id': entry_id,
+                    'code': raw,
+                    'ok': False,
+                    'error': 'HU ya registrado.',
+                    'message': 'HU ya registrado.',
+                    'type': 'duplicate',
+                    'status_code': 409,
+                }
+
+            pallet = _get_or_create_active_pallet(raw, origin)
+            item = HUItem.objects.create(
+                hu_code=raw,
+                pallet=pallet,
+                origin_code=origin.code,
+                status=HUItem.STATUS_PENDING,
+            )
+            ScanLog.objects.create(
+                hu_code=raw,
+                result='queued',
+                message=f'Pallet {pallet.pk}',
+            )
+            if origin.auto_pallet:
+                _mark_pallet_ready(pallet)
+    except IntegrityError:
+        log.warning("scan_hu_batch duplicate_concurrent hu=%s", raw)
+        _record_duplicate_scan(raw, 'Este HU fue escaneado por otra estacion.')
+        return {
+            'id': entry_id,
+            'code': raw,
+            'ok': False,
+            'error': 'Este HU fue escaneado por otra estacion.',
+            'message': 'Este HU fue escaneado por otra estacion.',
+            'type': 'duplicate',
+            'status_code': 409,
+        }
+    except DatabaseError as exc:
+        result = _scan_retryable_error_payload(
+            raw,
+            exc,
+            status=503,
+            error_type='database_error',
+        )
+        result.update({'id': entry_id, 'code': raw, 'status_code': 503})
+        return result
+    except Exception as exc:
+        result = _scan_retryable_error_payload(raw, exc)
+        result.update({'id': entry_id, 'code': raw, 'status_code': 503})
+        return result
+
+    auto_start_result = {}
+    if origin.auto_pallet:
+        try:
+            auto_start_result = _auto_start_queue_after_pallet_close(**run_options)
+        except Exception as exc:
+            log.exception("scan_hu_batch auto_start_failed hu=%s", raw)
+            auto_start_result = {
+                'auto_started': False,
+                'auto_start_reason': 'auto_start_failed',
+                'auto_start_error': _diagnostic_error_message(exc),
+            }
+
+    warnings = []
+    needs_resync = False
+    try:
+        emit_item_update(item)
+        emit_stats_update(item.pallet)
+        emit_current_queue_status_if_available()
+    except Exception:
+        log.exception("scan_hu_batch websocket_emit_failed hu=%s", raw)
+        needs_resync = True
+        warnings.append('El HU se guardo, pero la UI necesita resincronizarse.')
+
+    log.info("scan_hu_batch hu=%s pallet=%s origin=%s", raw, pallet.pk, origin.code)
+    return {
+        'id': entry_id,
+        'code': raw,
+        'ok': True,
+        'hu_code': raw,
+        'pallet_id': pallet.pk,
+        'origin': origin.label,
+        'status': item.status,
+        'status_code': 200,
+        'warnings': warnings,
+        'needs_resync': needs_resync,
+        **auto_start_result,
+    }
+
+
+@require_POST
+def scan_hu_batch(request):
+    """Procesa en backend los HUs que quedaron pendientes en la cola local."""
+    payload = _parse_json_body(request)
+    items = payload.get('items')
+    if not isinstance(items, list) or not items:
+        return JsonResponse({'ok': False, 'error': 'No hay HUs pendientes por guardar.'}, status=400)
+
+    limited_items = items[:SCAN_BATCH_MAX_ITEMS]
+    results = [_process_scan_batch_entry(entry, payload) for entry in limited_items]
+    saved = sum(1 for result in results if result.get('ok'))
+    duplicates = sum(1 for result in results if result.get('type') == 'duplicate')
+    retryable = sum(1 for result in results if result.get('retryable'))
+    rejected = sum(
+        1 for result in results
+        if not result.get('ok') and not result.get('retryable') and result.get('type') != 'duplicate'
+    )
+
+    return JsonResponse({
+        'ok': True,
+        'results': results,
+        'saved': saved,
+        'duplicates': duplicates,
+        'retryable': retryable,
+        'rejected': rejected,
+        'remaining_not_processed': max(0, len(items) - SCAN_BATCH_MAX_ITEMS),
+        'stats': _get_stats(),
+    })
 
 
 @require_POST
@@ -190,34 +466,58 @@ def new_pallet(request):
 
 
 def _new_pallet_logic(run_f1=True, run_f2=True, run_pdf=True) -> dict:
-    """Lógica compartida entre scan (separador) y botón nuevo pallet."""
-    active = Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).order_by('-id').first()
+    """Logica compartida entre scan (separador) y boton nuevo pallet."""
+    with transaction.atomic():
+        active = _locked_active_pallet()
 
-    # Si el pallet activo está vacío, no crear uno nuevo
-    if active and not active.items.exists():
-        return {
-            'ok':        False,
-            'error':     f'El pallet actual (P{active.pk:02d}) está vacío. Escanea un HU primero.',
-            'type':      'empty_pallet',
-            'pallet_id': active.pk,
+        # Si el pallet activo esta vacio, no crear uno nuevo.
+        if active and not active.items.exists():
+            return {
+                'ok':        False,
+                'error':     f'El pallet actual (P{active.pk:02d}) esta vacio. Escanea un HU primero.',
+                'type':      'empty_pallet',
+                'pallet_id': active.pk,
+            }
+
+        if active:
+            _mark_pallet_ready(active)
+
+        pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+        pallet_id = pallet.pk
+
+    try:
+        auto_start_result = _auto_start_queue_after_pallet_close(
+            run_f1=run_f1,
+            run_f2=run_f2,
+            run_pdf=run_pdf,
+        )
+    except Exception as exc:
+        log.exception("new_pallet auto_start_failed pallet=%s", pallet_id)
+        auto_start_result = {
+            'auto_started': False,
+            'auto_start_reason': 'auto_start_failed',
+            'auto_start_error': _diagnostic_error_message(exc),
         }
 
-    if active:
-        _mark_pallet_ready(active)
+    response_warnings = []
+    needs_resync = False
+    try:
+        emit_pallet_created(pallet)
+    except Exception as exc:
+        log.exception("new_pallet websocket_emit_failed pallet=%s", pallet_id)
+        needs_resync = True
+        response_warnings.append(
+            'El pallet se creo, pero la UI necesita resincronizarse.'
+        )
 
-    pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
-    auto_start_result = _auto_start_queue_after_pallet_close(
-        run_f1=run_f1,
-        run_f2=run_f2,
-        run_pdf=run_pdf,
-    )
-    emit_pallet_created(pallet)
-    log.info("new_pallet created id=%s", pallet.pk)
+    log.info("new_pallet created id=%s", pallet_id)
 
     return {
         'ok':        True,
-        'pallet_id': pallet.pk,
-        'message':   f'Nuevo pallet #{pallet.pk} iniciado.',
+        'pallet_id': pallet_id,
+        'message':   f'Nuevo pallet #{pallet_id} iniciado.',
+        'warnings':  response_warnings,
+        'needs_resync': needs_resync,
         **auto_start_result,
     }
 
@@ -403,7 +703,27 @@ def _ensure_sap_session():
 
 
 def _sap_session_error_response():
-    connected, user, message = _ensure_sap_session()
+    try:
+        result = _ensure_sap_session()
+    except Exception as exc:
+        log.exception("sap_session_validation_failed")
+        return JsonResponse({
+            'ok': False,
+            'error': f'No se pudo validar la sesion SAP: {_diagnostic_error_message(exc)}',
+            'sap_connected': False,
+            'sap_user': '',
+        }, status=409)
+
+    if not isinstance(result, (list, tuple)) or len(result) < 3:
+        log.warning("sap_session_invalid_response result=%r", result)
+        return JsonResponse({
+            'ok': False,
+            'error': 'No se pudo validar la sesion SAP: respuesta invalida del inicializador.',
+            'sap_connected': False,
+            'sap_user': '',
+        }, status=409)
+
+    connected, user, message = result[:3]
     if connected:
         return None
 
@@ -480,6 +800,66 @@ def _run_options_from_payload(payload: dict) -> dict:
         'run_f2': _coerce_bool(payload.get('run_f2'), True),
         'run_pdf': _coerce_bool(payload.get('run_pdf'), True),
     }
+
+
+def _record_duplicate_scan(hu_code: str, message: str) -> None:
+    """Audita duplicados sin convertir una carrera de escaneo en error 500."""
+    try:
+        ScanLog.objects.create(
+            hu_code=hu_code,
+            result='duplicate',
+            message=message[:255],
+        )
+    except Exception as exc:
+        log.warning("scan_hu duplicate_log_failed hu=%s error=%s", hu_code, exc)
+
+
+def _scan_retryable_error_payload(
+    hu_code: str,
+    exc: Exception,
+    *,
+    status=503,
+    error_type='scan_error',
+) -> dict:
+    """Payload recuperable para conservar lecturas cuando DB/Django falla."""
+    log.exception("scan_hu retryable_error hu=%s type=%s", hu_code, error_type)
+    message = (
+        'No se pudo guardar el HU en este momento. '
+        'El navegador lo conservara y lo reintentara automaticamente.'
+    )
+    return {
+        'ok': False,
+        'error': message,
+        'message': message,
+        'type': error_type,
+        'retryable': True,
+        'status': status,
+        'detail': _diagnostic_error_message(exc),
+    }
+
+
+def _scan_retryable_error_response(
+    hu_code: str,
+    exc: Exception,
+    *,
+    status=503,
+    error_type='scan_error',
+) -> JsonResponse:
+    """
+    Devuelve JSON recuperable para que el frontend conserve y reintente la lectura.
+
+    El objetivo es que un fallo temporal de DB/Django no convierta un escaneo
+    fisico en un HU perdido para el operador.
+    """
+    return JsonResponse(
+        _scan_retryable_error_payload(
+            hu_code,
+            exc,
+            status=status,
+            error_type=error_type,
+        ),
+        status=status,
+    )
 
 
 def _has_ready_queue_work(run_pdf=True) -> bool:
@@ -870,23 +1250,229 @@ def iniciar_sap_endpoint(request):
 # ══════════════════════════════════════════════════════════════════════════════
 #  STATUS SAP — equivale al timer _check_sap()
 # ══════════════════════════════════════════════════════════════════════════════
+def _sap_status_log_once(key: str, level: int, message: str, *, interval: int = 60) -> None:
+    """Evita spam de logs cuando SAP queda caido o no responde por varios minutos."""
+    now = time.time()
+    last = _sap_status_last_log.get(key, 0)
+    if now - last < interval:
+        return
+
+    _sap_status_last_log[key] = now
+    log.log(level, message)
+
+
+def _sap_status_payload(status: str, *, connected=False, user='', message='',
+                        source='live', stale=False, checked_at='') -> dict:
+    return {
+        'connected': bool(connected),
+        'status': status,
+        'user': user if connected else '',
+        'message': message,
+        'checked_at': checked_at,
+        'stale': bool(stale),
+        'source': source,
+    }
+
+
+def _live_sap_status_probe() -> dict:
+    """Consulta SAP COM en un thread separado para que el request HTTP no se bloquee."""
+    from core.sap_client import SAPClient
+
+    try:
+        ok, user = SAPClient.check_session()
+        checked_at = timezone.now().isoformat()
+        return _sap_status_payload(
+            'connected' if ok else 'disconnected',
+            connected=ok,
+            user=user,
+            message='Sesion SAP activa' if ok else 'Sesion SAP desconectada o no valida',
+            source='live',
+            stale=False,
+            checked_at=checked_at,
+        )
+    except Exception as exc:
+        payload = _sap_status_payload(
+            'unavailable',
+            message='No se pudo validar SAP.',
+            source='error',
+            stale=True,
+            checked_at=timezone.now().isoformat(),
+        )
+        payload['error'] = _diagnostic_error_message(exc)
+        return payload
+
+
+def _sap_status_from_cache(status: str, source: str, message: str) -> dict:
+    cached = _sap_status_cache or {}
+    checked_at = cached.get('checked_at', '')
+    age = 999999.0
+    if checked_at:
+        try:
+            checked = datetime.fromisoformat(checked_at)
+            age = max(0.0, (timezone.now() - checked).total_seconds())
+        except Exception:
+            age = 999999.0
+
+    stale = age > SAP_STATUS_STALE_SECONDS
+    connected = bool(cached.get('connected')) and not stale and status != 'unavailable'
+    return _sap_status_payload(
+        status,
+        connected=connected,
+        user=cached.get('user', ''),
+        message=message,
+        source=source,
+        stale=stale,
+        checked_at=checked_at,
+    )
+
+
+def _harvest_sap_status_future_locked() -> None:
+    global _sap_status_future, _sap_status_cache, _sap_status_circuit_until
+
+    if _sap_status_future is None or not _sap_status_future.done():
+        return
+
+    try:
+        _sap_status_cache = _sap_status_future.result()
+        _sap_status_circuit_until = 0.0
+        _sap_status_log_once(
+            'sap_status_recovered',
+            logging.INFO,
+            f"sap_status_recovered status={_sap_status_cache.get('status')}",
+            interval=30,
+        )
+    except Exception as exc:
+        _sap_status_cache = _sap_status_payload(
+            'unavailable',
+            message='No se pudo validar SAP.',
+            source='error',
+            stale=True,
+            checked_at=timezone.now().isoformat(),
+        )
+        _sap_status_cache['error'] = _diagnostic_error_message(exc)
+        _sap_status_circuit_until = time.time() + SAP_STATUS_CIRCUIT_BREAKER_SECONDS
+        _sap_status_log_once(
+            'sap_status_error',
+            logging.WARNING,
+            f"sap_status_error error={_diagnostic_error_message(exc)}",
+        )
+    finally:
+        _sap_status_future = None
+
+
+def get_fast_sap_status() -> dict:
+    """
+    Retorna estado SAP con timeout y cache para proteger Daphne de COM bloqueado.
+
+    Estados posibles: connected, disconnected, unknown, timeout, stale,
+    unavailable. `connected` se mantiene por compatibilidad con la UI previa.
+    """
+    global _sap_status_future, _sap_status_cache, _sap_status_circuit_until
+
+    now = time.time()
+    with _sap_status_lock:
+        _harvest_sap_status_future_locked()
+
+        if _sap_status_future is not None:
+            _sap_status_log_once(
+                'sap_status_inflight',
+                logging.INFO,
+                'sap_status_cache_used reason=inflight_probe',
+                interval=30,
+            )
+            return _sap_status_from_cache(
+                'timeout',
+                'cache',
+                'SAP no respondio a tiempo. Estado anterior usado temporalmente.',
+            )
+
+        if _sap_status_cache:
+            checked_at = _sap_status_cache.get('checked_at', '')
+            try:
+                checked = datetime.fromisoformat(checked_at)
+                age = max(0.0, (timezone.now() - checked).total_seconds())
+            except Exception:
+                age = SAP_STATUS_STALE_SECONDS + 1
+
+            if age <= SAP_STATUS_CACHE_TTL_SECONDS:
+                _sap_status_log_once(
+                    'sap_status_cache',
+                    logging.INFO,
+                    'sap_status_cache_used reason=fresh_cache',
+                    interval=30,
+                )
+                cached = dict(_sap_status_cache)
+                cached['source'] = 'cache'
+                cached['stale'] = False
+                return cached
+
+        if now < _sap_status_circuit_until:
+            _sap_status_log_once(
+                'sap_status_circuit',
+                logging.WARNING,
+                'sap_status_circuit_breaker_active',
+                interval=30,
+            )
+            return _sap_status_from_cache(
+                'stale',
+                'cache',
+                'Verificacion SAP pausada temporalmente por timeouts recientes.',
+            )
+
+        _sap_status_future = _sap_status_executor.submit(_live_sap_status_probe)
+        future = _sap_status_future
+
+    try:
+        result = future.result(timeout=SAP_STATUS_TIMEOUT_SECONDS)
+    except FutureTimeoutError:
+        with _sap_status_lock:
+            _sap_status_circuit_until = time.time() + SAP_STATUS_CIRCUIT_BREAKER_SECONDS
+        _sap_status_log_once(
+            'sap_status_timeout',
+            logging.WARNING,
+            'sap_status_timeout circuit_breaker_started',
+            interval=30,
+        )
+        return _sap_status_from_cache(
+            'timeout',
+            'timeout',
+            'SAP no respondio a tiempo. Estado SAP no confirmado.',
+        )
+    except Exception as exc:
+        with _sap_status_lock:
+            _sap_status_circuit_until = time.time() + SAP_STATUS_CIRCUIT_BREAKER_SECONDS
+        _sap_status_log_once(
+            'sap_status_error',
+            logging.WARNING,
+            f"sap_status_error error={_diagnostic_error_message(exc)}",
+        )
+        payload = _sap_status_payload(
+            'unavailable',
+            message='No se pudo validar SAP.',
+            source='error',
+            stale=True,
+            checked_at=timezone.now().isoformat(),
+        )
+        payload['error'] = _diagnostic_error_message(exc)
+        return payload
+
+    with _sap_status_lock:
+        if _sap_status_future is future:
+            _sap_status_cache = result
+            _sap_status_future = None
+            _sap_status_circuit_until = 0.0
+
+    return result
+
 
 @require_GET
 def sap_status(request):
     """
-    Equivale al QTimer que llama _check_sap() cada 5 segundos.
-    El browser lo polling cada 5s para mostrar el indicador de conexión SAP.
+    Estado rapido de SAP para el indicador de la UI.
+    Usa cache corto, timeout y circuit breaker para proteger Daphne si SAP COM
+    no responde.
     """
-    from core.sap_client import SAPClient
-    try:
-        ok, user = SAPClient.check_session()
-        return JsonResponse({
-            'connected': ok,
-            'user': user,
-            'message': 'Sesion SAP activa' if ok else 'Sesion SAP desconectada o no valida',
-        })
-    except Exception as e:
-        return JsonResponse({'connected': False, 'user': '', 'error': str(e)})
+    return JsonResponse(get_fast_sap_status())
 
 
 @require_GET
@@ -923,9 +1509,127 @@ def system_status(request):
 #  STATS — para actualizar KPIs desde JS
 # ══════════════════════════════════════════════════════════════════════════════
 
+SERVICE_CONTROL_SESSION_KEY = 'nexhus_service_control_authenticated'
+
+
+def _service_control_is_authenticated(request) -> bool:
+    return bool(request.session.get(SERVICE_CONTROL_SESSION_KEY))
+
+
+def _service_control_auth_response(request) -> JsonResponse | None:
+    if not service_control_enabled():
+        return JsonResponse({
+            'ok': False,
+            'authenticated': False,
+            'enabled': False,
+            'error': service_control_not_configured_message(),
+        }, status=403)
+
+    if not _service_control_is_authenticated(request):
+        return JsonResponse({
+            'ok': False,
+            'authenticated': False,
+            'enabled': True,
+            'error': 'Login de soporte requerido.',
+        }, status=401)
+
+    return None
+
+
+@require_POST
+def service_control_login(request):
+    """Autentica el panel de soporte sin exponer passwords del sistema."""
+    if not service_control_enabled():
+        return JsonResponse({
+            'ok': False,
+            'authenticated': False,
+            'enabled': False,
+            'error': service_control_not_configured_message(),
+        }, status=403)
+
+    try:
+        payload = json.loads(request.body.decode('utf-8') or '{}')
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        payload = {}
+
+    password = str(payload.get('password', ''))
+    expected = str(getattr(settings, 'NEXHUS_SERVICE_CONTROL_PASSWORD', ''))
+    if not secrets.compare_digest(password, expected):
+        log.warning("service_control_login_failed remote=%s", request.META.get('REMOTE_ADDR'))
+        return JsonResponse({
+            'ok': False,
+            'authenticated': False,
+            'enabled': True,
+            'error': 'Clave de soporte incorrecta.',
+        }, status=403)
+
+    request.session[SERVICE_CONTROL_SESSION_KEY] = True
+    request.session.set_expiry(60 * 30)
+    return JsonResponse({
+        'ok': True,
+        'authenticated': True,
+        'enabled': True,
+        'services': get_services_status(),
+    })
+
+
+@require_POST
+def service_control_logout(request):
+    request.session.pop(SERVICE_CONTROL_SESSION_KEY, None)
+    return JsonResponse({'ok': True, 'authenticated': False})
+
+
+@require_GET
+def service_control_status(request):
+    auth_error = _service_control_auth_response(request)
+    if auth_error:
+        return auth_error
+
+    return JsonResponse({
+        'ok': True,
+        'authenticated': True,
+        'enabled': True,
+        'services': get_services_status(),
+    })
+
+
+@require_POST
+def service_control_action(request, service: str, action: str):
+    auth_error = _service_control_auth_response(request)
+    if auth_error:
+        return auth_error
+
+    result = execute_service_action(service, action)
+    log.warning(
+        "service_control_action service=%s action=%s ok=%s message=%s",
+        service,
+        action,
+        result.ok,
+        result.message,
+    )
+    return JsonResponse({
+        **result.as_dict(),
+        'authenticated': True,
+        'enabled': True,
+        'services': get_services_status(),
+    }, status=200 if result.ok else 400)
+
+
 @require_GET
 def stats_view(request):
     return JsonResponse(_get_stats())
+
+
+@require_GET
+def queue_snapshot(request):
+    """Devuelve una foto completa de la cola para resincronizar solo la UI."""
+    snapshot = _build_queue_snapshot_payload()
+    log.info(
+        "queue_snapshot requested items=%s is_running=%s",
+        len(snapshot['items']),
+        snapshot['stats'].get('is_running'),
+    )
+    return JsonResponse({'ok': True, **snapshot})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -934,6 +1638,52 @@ def stats_view(request):
 
 def _get_stats() -> dict:
     return calculate_queue_stats()
+
+
+def _build_queue_snapshot_payload() -> dict:
+    """Arma el mismo estado base que consume la UI al conectar o resincronizar."""
+    items = HUItem.objects.select_related('pallet').order_by('added_at', 'id')
+    return {
+        'items': [_serialize_queue_snapshot_item(item) for item in items],
+        'stats': calculate_queue_stats(),
+        'queue_status': calculate_queue_operational_status(),
+        'snapshot_at': timezone.now().isoformat(),
+    }
+
+
+def _serialize_queue_snapshot_item(item: HUItem) -> dict:
+    pallet = item.pallet
+    return {
+        'hu_code': item.hu_code,
+        'status': item.status,
+        'f1_display': item.f1_display,
+        'f2_display': item.f2_display,
+        'phase1_msg': item.phase1_msg,
+        'phase2_msg': item.phase2_msg,
+        'phase2_ms': item.phase2_ms,
+        'pallet_id': item.pallet_id,
+        'origin_code': item.origin_code,
+        'pdf_status': pallet.pdf_status,
+        'pdf_display': pallet.pdf_display,
+        'pdf_msg': pallet.pdf_msg,
+        'pdf_ms': pallet.pdf_ms,
+        'processing_time_display': pallet.processing_time_display,
+        'processing_started_at': (
+            pallet.processing_started_at.isoformat()
+            if pallet.processing_started_at
+            else ''
+        ),
+        'processing_finished_at': (
+            pallet.processing_finished_at.isoformat()
+            if pallet.processing_finished_at
+            else ''
+        ),
+        'receipt_done_at': (
+            pallet.receipt_done_at.isoformat()
+            if pallet.receipt_done_at
+            else ''
+        ),
+    }
 
 
 def _diagnostic_error_message(exc: Exception) -> str:
@@ -1128,26 +1878,14 @@ def _check_database_status() -> dict:
 
 
 def _check_sap_status_for_diagnostics() -> dict:
-    try:
-        from core.sap_client import SAPClient
-
-        connected, user = SAPClient.check_session()
-        return {
-            'ok': bool(connected),
-            'connected': bool(connected),
-            'user': user if connected else '',
-            'message': 'Sesion SAP activa.' if connected else 'Sesion SAP desconectada o no valida.',
-            'action': 'Si SAP esta invalido, cerrar/reabrir SAP o revisar login automatico.',
-        }
-    except Exception as exc:
-        return {
-            'ok': False,
-            'connected': False,
-            'user': '',
-            'message': 'No se pudo validar SAP.',
-            'action': 'Cerrar/reabrir SAP o revisar scripting/login automatico.',
-            'error': _diagnostic_error_message(exc),
-        }
+    status = get_fast_sap_status()
+    status['ok'] = status.get('status') == 'connected'
+    status['action'] = (
+        'SAP conectado y disponible para verificacion rapida.'
+        if status['ok']
+        else 'Si SAP esta invalido, cerrar/reabrir SAP o revisar login automatico.'
+    )
+    return status
 
 
 def _queue_diagnostic_snapshot() -> dict:
@@ -1158,8 +1896,10 @@ def _queue_diagnostic_snapshot() -> dict:
             and heartbeat_age <= QUEUE_WORKER_HEARTBEAT_STALE_SECONDS
         )
         locked = is_queue_locked()
+        lock_owner = get_queue_lock_owner() if locked else ''
         return {
             'is_locked': locked,
+            'lock_owner': lock_owner,
             'stop_requested': is_queue_stop_requested(),
             'stop_request_age_seconds': get_queue_stop_request_age_seconds(),
             'continuous_armed': is_continuous_queue_armed(),
@@ -1167,7 +1907,11 @@ def _queue_diagnostic_snapshot() -> dict:
             'idle_remaining_seconds': get_queue_idle_remaining_seconds(),
             'worker_heartbeat_age_seconds': heartbeat_age,
             'worker_heartbeat_alive': heartbeat_alive,
-            'worker_stale': bool(locked and not heartbeat_alive),
+            'worker_stale': bool(
+                locked
+                and heartbeat_age is not None
+                and heartbeat_age > QUEUE_WORKER_HEARTBEAT_STALE_SECONDS
+            ),
             'processing_hus': HUItem.objects.filter(status=HUItem.STATUS_PROCESSING).count(),
             'pending_hus': HUItem.objects.filter(status=HUItem.STATUS_PENDING).count(),
             'ready_pallets': Pallet.objects.filter(status=Pallet.STATUS_READY).count(),
@@ -1178,6 +1922,7 @@ def _queue_diagnostic_snapshot() -> dict:
     except Exception as exc:
         return {
             'is_locked': False,
+            'lock_owner': '',
             'stop_requested': False,
             'stop_request_age_seconds': None,
             'continuous_armed': False,
@@ -1196,12 +1941,49 @@ def _queue_diagnostic_snapshot() -> dict:
         }
 
 
+def _locked_active_pallet() -> Pallet | None:
+    """Obtiene el pallet activo bajo bloqueo transaccional y corrige duplicados vacios."""
+    active_pallets = list(
+        Pallet.objects
+        .select_for_update()
+        .filter(status=Pallet.STATUS_ACTIVE)
+        .order_by('-id')
+    )
+    if not active_pallets:
+        return None
+
+    active = active_pallets[0]
+    for stale in active_pallets[1:]:
+        if stale.items.exists():
+            stale.status = Pallet.STATUS_READY
+            stale.save(update_fields=['status'])
+            log.warning(
+                "active_pallet_duplicate_closed kept=%s closed=%s",
+                active.pk,
+                stale.pk,
+            )
+        else:
+            stale_id = stale.pk
+            stale.delete()
+            log.warning(
+                "active_pallet_duplicate_empty_deleted kept=%s deleted=%s",
+                active.pk,
+                stale_id,
+            )
+
+    return active
+
+
 def _get_or_create_active_pallet(hu_code: str, origin) -> Pallet:
     """
     Equivale a la lógica de asignación de pallet en HUQueue.add_hu().
     Decide si el HU va al pallet activo o crea uno nuevo.
     """
-    active = Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).order_by('-id').first()
+    if not connection.in_atomic_block:
+        with transaction.atomic():
+            return _get_or_create_active_pallet(hu_code, origin)
+
+    active = _locked_active_pallet()
     queue_locked = is_queue_locked()
     processing_pallet_ids = get_processing_pallet_ids() if queue_locked else set()
 
@@ -1238,6 +2020,12 @@ def _get_or_create_active_pallet(hu_code: str, origin) -> Pallet:
 
 def _mark_pallet_ready(pallet: Pallet) -> None:
     """Cierra un pallet con HUs para que Celery pueda tomarlo."""
+    if not connection.in_atomic_block:
+        with transaction.atomic():
+            _mark_pallet_ready(pallet)
+        return
+
+    pallet = Pallet.objects.select_for_update().get(pk=pallet.pk)
     if pallet.status == Pallet.STATUS_ACTIVE and pallet.items.exists():
         pallet.status = Pallet.STATUS_READY
         pallet.save(update_fields=['status'])
@@ -1245,9 +2033,10 @@ def _mark_pallet_ready(pallet: Pallet) -> None:
 
 def _close_active_pallet_for_processing() -> None:
     """Cierra el pallet abierto actual cuando el usuario inicia el proceso."""
-    active = Pallet.objects.filter(status=Pallet.STATUS_ACTIVE).order_by('-id').first()
-    if active and active.items.exists():
-        _mark_pallet_ready(active)
+    with transaction.atomic():
+        active = _locked_active_pallet()
+        if active and active.items.exists():
+            _mark_pallet_ready(active)
 
 
 def iniciar_sap():
@@ -1297,6 +2086,11 @@ def _recover_orphaned_queue_runtime_data(message: str | None = None) -> dict:
         'Celery se detuvo mientras la cola estaba activa. '
         'Se libero el lock y la UI quedo lista para revisar o reintentar.'
     )
+    invalidated_owner = get_queue_lock_owner()
+    clear_queue_runtime_state(
+        reason='orphaned_runtime_recovery',
+        invalidated_owner=invalidated_owner,
+    )
 
     interrupted_items = list(
         HUItem.objects
@@ -1327,7 +2121,6 @@ def _recover_orphaned_queue_runtime_data(message: str | None = None) -> dict:
             processing_finished_at=now,
         )
 
-    clear_queue_runtime_state()
     emit_stats_update(None)
     result = {
         'status': 'stopped',
@@ -1338,7 +2131,8 @@ def _recover_orphaned_queue_runtime_data(message: str | None = None) -> dict:
     }
     emit_queue_done(result)
     log.warning(
-        "detener_queue orphaned_runtime_recovered interrupted_hus=%s pallets=%s",
+        "detener_queue orphaned_runtime_recovered invalidated_owner=%s interrupted_hus=%s pallets=%s",
+        invalidated_owner or '<none>',
         len(interrupted_items),
         sorted(affected_pallet_ids),
     )
@@ -1370,7 +2164,15 @@ def _queue_lock_blocker_response(action: str) -> JsonResponse | None:
             data['error'] = data['message']
             return JsonResponse(data, status=409)
 
-        clear_queue_runtime_state()
+        invalidated_owner = queue_status.get('lock_owner') or get_queue_lock_owner()
+        clear_queue_runtime_state(
+            reason='lock_blocker_stale_runtime',
+            invalidated_owner=invalidated_owner,
+        )
+        log.warning(
+            "queue_lock_blocker stale_runtime_recovered invalidated_owner=%s",
+            invalidated_owner or '<none>',
+        )
         emit_stats_update(None)
         emit_queue_status(
             'Lock anterior liberado. Puedes iniciar el procesamiento nuevamente.',

@@ -81,28 +81,6 @@ def get_receipt_printer() -> str | None:
     return name if name else None
 
 
-def set_receipt_printer(printer_name: str) -> None:
-    """
-    Guarda el nombre de la impresora en la config del usuario actual.
-
-    Args:
-        printer_name: nombre exacto de la impresora del sistema.
-    """
-    import configparser
-    config_path = _get_config_path()
-    config = configparser.ConfigParser()
-    config.read(config_path, encoding="utf-8")
-
-    if "printing" not in config:
-        config["printing"] = {}
-    config["printing"]["receipt_printer"] = printer_name
-
-    with open(config_path, "w", encoding="utf-8") as f:
-        config.write(f)
-
-    log.info("receipt_printer_saved user=%s printer=%s", os.getlogin(), printer_name)
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # DETECCIÓN DE SUMATRAPDF — bundled primero, sistema como fallback
 #
@@ -247,10 +225,11 @@ class PalletReceiptPDF:
 
     # ── Layout ────────────────────────────────────────────────────────────────
     COLS        = 3
-    MARGIN_MM   = 8
-    ROW_H_MM    = 40
-    HEADER_H_MM = 20
-    FOOTER_H_MM = 8
+    MARGIN_MM   = 5
+    GUTTER_MM   = 5
+    ROW_H_MM    = 58
+    HEADER_H_MM = 23
+    FOOTER_H_MM = 5
 
     @classmethod
     def generate(
@@ -300,7 +279,8 @@ class PalletReceiptPDF:
 
         page_w, page_h = A4
         margin   = cls.MARGIN_MM * mm
-        col_w    = (page_w - margin * (cls.COLS + 1)) / cls.COLS
+        gutter   = cls.GUTTER_MM * mm
+        col_w    = (page_w - margin * 2 - gutter * (cls.COLS - 1)) / cls.COLS
         row_h    = cls.ROW_H_MM * mm
         header_h = cls.HEADER_H_MM * mm
         footer_h = cls.FOOTER_H_MM * mm
@@ -350,13 +330,152 @@ class PalletReceiptPDF:
                 f"Pallet {pallet_id}  |  Pág. {page_num}",
             )
 
+        def _draw_receipt_header(canvas_obj, page_num: int, total_pages: int):
+            canvas_obj.setFillColorRGB(1, 1, 1)
+            canvas_obj.rect(0, page_h - header_h, page_w, header_h, fill=1, stroke=0)
+
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            canvas_obj.rect(margin, page_h - 17 * mm, 1.7 * mm, 12 * mm, fill=1, stroke=0)
+
+            canvas_obj.setFont("Helvetica-Bold", 13)
+            canvas_obj.drawString(
+                margin + 3.2 * mm,
+                page_h - 9.2 * mm,
+                f"PALLET {pallet_id} - {origin_label.upper()}",
+            )
+
+            canvas_obj.setFont("Helvetica", 7)
+            canvas_obj.drawString(
+                margin + 3.2 * mm,
+                page_h - 15.2 * mm,
+                f"Generado: {fecha} | Usuario: {printed_by}",
+            )
+
+            canvas_obj.setFont("Helvetica-Bold", 7)
+            canvas_obj.drawRightString(page_w - margin, page_h - 8.3 * mm, f"Total HUs: {len(receipts)}")
+            canvas_obj.drawRightString(page_w - margin, page_h - 14.2 * mm, f"Pag. {page_num}/{total_pages}")
+
+            canvas_obj.setStrokeColorRGB(0, 0, 0)
+            canvas_obj.setLineWidth(1.2)
+            canvas_obj.line(margin, page_h - header_h + 2 * mm, page_w - margin, page_h - header_h + 2 * mm)
+
+        def _draw_receipt_footer(canvas_obj, page_num: int):
+            canvas_obj.setFillColorRGB(1, 1, 1)
+
+        def _draw_barcode(canvas_obj, value: str, x_pos: float, y_pos: float, width: float, height: float) -> bool:
+            if not value:
+                return False
+
+            try:
+                import barcode as bc_lib
+                from barcode.writer import ImageWriter
+                from reportlab.lib.utils import ImageReader
+
+                buf = BytesIO()
+                code128 = bc_lib.get("code128", value, writer=ImageWriter())
+                code128.write(buf, options={
+                    "module_width": 0.30,
+                    "module_height": 13.0,
+                    "quiet_zone": 1.0,
+                    "font_size": 0,
+                    "text_distance": 1.0,
+                    "write_text": False,
+                    "background": "white",
+                    "foreground": "black",
+                })
+                buf.seek(0)
+
+                canvas_obj.drawImage(
+                    ImageReader(buf),
+                    x_pos,
+                    y_pos,
+                    width=width,
+                    height=height,
+                    preserveAspectRatio=False,
+                    mask="auto",
+                )
+                return True
+            except ImportError:
+                log.warning("python-barcode no instalado - omitiendo barcode para receipt=%s", value)
+            except Exception as e:
+                log.warning("barcode_error receipt=%s error=%s", value, e)
+            return False
+
+        def _draw_checkbox(canvas_obj, x_pos: float, y_pos: float, label: str):
+            box = 3.3 * mm
+            canvas_obj.setStrokeColorRGB(0, 0, 0)
+            canvas_obj.setLineWidth(0.5)
+            canvas_obj.rect(x_pos, y_pos, box, box, fill=0, stroke=1)
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            canvas_obj.setFont("Helvetica-Bold", 6)
+            canvas_obj.drawString(x_pos + box + 1.2 * mm, y_pos + 0.4 * mm, label)
+
+        def _draw_receipt_card(canvas_obj, idx: int, hu_code: str, receipt_id: str, x_pos: float, y_top: float):
+            y_bottom = y_top - row_h
+            card_h = row_h - 2 * mm
+            card_y = y_bottom + 1 * mm
+            strip_h = 8.5 * mm
+            incident_h = 20.5 * mm
+
+            canvas_obj.setFillColorRGB(1, 1, 1)
+            canvas_obj.roundRect(x_pos, card_y, col_w, card_h, 1 * mm, fill=1, stroke=0)
+            canvas_obj.setStrokeColorRGB(0, 0, 0)
+            canvas_obj.setLineWidth(0.7)
+            canvas_obj.roundRect(x_pos, card_y, col_w, card_h, 1 * mm, fill=0, stroke=1)
+
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            canvas_obj.roundRect(x_pos, card_y + card_h - strip_h, col_w, strip_h, 1 * mm, fill=1, stroke=0)
+            canvas_obj.rect(x_pos, card_y + card_h - strip_h, col_w, 2 * mm, fill=1, stroke=0)
+            canvas_obj.setFillColorRGB(1, 1, 1)
+            canvas_obj.setFont("Helvetica-Bold", 9)
+            canvas_obj.drawString(x_pos + 3 * mm, card_y + card_h - 5.6 * mm, f"#{idx + 1}")
+
+            content_x = x_pos + 3 * mm
+            content_w = col_w - 6 * mm
+            content_top = card_y + card_h - strip_h - 4 * mm
+
+            hu_for_print = hu_display_map.get(hu_code, hu_code)
+            hu_display = hu_for_print if len(hu_for_print) <= 22 else hu_for_print[:19] + "..."
+            receipt_display = receipt_id if len(receipt_id) <= 22 else receipt_id[:19] + "..."
+
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            canvas_obj.setFont("Helvetica", 5.4)
+            canvas_obj.drawString(content_x, content_top, "HANDLING UNIT")
+            canvas_obj.setFont("Helvetica-Bold", 8)
+            canvas_obj.drawString(content_x, content_top - 4.2 * mm, hu_display)
+
+            canvas_obj.setFont("Helvetica", 5.4)
+            canvas_obj.drawString(content_x, content_top - 9 * mm, "RECEPCION")
+
+            bar_y = card_y + incident_h + 3.0 * mm
+            bar_h = 9.7 * mm
+            barcode_ok = _draw_barcode(canvas_obj, receipt_id, content_x, bar_y, content_w, bar_h)
+            if not barcode_ok:
+                canvas_obj.setFont("Courier-Bold", 8)
+                canvas_obj.drawCentredString(x_pos + col_w / 2, bar_y + bar_h / 2, receipt_display or "SIN RECIBO")
+
+            canvas_obj.setFont("Courier", 5.4)
+            canvas_obj.drawCentredString(x_pos + col_w / 2, bar_y - 2.5 * mm, receipt_display)
+
+            incident_y = card_y
+            canvas_obj.setFillColorRGB(0.95, 0.95, 0.95)
+            canvas_obj.rect(x_pos + 0.4 * mm, incident_y + 0.4 * mm, col_w - 0.8 * mm, incident_h, fill=1, stroke=0)
+            canvas_obj.setStrokeColorRGB(0, 0, 0)
+            canvas_obj.setLineWidth(0.55)
+            canvas_obj.line(x_pos, incident_y + incident_h, x_pos + col_w, incident_y + incident_h)
+
+            canvas_obj.setFillColorRGB(0, 0, 0)
+            canvas_obj.setFont("Helvetica-Bold", 5.2)
+            canvas_obj.drawString(content_x, incident_y + incident_h - 4.2 * mm, "INCIDENCIAS")
+            _draw_checkbox(canvas_obj, content_x, incident_y + incident_h - 8.7 * mm, "No cerro")
+            _draw_checkbox(canvas_obj, content_x, incident_y + incident_h - 13.9 * mm, "Qty/0 Se recorre")
+            _draw_checkbox(canvas_obj, content_x, incident_y + incident_h - 19.1 * mm, "Otro")
+
         hu_display_map = hu_display_map or {}
         items    = list(receipts.items())
         cur_col  = 0
         cur_row  = 0
         page_num = 1
-
-        _draw_header(c, page_num)
 
         y_content_start = page_h - header_h - margin
         y_content_end   = footer_h + margin
@@ -365,20 +484,31 @@ class PalletReceiptPDF:
             return y_content_start - row_idx * row_h
 
         rows_per_page = max(1, int((y_content_start - y_content_end) / row_h))
+        cards_per_page = max(1, rows_per_page * cls.COLS)
+        total_pages = max(1, (len(items) + cards_per_page - 1) // cards_per_page)
+
+        _draw_receipt_header(c, page_num, total_pages)
 
         for idx, (hu_code, receipt_id) in enumerate(items):
 
             if cur_row >= rows_per_page:
-                _draw_footer(c, page_num)
+                _draw_receipt_footer(c, page_num)
                 c.showPage()
                 page_num += 1
                 cur_row = 0
                 cur_col = 0
-                _draw_header(c, page_num)
+                _draw_receipt_header(c, page_num, total_pages)
 
-            x   = margin + cur_col * (col_w + margin)
+            x   = margin + cur_col * (col_w + gutter)
             y   = _cell_y(cur_row)
             bot = y - row_h
+
+            _draw_receipt_card(c, idx, hu_code, receipt_id, x, y)
+            cur_col += 1
+            if cur_col >= cls.COLS:
+                cur_col = 0
+                cur_row += 1
+            continue
 
             if idx % 2 == 0:
                 r, g, b = _hex_to_rgb(PDF_C.PAGE_BG_ALT)
@@ -475,7 +605,7 @@ class PalletReceiptPDF:
                 cur_col = 0
                 cur_row += 1
 
-        _draw_footer(c, page_num)
+        _draw_receipt_footer(c, page_num)
         c.save()
 
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
@@ -690,17 +820,3 @@ class PalletReceiptPDF:
             log.warning("print_spool_wait_error path=%s error=%s", pdf_path, e)
             return True
 
-    @classmethod
-    def open_pdf(cls, pdf_path: str) -> bool:
-        """Abre el PDF en el visor por defecto del sistema (para previsualizar)."""
-        try:
-            if sys.platform == "win32":
-                os.startfile(pdf_path)
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", pdf_path])
-            else:
-                subprocess.Popen(["xdg-open", pdf_path])
-            return True
-        except Exception as e:
-            log.error("pdf_open_error path=%s error=%s", pdf_path, e)
-            return False

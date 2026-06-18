@@ -392,27 +392,3 @@ class ZE16Client:
             log.error("ze16_pallet_error error=%s", e, exc_info=True)
             raise ZE16Error(f"Error inesperado en ZE16: {e}") from e
 
-    def get_receipt_single_hu(
-        self,
-        hu_code: str,
-        plant: str = DEFAULT_PLANT,
-        wait_after_exec: float = WAIT_AFTER_EXEC,
-    ) -> str | None:
-        """
-        Consulta ZE16 para un solo HU.
-        Útil como fallback o para depuración individual.
-
-        Retorna:
-            receipt_id string sin ceros a la izquierda, o None si no se encontró.
-        """
-        hu_norm = self._normalize_hu(hu_code)
-        try:
-            results = self.get_receipts_for_pallet(
-                [hu_norm], plant=plant, wait_after_exec=wait_after_exec
-            )
-            receipt = results.get(hu_norm)
-            log.info("ze16_single_hu hu=%s receipt=%s", hu_norm, receipt)
-            return receipt
-        except ZE16Error as e:
-            log.error("ze16_single_hu_error hu=%s error=%s", hu_norm, e)
-            return None

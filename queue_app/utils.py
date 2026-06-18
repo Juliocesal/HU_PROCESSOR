@@ -2,10 +2,36 @@ import logging
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.utils import timezone
 
 log = logging.getLogger(__name__)
 
 QUEUE_UPDATES_GROUP = 'queue_updates'
+
+
+def _format_duration(seconds: int) -> str:
+    """Convierte segundos acumulados a texto compacto para la UI."""
+    safe_seconds = max(0, int(seconds or 0))
+    if safe_seconds < 60:
+        return f'{safe_seconds}s'
+
+    minutes = safe_seconds // 60
+    rest = safe_seconds % 60
+    return f'{minutes}min' if rest == 0 else f'{minutes}min {rest}s'
+
+
+def _calculate_pallets_total_processing_seconds(pallets) -> int:
+    """Suma duraciones reales de pallets iniciados; incluye el pallet activo."""
+    now = timezone.now()
+    total_seconds = 0
+    for pallet in pallets:
+        if not pallet.processing_started_at:
+            continue
+
+        end = pallet.processing_finished_at or pallet.receipt_done_at or now
+        total_seconds += max(0, int((end - pallet.processing_started_at).total_seconds()))
+
+    return total_seconds
 
 
 def calculate_queue_stats() -> dict:
@@ -14,6 +40,9 @@ def calculate_queue_stats() -> dict:
     from queue_app.tasks import is_queue_locked
 
     items = HUItem.objects.all()
+    pallets_with_hus = Pallet.objects.filter(items__isnull=False).distinct()
+    pallets_with_hus_list = list(pallets_with_hus)
+    total_processing_seconds = _calculate_pallets_total_processing_seconds(pallets_with_hus_list)
     pdf_pending = pallets_ready_for_pdf_queryset().count()
     is_running = is_queue_locked() or items.filter(status=HUItem.STATUS_PROCESSING).exists()
     # FUTURA BD DE CONSULTA:
@@ -28,6 +57,10 @@ def calculate_queue_stats() -> dict:
         ).count(),
         'pending': items.filter(status=HUItem.STATUS_PENDING).count(),
         'pallets': Pallet.objects.exclude(status=Pallet.STATUS_DONE).count(),
+        'pallets_total': len(pallets_with_hus_list),
+        'pallets_done': sum(1 for pallet in pallets_with_hus_list if pallet.processing_finished_at),
+        'pallets_processing_seconds': total_processing_seconds,
+        'pallets_processing_display': _format_duration(total_processing_seconds),
         'pdf_pending': pdf_pending,
         'is_running': is_running,
     }
@@ -37,13 +70,21 @@ def calculate_queue_operational_status() -> dict | None:
     """Describe que esta haciendo el worker para reconstruir feedback visual."""
     from queue_app.models import HUItem, Pallet
     from queue_app.tasks import (
+        get_queue_last_status,
         get_processing_pallet_ids,
         get_queue_idle_remaining_seconds,
         is_queue_locked,
     )
 
-    if not is_queue_locked():
+    queue_locked = is_queue_locked()
+    if not queue_locked:
         return None
+
+    last_status = get_queue_last_status()
+    if last_status:
+        if last_status.get('remaining_seconds') is not None:
+            last_status['remaining_seconds'] = get_queue_idle_remaining_seconds()
+        return last_status
 
     processing = (
         HUItem.objects
@@ -164,9 +205,9 @@ def pallets_ready_for_pdf_queryset():
             status=Pallet.STATUS_READY,
             items__status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE],
             receipt_done_at__isnull=True,
+            pdf_status='',
         )
         .exclude(items__status__in=blocked_statuses)
-        .exclude(pdf_status=Pallet.PDF_STATUS_OK)
         .distinct()
     )
 
@@ -241,6 +282,9 @@ def emit_pallet_deleted(pallet_id, stats=None):
 
 def emit_queue_cleared(pallet_id, stats=None):
     """Notifica limpieza total de cola y pallet inicial creado."""
+    from queue_app.tasks import clear_queue_last_status
+
+    clear_queue_last_status()
     _send_group('queue_cleared', {
         'type': 'queue_cleared',
         'pallet_id': pallet_id,
@@ -264,6 +308,7 @@ def emit_receipt_done(pallet_id, result):
         'processing_started_at': result.get('processing_started_at', ''),
         'processing_finished_at': result.get('processing_finished_at', ''),
         'receipt_done_at': result.get('receipt_done_at', ''),
+        'stats': calculate_queue_stats(),
     })
 
 
@@ -283,7 +328,7 @@ def emit_queue_status(
     if is_running is not None:
         stats['is_running'] = bool(is_running)
 
-    _send_group('queue_status', {
+    payload = {
         'type': 'queue_status',
         'message': message,
         'badge': badge,
@@ -293,7 +338,20 @@ def emit_queue_status(
         'active_hu_count': active_hu_count,
         'remaining_seconds': remaining_seconds,
         'stats': stats,
-    })
+    }
+
+    try:
+        from queue_app.tasks import set_queue_last_status
+
+        set_queue_last_status({
+            key: value
+            for key, value in payload.items()
+            if key != 'stats'
+        })
+    except Exception as exc:
+        log.warning("queue_last_status_emit_failed: %s", exc)
+
+    _send_group('queue_status', payload)
 
 
 def emit_current_queue_status_if_available() -> None:
@@ -332,18 +390,30 @@ def emit_queue_done(result):
 
 def emit_pallet_done(pallet_id, hu_count):
     """Emite avance visual por pallet sin disparar alertas finales."""
+    from queue_app.models import Pallet
+
+    pallet = Pallet.objects.filter(pk=pallet_id).first()
     _send_group('pallet_done', {
         'type': 'pallet_done',
         'pallet_id': pallet_id,
         'hu_count': hu_count,
-    })
-
-
-def emit_error(message):
-    """Emite un error general de cola."""
-    _send_group('error_message', {
-        'type': 'error_message',
-        'message': message,
+        'processing_time_display': pallet.processing_time_display if pallet else '',
+        'processing_started_at': (
+            pallet.processing_started_at.isoformat()
+            if pallet and pallet.processing_started_at
+            else ''
+        ),
+        'processing_finished_at': (
+            pallet.processing_finished_at.isoformat()
+            if pallet and pallet.processing_finished_at
+            else ''
+        ),
+        'receipt_done_at': (
+            pallet.receipt_done_at.isoformat()
+            if pallet and pallet.receipt_done_at
+            else ''
+        ),
+        'stats': calculate_queue_stats(),
     })
 
 
