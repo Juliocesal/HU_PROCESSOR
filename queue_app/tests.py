@@ -89,6 +89,34 @@ class SystemStatusTests(TestCase):
         self.assertIn('queue', payload)
 
 
+    def test_system_status_skips_heavy_queue_snapshot_when_redis_is_down(self):
+        redis_status = {
+            'ok': False,
+            'message': 'Redis no responde.',
+            'error': 'timeout',
+        }
+        degraded_queue = {
+            'is_locked': False,
+            'pending_hus': 0,
+            'runtime_unavailable': True,
+        }
+        with (
+            patch('queue_app.views._check_redis_status', return_value=redis_status),
+            patch('queue_app.views._queue_diagnostic_snapshot') as heavy_snapshot,
+            patch('queue_app.views._queue_diagnostic_snapshot_without_redis', return_value=degraded_queue),
+            patch('queue_app.views._check_celery_status', return_value={'ok': False, 'workers': []}),
+            patch('queue_app.views._check_database_status', return_value={'ok': True, 'message': 'DB responde.'}),
+            patch('queue_app.views._check_sap_status_for_diagnostics', return_value={'ok': False, 'connected': False}),
+        ):
+            response = self.client.get('/api/system-status/')
+
+        self.assertEqual(response.status_code, 200)
+        heavy_snapshot.assert_not_called()
+        payload = response.json()
+        self.assertFalse(payload['ok'])
+        self.assertTrue(payload['queue']['runtime_unavailable'])
+
+
     def test_celery_without_workers_is_reported_as_error(self):
         inspector = SimpleNamespace(ping=lambda: {})
         current_app = SimpleNamespace(
@@ -1023,9 +1051,9 @@ class ScanHuTests(TestCase):
     def test_scan_batch_processes_pending_browser_outbox(self):
         with (
             patch('queue_app.views.is_queue_locked', return_value=False),
-            patch('queue_app.views.emit_item_update'),
-            patch('queue_app.views.emit_stats_update'),
-            patch('queue_app.views.emit_current_queue_status_if_available'),
+            patch('queue_app.views.emit_item_update') as emit_item_update,
+            patch('queue_app.views.emit_stats_update') as emit_stats_update,
+            patch('queue_app.views.emit_current_queue_status_if_available') as emit_queue_status,
         ):
             response = self.client.post(
                 '/scan/batch/',
@@ -1045,6 +1073,9 @@ class ScanHuTests(TestCase):
         self.assertEqual(payload['retryable'], 0)
         self.assertEqual(HUItem.objects.count(), 2)
         self.assertEqual(payload['stats']['pending'], 2)
+        self.assertEqual(emit_item_update.call_count, 2)
+        emit_stats_update.assert_called_once()
+        emit_queue_status.assert_called_once()
 
 
     def test_scan_is_allowed_when_worker_lock_is_active(self):

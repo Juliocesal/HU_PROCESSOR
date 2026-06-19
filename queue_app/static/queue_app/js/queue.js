@@ -1,4 +1,14 @@
   // -- Mapa de orígenes (igual que hu_origins.py) -------------------------------
+  const {
+    nativeFetch,
+    setDiagnosticLogger,
+    iconHTML,
+    escapeHTML,
+    fetchWithTimeout,
+    csrfHeaders,
+    readJsonResponse,
+  } = window.NexhusQueueShared || {};
+
   const ORIGIN_MAP = {
     'TH':   { code: 'THA',     label: 'Tailandia (THA)',   cls: 'origin-THA'     },
     'T':    { code: 'CNA',     label: 'China (CNA)',        cls: 'origin-CNA'     },
@@ -85,20 +95,6 @@
     `;
   }
 
-  function iconHTML(name, className = 'ui-icon') {
-    return `<i data-lucide="${name}" class="${className}" aria-hidden="true"></i>`;
-  }
-
-  function escapeHTML(value) {
-    return String(value || '').replace(/[&<>"']/g, char => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    }[char]));
-  }
-
   // -- Consola de diagnostico ---------------------------------------------------
   const DIAG_MAX_LINES = 500;
   const diagnosticLogs = [];
@@ -121,7 +117,6 @@
   let lastNoProgressWarningAt = 0;
   let lastWebSocketCloseLogAt = 0;
   let iconRefreshFrame = null;
-  const nativeFetch = window.fetch.bind(window);
   const FETCH_TIMEOUTS = {
     startProcess: 15000,
     reprocessQueue: 15000,
@@ -166,7 +161,7 @@
     return new Date().toLocaleTimeString('es-MX', { hour12: false });
   }
 
-  async function fetchWithTimeout(resource, init = {}, timeoutMs = 10000, label = 'Solicitud HTTP') {
+  async function _legacyFetchWithTimeout(resource, init = {}, timeoutMs = 10000, label = 'Solicitud HTTP') {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     const started = performance.now();
@@ -227,6 +222,10 @@
     diagnosticLogs.push(entry);
     if (diagnosticLogs.length > DIAG_MAX_LINES) diagnosticLogs.shift();
     renderDiagnosticConsole();
+  }
+
+  if (typeof setDiagnosticLogger === 'function') {
+    setDiagnosticLogger(addDiagnosticLog);
   }
 
   function renderDiagnosticConsole() {
@@ -2881,57 +2880,6 @@
     bar.className = `show ${color}`;
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => { bar.className = ''; }, 3000);
-  }
-
-  // -- CSRF helper ---------------------------------------------------------------
-  function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-      for (const cookie of document.cookie.split(';')) {
-        const c = cookie.trim();
-        if (c.startsWith(name + '=')) {
-          cookieValue = decodeURIComponent(c.slice(name.length + 1));
-          break;
-        }
-      }
-    }
-    return cookieValue;
-  }
-
-  function csrfHeaders(extra = {}) {
-    const token = getCookie('csrftoken');
-    return token ? { ...extra, 'X-CSRFToken': token } : extra;
-  }
-
-  async function readJsonResponse(res) {
-    const contentType = res.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      const data = await res.json();
-      if (!res.ok || data.ok === false) {
-        addDiagnosticLog(
-          res.status >= 500 ? 'error' : 'warn',
-          'HTTP',
-          `Respuesta JSON con alerta (${res.status}).`,
-          data.error || data.message || res.url
-        );
-      }
-      return data;
-    }
-
-    const text = await res.text();
-    const titleMatch = text.match(/<title>(.*)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() : '';
-    addDiagnosticLog(
-      'error',
-      'HTTP',
-      'Respuesta no JSON cuando se esperaba JSON.',
-      `${res.status} ${title || res.url}`
-    );
-    return {
-      ok: false,
-      error: title || `Error HTTP ${res.status}`,
-      status: res.status,
-    };
   }
 
   // -- SAP Status polling (equivale al QTimer de _check_sap) --------------------

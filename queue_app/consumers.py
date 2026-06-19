@@ -4,7 +4,7 @@ import logging
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-from queue_app.utils import QUEUE_UPDATES_GROUP
+from queue_app.ws.events import QUEUE_UPDATES_GROUP
 
 log = logging.getLogger(__name__)
 
@@ -179,6 +179,6 @@ class QueueConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _get_initial_state(self):
-        from queue_app.views import _build_queue_snapshot_payload
+        from queue_app.services.snapshot_service import build_queue_snapshot_payload
 
-        return _build_queue_snapshot_payload()
+        return build_queue_snapshot_payload()
