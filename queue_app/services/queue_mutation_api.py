@@ -1,7 +1,7 @@
 import json
 
 from django.core.management.color import no_style
-from django.db import connection
+from django.db import connection, transaction
 from django.http import JsonResponse
 
 from queue_app.models import HUItem, Pallet
@@ -14,6 +14,26 @@ REPROCESS_ALL_STATUSES = [
     HUItem.STATUS_ERROR,
     HUItem.STATUS_HU_NOT_FOUND,
 ]
+PDF_RETRY_BLOCKED_HU_STATUSES = [
+    HUItem.STATUS_PENDING,
+    HUItem.STATUS_PROCESSING,
+    HUItem.STATUS_ERROR,
+    HUItem.STATUS_HU_NOT_FOUND,
+]
+
+
+def _pdf_error_pallets_queryset():
+    """Pallets que pueden repetir ZE16/PDF sin volver a ejecutar F1/F2."""
+    return (
+        Pallet.objects
+        .filter(
+            status=Pallet.STATUS_READY,
+            pdf_status=Pallet.PDF_STATUS_ERROR,
+            items__status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE],
+        )
+        .exclude(items__status__in=PDF_RETRY_BLOCKED_HU_STATUSES)
+        .distinct()
+    )
 
 
 def new_pallet_result(
@@ -258,8 +278,82 @@ def reprocess_queue_response(
         payload = {}
 
     mode = payload.get('mode', 'all')
-    if mode not in ('all', 'errors'):
+    if mode not in ('all', 'errors', 'pdf_errors'):
         return JsonResponse({'ok': False, 'error': 'Modo de reproceso invalido'}, status=400)
+
+    if mode == 'pdf_errors':
+        pallets = list(_pdf_error_pallets_queryset())
+        affected_pallet_ids = {pallet.pk for pallet in pallets}
+        if not affected_pallet_ids:
+            return JsonResponse({
+                'ok': False,
+                'error': 'No hay pallets con error ZE16/PDF listos para reintentar.',
+            }, status=400)
+
+        celery_error = celery_start_blocker_response_func()
+        if celery_error:
+            return celery_error
+
+        sap_error = sap_session_error_response_func()
+        if sap_error:
+            return sap_error
+
+        with transaction.atomic():
+            Pallet.objects.filter(pk__in=affected_pallet_ids).update(
+                status=Pallet.STATUS_READY,
+                receipt_done_at=None,
+                pdf_status='',
+                pdf_msg='',
+                pdf_ms=0,
+            )
+            HUItem.objects.filter(pallet_id__in=affected_pallet_ids).update(
+                receipt_done_at=None,
+                pdf_status='',
+                pdf_msg='',
+                pdf_ms=0,
+            )
+
+        items = list(
+            HUItem.objects
+            .filter(pallet_id__in=affected_pallet_ids)
+            .select_related('pallet')
+            .order_by('pallet_id', 'added_at', 'id')
+        )
+        for item in items:
+            emit_item_update_func(item)
+
+        count = len(items)
+        emit_stats_update_func(None)
+        try:
+            dispatch_continuous_queue_func()
+        except Exception as exc:
+            close_sap_session_if_idle_func()
+            logger.exception("reprocess_pdf_errors celery_dispatch_failed")
+            return JsonResponse({
+                'ok': False,
+                'error': f'No se pudo iniciar Celery/Redis: {exc}',
+            }, status=503)
+
+        pallet_count = len(affected_pallet_ids)
+        emit_queue_status_func(
+            f'Reintento ZE16/PDF preparado para {pallet_count} pallet(s).',
+            badge='REINTENTO PDF',
+            mode='running',
+            footer='Celery volvera a consultar ZE16 e imprimir los receipts pendientes.',
+            is_running=True,
+        )
+        logger.info(
+            "reprocess_queue mode=pdf_errors pallets=%d hus=%d",
+            pallet_count,
+            count,
+        )
+        return JsonResponse({
+            'ok': True,
+            'count': count,
+            'pallet_count': pallet_count,
+            'pallet_ids': sorted(affected_pallet_ids),
+            'mode': mode,
+        })
 
     target_statuses = (
         REPROCESS_ERROR_STATUSES

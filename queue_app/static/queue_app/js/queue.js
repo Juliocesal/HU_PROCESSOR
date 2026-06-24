@@ -1601,6 +1601,7 @@
 
   function statusCellHTML(status, f1_display, f2_display, phase2_msg, col) {
     const display = col === 'f1' ? f1_display : f2_display;
+    const f1SucceededBeforeF2Error = status === 'error' && Boolean(phase2_msg);
     const labels = { pending:'Pendiente', processing:'Procesando...' };
     const statusIcon = {
       pending: 'clock-3',
@@ -1612,8 +1613,8 @@
     }[status] || 'circle';
 
     if (col === 'f1') {
-      if (status === 'ok' || status === 'duplicate')
-        return `<span class="ok-cell">${iconHTML(statusIcon)}${display || 'OK'}</span>`;
+      if (status === 'ok' || status === 'duplicate' || f1SucceededBeforeF2Error)
+        return `<span class="ok-cell">${iconHTML('circle-check')}${display || 'OK'}</span>`;
       if (status === 'error' || status === 'hu_not_found')
         return `<span class="error-cell">${iconHTML(statusIcon)}${display || 'Error'}</span>`;
       return `<span class="cell-status status-${status}">${iconHTML(statusIcon)}${display || labels[status] || status}</span>`;
@@ -2672,13 +2673,15 @@
   // -- Reprocesar ----------------------------------------------------------------
   async function reprocess() {
     if (isRunning) return;
-    if (stats.pending > 0 || ((stats.ok + stats.errors) === 0 && !hasErrorRows())) {
+    const hasHuErrors = hasErrorRows();
+    const hasPdfErrors = hasPdfErrorPallets();
+    if (stats.pending > 0 || ((stats.ok + stats.errors) === 0 && !hasHuErrors && !hasPdfErrors)) {
       setFooterStatus('No hay HUs disponibles para reprocesar.', '');
       updateButtons();
       return;
     }
 
-    if (hasErrorRows()) {
+    if (hasHuErrors || hasPdfErrors) {
       showReprocessMenu();
       return;
     }
@@ -2692,10 +2695,27 @@
     ));
   }
 
+  function hasPdfErrorPallets() {
+    return Boolean(document.querySelector(
+      '#queue-tbody tr[data-hu] td:nth-child(6) .error-cell'
+    ));
+  }
+
   function showReprocessMenu() {
     const menu = document.getElementById('reprocess-menu');
     const btn = document.getElementById('btn-reprocess');
     if (!menu || !btn) return;
+
+    const hasHuErrors = hasErrorRows();
+    const hasPdfErrors = hasPdfErrorPallets();
+    menu.querySelector('[data-reprocess-mode="errors"]').style.display = hasHuErrors ? '' : 'none';
+    menu.querySelector('[data-reprocess-mode="pdf_errors"]').style.display = hasPdfErrors ? '' : 'none';
+    menu.querySelector('[data-reprocess-separator="errors"]').style.display = (
+      hasHuErrors || hasPdfErrors
+    ) ? '' : 'none';
+    menu.querySelector('[data-reprocess-separator="pdf_errors"]').style.display = (
+      hasHuErrors && hasPdfErrors
+    ) ? '' : 'none';
 
     const rect = btn.getBoundingClientRect();
     menu.style.display = 'block';
@@ -2713,14 +2733,19 @@
     if (isRunning) return;
 
     const isErrorsOnly = mode === 'errors';
+    const isPdfRetry = mode === 'pdf_errors';
     const message = isErrorsOnly
       ? 'Marcará solo los HUs con error como Pendientes para reprocesar.\n¿Continuar?'
       : 'Marcará todos los HUs procesados como Pendientes para reprocesar.\n¿Continuar?';
     const confirmed = await showConfirmToast({
-      title: isErrorsOnly ? 'Reprocesar errores' : 'Reprocesar lista completa',
-      message: isErrorsOnly
-        ? 'Marcara solo los HUs con error como pendientes para reprocesar.'
-        : 'Marcara todos los HUs procesados como pendientes para reprocesar.',
+      title: isPdfRetry
+        ? 'Reintentar ZE16/PDF'
+        : (isErrorsOnly ? 'Reprocesar errores' : 'Reprocesar lista completa'),
+      message: isPdfRetry
+        ? 'Volvera a consultar ZE16 e imprimir el receipt de los pallets con error PDF. No ejecutara F1 ni F2 nuevamente.'
+        : (isErrorsOnly
+          ? 'Marcara solo los HUs con error como pendientes para reprocesar.'
+          : 'Marcara todos los HUs procesados como pendientes para reprocesar.'),
       confirmText: 'Reprocesar',
       cancelText: 'Cancelar',
     });
@@ -2754,20 +2779,35 @@
     }
 
     if (data.ok) {
-      flash('OK ' + data.count + ' HUs marcados como pendientes.', 'green');
-      const selector = isErrorsOnly
-        ? '#queue-tbody tr[data-status="error"], #queue-tbody tr[data-status="hu_not_found"]'
-        : '#queue-tbody tr[data-hu]';
+      if (isPdfRetry) {
+        (data.pallet_ids || []).forEach(palletId => {
+          updatePalletPdfCells({
+            pallet_id: palletId,
+            status: 'pending',
+            pdf_status: '',
+            pdf_display: '',
+            pdf_msg: '',
+          });
+        });
+        flash(`OK ${data.pallet_count || 0} pallet(s) preparado(s) para reintentar ZE16/PDF.`, 'green');
+      } else {
+        flash('OK ' + data.count + ' HUs marcados como pendientes.', 'green');
+        const selector = isErrorsOnly
+          ? '#queue-tbody tr[data-status="error"], #queue-tbody tr[data-status="hu_not_found"]'
+          : '#queue-tbody tr[data-hu]';
 
-      document.querySelectorAll(selector).forEach(tr => {
-        if (tr.cells[3]) tr.cells[3].innerHTML = statusCellHTML('pending', 'Pendiente', '', '', 'f1');
-        if (tr.cells[4]) tr.cells[4].innerHTML = statusCellHTML('pending', '', 'Pendiente', '', 'f2');
-        if (tr.cells[5]) tr.cells[5].innerHTML = pdfCellHTML('pending');
-        tr.dataset.status = 'pending';
-      });
+        document.querySelectorAll(selector).forEach(tr => {
+          if (tr.cells[3]) tr.cells[3].innerHTML = statusCellHTML('pending', 'Pendiente', '', '', 'f1');
+          if (tr.cells[4]) tr.cells[4].innerHTML = statusCellHTML('pending', '', 'Pendiente', '', 'f2');
+          if (tr.cells[5]) tr.cells[5].innerHTML = pdfCellHTML('pending');
+          tr.dataset.status = 'pending';
+        });
+      }
       refreshIcons();
 
-      if (isErrorsOnly) {
+      if (isPdfRetry) {
+        // F1/F2 y los KPIs de HU permanecen intactos; solo se reintenta PDF.
+      } else if (isErrorsOnly) {
         stats.pending += data.count;
         stats.errors = Math.max(0, stats.errors - data.count);
       } else {
@@ -2777,7 +2817,11 @@
       }
 
       updateProgress();
-      showRunningMode('SAP listo. Reproceso enviado a Celery.');
+      showRunningMode(
+        isPdfRetry
+          ? 'SAP listo. Reintento ZE16/PDF enviado a Celery.'
+          : 'SAP listo. Reproceso enviado a Celery.'
+      );
       updateButtons();
     } else {
       isRunning = false;

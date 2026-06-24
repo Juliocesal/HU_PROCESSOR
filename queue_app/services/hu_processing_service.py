@@ -127,8 +127,11 @@ def _process_hu_item(
                     )
                 return item
 
-            if res1['status'] == 'duplicate':
-                item.phase1_msg = 'Ya se hizo el Acknowledge'
+            if res1['status'] == 'already_separated':
+                item.phase1_msg = res1['message']
+                log.info("process_hu_item phase1_destination_notice hu=%s", item.hu_code)
+            elif res1['status'] == 'duplicate':
+                item.phase1_msg = res1['message'] or 'Ya se hizo el Acknowledge'
 
         if run_f2:
             emit_queue_status(
@@ -156,14 +159,21 @@ def _process_hu_item(
                 pallet.save(update_fields=['f2_done_at'])
                 item.status = (
                     HUItem.STATUS_OK
-                    if (not run_f1 or (res1 and res1['status'] == 'ok'))
+                    if (
+                        not run_f1
+                        or (res1 and res1['status'] in ('ok', 'already_separated'))
+                    )
                     else HUItem.STATUS_DUPLICATE
                 )
             else:
                 item.status = HUItem.STATUS_ERROR
                 item.error_msg = res2['message']
         else:
-            item.status = HUItem.STATUS_OK
+            item.status = (
+                HUItem.STATUS_DUPLICATE
+                if res1 and res1['status'] == 'duplicate'
+                else HUItem.STATUS_OK
+            )
 
         item.processed_at = timezone.now()
         item.processing_ms = _calculate_elapsed_ms(item.processing_started_at)

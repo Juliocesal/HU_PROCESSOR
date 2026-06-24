@@ -264,7 +264,9 @@
               </td>
               <td style="font-family:var(--mono);font-size:8.5pt;">{{ item.hu_code }}</td>
               <td>
-                {% if item.status == 'ok' or item.status == 'duplicate' %}
+                {% if item.status == 'error' and item.phase2_msg %}
+                  <span class="ok-cell"><i data-lucide="circle-check"></i>{{ item.f1_display }}</span>
+                {% elif item.status == 'ok' or item.status == 'duplicate' %}
                   <span class="ok-cell"><i data-lucide="circle-check"></i>{{ item.f1_display }}</span>
                 {% elif item.status == 'error' or item.status == 'hu_not_found' %}
                   <span class="error-cell"><i data-lucide="triangle-alert"></i>{{ item.f1_display }}</span>
@@ -372,14 +374,19 @@
 </div>
 
 <div id="reprocess-menu">
-  <div class="ctx-item" onclick="reprocessQueue('all')">
+  <div class="ctx-item" data-reprocess-mode="all" onclick="reprocessQueue('all')">
     <i data-lucide="list-restart"></i>
     <span>Lista completa</span>
   </div>
-  <div class="ctx-sep"></div>
-  <div class="ctx-item" onclick="reprocessQueue('errors')">
+  <div class="ctx-sep" data-reprocess-separator="errors"></div>
+  <div class="ctx-item" data-reprocess-mode="errors" onclick="reprocessQueue('errors')">
     <i data-lucide="triangle-alert"></i>
     <span>Solo HUs con error</span>
+  </div>
+  <div class="ctx-sep" data-reprocess-separator="pdf_errors"></div>
+  <div class="ctx-item" data-reprocess-mode="pdf_errors" onclick="reprocessQueue('pdf_errors')">
+    <i data-lucide="file-warning"></i>
+    <span>Reintentar ZE16/PDF</span>
   </div>
 </div>
 

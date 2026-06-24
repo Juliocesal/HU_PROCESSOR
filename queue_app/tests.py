@@ -1,6 +1,6 @@
 from datetime import timedelta
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 from asgiref.sync import async_to_sync
@@ -244,6 +244,85 @@ class ServiceControlTests(TestCase):
 
 
 class SAPSessionValidationTests(TestCase):
+    def test_destination_storage_message_is_classified_as_already_separated(self):
+        self.assertTrue(SAPClient._is_hu_already_in_destination_storage_location(
+            '@5C@ HU Already In The Destination Storage Location'
+        ))
+        self.assertFalse(SAPClient._is_hu_already_in_destination_storage_location(
+            '@5C@ HU is not allowed in the destination storage location'
+        ))
+
+
+    def test_phase2_material_types_message_returns_error_after_enter_button(self):
+        class Field:
+            Text = ''
+            caretPosition = 0
+
+        class Window:
+            def sendVKey(self, _key):
+                return None
+
+        field = Field()
+        enter_button = MagicMock()
+        client = SAPClient()
+        elements = {
+            'wnd[0]/usr/txtGV_HU': field,
+            'wnd[0]': Window(),
+            'wnd[0]/usr/btnENTER': enter_button,
+        }
+        client._find = lambda element_id: elements.get(element_id)
+        client._get_origin_timings = MagicMock(return_value=(0, 0, 0, 0))
+        client._wait_idle = MagicMock(return_value=True)
+        elements.update({
+            'wnd[0]/usr/txtGV_MESSAGE01': SimpleNamespace(Text='Code C1017078829 HU'),
+            'wnd[0]/usr/txtGV_MESSAGE02': SimpleNamespace(Text='contains different'),
+            'wnd[0]/usr/txtGV_MESSAGE03': SimpleNamespace(Text='material types.'),
+            'wnd[0]/usr/txtGV_MESSAGE04': SimpleNamespace(Text='Impossible to go'),
+            'wnd[0]/usr/txtGV_MESSAGE05': SimpleNamespace(Text='on'),
+        })
+        client._get_sbar_text = MagicMock(return_value='')
+        client._get_popup = MagicMock(return_value=None)
+
+        result = client.process_hu_phase2('C1017078829', phase2_wait=0)
+
+        self.assertEqual(result['status'], 'error')
+        self.assertEqual(
+            result['message'],
+            'Code C1017078829 HU contains different material types. Impossible to go on',
+        )
+        self.assertEqual(result['phase2_ts'].year, 1)
+        enter_button.press.assert_called_once()
+
+
+    def test_phase2_message_field_returns_its_error_text(self):
+        class Field:
+            Text = ''
+            caretPosition = 0
+
+        class Window:
+            def sendVKey(self, _key):
+                return None
+
+        field = Field()
+        client = SAPClient()
+        elements = {
+            'wnd[0]/usr/txtGV_HU': field,
+            'wnd[0]': Window(),
+            'wnd[0]/usr/txtGV_MESSAGE01': SimpleNamespace(Text='HU bloqueada para separazione'),
+        }
+        client._find = lambda element_id: elements.get(element_id)
+        client._get_origin_timings = MagicMock(return_value=(0, 0, 0, 0))
+        client._wait_idle = MagicMock(return_value=True)
+        client._get_sbar_text = MagicMock(return_value='')
+        client._get_popup = MagicMock(return_value=None)
+
+        result = client.process_hu_phase2('C1017078825', phase2_wait=0)
+
+        self.assertEqual(result['status'], 'error')
+        self.assertIn('HU bloqueada para separazione', result['message'])
+        self.assertEqual(result['phase2_ts'].year, 1)
+
+
     def _make_sap_session(self, *, system='LUP', client='100', user='BOT1', wnd=None):
         class Session:
             def __init__(self):
@@ -422,7 +501,51 @@ class SAPSessionValidationTests(TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(closed, ['BOT1'])
 
+class AlreadySeparatedProcessingTests(TestCase):
+    def test_phase1_destination_notice_still_runs_f2(self):
+        from queue_app.services.hu_processing_service import _process_hu_item
 
+        pallet = Pallet.objects.create(status=Pallet.STATUS_READY)
+        item = HUItem.objects.create(
+            hu_code='TH0000268197',
+            pallet=pallet,
+            status=HUItem.STATUS_PENDING,
+        )
+        sap = MagicMock()
+        sap.process_hu_phase1.return_value = {
+            'status': 'already_separated',
+            'message': 'Ya se hizo el Acknowledge',
+            'sbar': '',
+        }
+        sap.process_hu_phase2.return_value = {
+            'status': 'ok',
+            'message': 'Separazione OK',
+            'duration_ms': 450,
+            'phase2_ts': timezone.now(),
+        }
+
+        with (
+            patch('core.sap_client.SAPClient', return_value=sap),
+            patch('queue_app.utils.emit_item_update'),
+            patch('queue_app.utils.emit_queue_status'),
+            patch('queue_app.utils.emit_stats_update'),
+            patch('pythoncom.CoInitialize'),
+            patch('pythoncom.CoUninitialize'),
+        ):
+            result = _process_hu_item(
+                item.pk,
+                run_f1=True,
+                run_f2=True,
+                run_pallet_boundary=False,
+            )
+
+        self.assertEqual(result.status, HUItem.STATUS_OK)
+        self.assertEqual(result.phase1_msg, 'Ya se hizo el Acknowledge')
+        self.assertEqual(result.phase2_msg, 'Separazione OK')
+        self.assertEqual(result.phase2_ms, 450)
+        self.assertEqual(result.error_msg, '')
+        sap.setup_phase2.assert_called_once()
+        sap.process_hu_phase2.assert_called_once()
 
 
 class QueueEventTests(TestCase):
@@ -522,6 +645,64 @@ class ClearQueueTests(TestCase):
 
 
 class ReprocessQueueTests(TestCase):
+    def test_reprocess_pdf_errors_retries_receipt_without_resetting_hus(self):
+        completed_at = timezone.now()
+        pallet = Pallet.objects.create(
+            status=Pallet.STATUS_READY,
+            pdf_status=Pallet.PDF_STATUS_ERROR,
+            pdf_msg='ZE16: sin Receipt IDs para pallet 7 tras 4 intento(s)',
+            pdf_ms=1200,
+            receipt_done_at=completed_at,
+        )
+        item = HUItem.objects.create(
+            hu_code='T10045916001',
+            pallet=pallet,
+            status=HUItem.STATUS_OK,
+            phase1_msg='Acknowledge OK',
+            phase2_msg='Separazione OK',
+            phase2_ms=450,
+            receipt_done_at=completed_at,
+            pdf_status=Pallet.PDF_STATUS_ERROR,
+            pdf_msg=pallet.pdf_msg,
+            pdf_ms=1200,
+        )
+
+        with (
+            patch('queue_app.views.is_queue_locked', return_value=False),
+            patch('queue_app.views._celery_start_blocker_response', return_value=None),
+            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
+            patch('queue_app.views.process_queue_task.delay') as delay,
+            patch('queue_app.views.emit_item_update'),
+            patch('queue_app.views.emit_stats_update'),
+        ):
+            response = self.client.post(
+                '/cola/reprocesar/',
+                data='{"mode": "pdf_errors"}',
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload['mode'], 'pdf_errors')
+        self.assertEqual(payload['count'], 1)
+        self.assertEqual(payload['pallet_ids'], [pallet.pk])
+        delay.assert_called_once()
+
+        item.refresh_from_db()
+        pallet.refresh_from_db()
+        self.assertEqual(item.status, HUItem.STATUS_OK)
+        self.assertEqual(item.phase1_msg, 'Acknowledge OK')
+        self.assertEqual(item.phase2_msg, 'Separazione OK')
+        self.assertEqual(item.phase2_ms, 450)
+        self.assertEqual(item.pdf_status, '')
+        self.assertIsNone(item.receipt_done_at)
+        self.assertEqual(pallet.status, Pallet.STATUS_READY)
+        self.assertEqual(pallet.pdf_status, '')
+        self.assertEqual(pallet.pdf_msg, '')
+        self.assertIsNone(pallet.receipt_done_at)
+        self.assertIn(pallet, list(pallets_ready_for_pdf_queryset()))
+
+
     def test_reprocess_errors_only_marks_only_failed_hus_pending(self):
         pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
         ok = HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_OK)

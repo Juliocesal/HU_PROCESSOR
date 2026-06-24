@@ -58,6 +58,9 @@ ALV_MSG_COLUMNS = ["MESSAGE", "MSG_TEXT", "TEXT", "MSGTEXT", "DESCRIPTION", "MAK
 
 SAP_ICON_OK    = "@5B@"
 SAP_ICON_ERROR = "@5C@"
+SAP_HU_ALREADY_IN_DESTINATION_MESSAGE = "hu already in the destination storage location"
+SAP_PHASE2_MATERIAL_TYPES_MESSAGE = "hu contains different material types"
+SAP_PHASE2_IMPOSSIBLE_TO_CONTINUE_MESSAGE = "impossible to go on"
 
 
 ALV_ERROR_KEYWORDS = [
@@ -90,7 +93,7 @@ SAP_DISCONNECTED_KEYWORDS = [
 
 
 class Phase1Result(TypedDict):
-    status:  str   # "ok" | "duplicate" | "hu_not_found" | "error"
+    status:  str   # "ok" | "duplicate" | "already_separated" | "hu_not_found" | "error"
     message: str
     sbar:    str
 
@@ -823,6 +826,67 @@ class SAPClient:
         return any(kw in msg_lower for kw in ALV_ERROR_KEYWORDS)
 
 
+    @staticmethod
+    def _is_hu_already_in_destination_storage_location(message: str) -> bool:
+        """Reconoce el aviso SAP que confirma una separazione ya aplicada."""
+        normalized = " ".join(str(message or "").lower().split())
+        return SAP_HU_ALREADY_IN_DESTINATION_MESSAGE in normalized
+
+
+    @staticmethod
+    def _is_phase2_material_types_error(message: str) -> bool:
+        """Reconoce el rechazo de ZMMTIJSEP que no genera movimiento ni receipt."""
+        normalized = " ".join(str(message or "").lower().split())
+        return (
+            SAP_PHASE2_MATERIAL_TYPES_MESSAGE in normalized
+            and SAP_PHASE2_IMPOSSIBLE_TO_CONTINUE_MESSAGE in normalized
+        )
+
+
+    def _get_phase2_screen_error(self) -> tuple[bool, str]:
+        """Detecta y lee el mensaje que ZMMTIJSEP solo muestra al rechazar un HU."""
+        first_field = self._find("wnd[0]/usr/txtGV_MESSAGE01")
+        if first_field is None:
+            return False, ""
+
+        message_parts = []
+        for index in range(1, 11):
+            field = first_field if index == 1 else self._find(
+                f"wnd[0]/usr/txtGV_MESSAGE{index:02d}"
+            )
+            if field is None:
+                continue
+            try:
+                text = str(field.Text).strip()
+            except Exception:
+                continue
+            if text:
+                message_parts.append(text)
+        return True, " ".join(message_parts)
+
+
+    def _build_phase2_screen_error_result(
+        self,
+        hu_code: str,
+        t_start: float,
+        screen_message: str,
+    ) -> Phase2Result:
+        """Convierte un mensaje de pantalla de ZMMTIJSEP en resultado F2 fallido."""
+        duration = int((time.time() - t_start) * 1000)
+        message = " ".join(screen_message.split()) or 'SAP reporto un error sin detalle.'
+        if self._is_phase2_material_types_error(screen_message):
+            log.warning("hu_phase2_material_types_error hu=%s msg=%r", hu_code, screen_message)
+        else:
+            log.warning("hu_phase2_screen_error hu=%s msg=%r", hu_code, screen_message)
+
+        return Phase2Result(
+            status="error",
+            message=message[:255],
+            duration_ms=duration,
+            phase2_ts=_INVALID_TS,
+        )
+
+
     # -- Navegacion ------------------------------------------------------------
 
 
@@ -1016,6 +1080,22 @@ class SAPClient:
             else:
                 alv_message = self._get_alv_message()
 
+                if self._is_hu_already_in_destination_storage_location(alv_message):
+                    log.info(
+                        "hu_phase1_already_separated hu=%s msg=%r",
+                        hu_code,
+                        alv_message,
+                    )
+                    wnd_back = self._find("wnd[0]")
+                    if wnd_back:
+                        wnd_back.sendVKey(3)
+                    self._wait_idle()
+                    time.sleep(wait_short)
+                    return Phase1Result(
+                        status="already_separated",
+                        message="Ya se hizo el Acknowledge",
+                        sbar=sbar,
+                    )
 
                 if alv_message and self._is_alv_error(alv_message):
                     error_type = "SAP_AUTHORIZATION_DENIED" if SAP_ICON_ERROR in alv_message else "ALV_ERROR"
@@ -1106,6 +1186,37 @@ class SAPClient:
                 )
             wnd_submit.sendVKey(0)
 
+            if not self._wait_idle(timeout=TIMEOUT_SAP):
+                return Phase2Result(
+                    status="error",
+                    message="TIMEOUT: SAP no respondio en 15s",
+                    duration_ms=int((time.time() - t_start) * 1000),
+                    phase2_ts=_INVALID_TS,
+                )
+
+            phase2_error_visible, phase2_screen_message = self._get_phase2_screen_error()
+            log.info(
+                "hu_phase2_message_field_check hu=%s stage=before_enter visible=%s message=%r",
+                hu_code,
+                phase2_error_visible,
+                phase2_screen_message,
+            )
+            enter_button = self._find("wnd[0]/usr/btnENTER")
+            if phase2_error_visible:
+                # SAP requiere confirmar el mensaje para volver a una pantalla limpia,
+                # pero el resultado ya fue capturado y no debe continuar a ZE16.
+                if enter_button is not None:
+                    enter_button.press()
+                    self._wait_idle()
+                return self._build_phase2_screen_error_result(
+                    hu_code,
+                    t_start,
+                    phase2_screen_message,
+                )
+
+            if enter_button is not None:
+                enter_button.press()
+
 
             if phase2_wait > 0:
                 time.sleep(phase2_wait)
@@ -1126,6 +1237,58 @@ class SAPClient:
 
 
             self._wait_idle()
+
+            phase2_error_visible, phase2_screen_message = self._get_phase2_screen_error()
+            phase2_feedback = " ".join(
+                part for part in (phase2_screen_message, self._get_sbar_text()) if part
+            )
+            popup = self._get_popup()
+            if popup is not None:
+                popup_title = ""
+                popup_text = ""
+                try:
+                    popup_title = str(popup.Text).strip()
+                except Exception:
+                    pass
+
+                message_label = self._find("wnd[1]/usr/txtMESSTXT1")
+                if message_label is None:
+                    message_label = self._find("wnd[1]/usr/lbl[1,2]")
+                if message_label is not None:
+                    try:
+                        popup_text = str(message_label.Text).strip()
+                    except Exception:
+                        pass
+                phase2_feedback = " ".join(
+                    part for part in (popup_text, popup_title, phase2_feedback) if part
+                )
+
+            if self._is_phase2_material_types_error(phase2_feedback):
+                if popup is not None:
+                    popup_window = self._find("wnd[1]")
+                    if popup_window is not None:
+                        popup_window.sendVKey(0)
+                        self._wait_idle()
+
+                duration = int((time.time() - t_start) * 1000)
+                message = (
+                    'HU contiene diferentes tipos de material. '
+                    f'Separazione no puede continuar. SAP: {phase2_feedback}'
+                )
+                log.warning("hu_phase2_material_types_error hu=%s msg=%r", hu_code, phase2_feedback)
+                return Phase2Result(
+                    status="error",
+                    message=message[:255],
+                    duration_ms=duration,
+                    phase2_ts=_INVALID_TS,
+                )
+
+            if phase2_error_visible:
+                return self._build_phase2_screen_error_result(
+                    hu_code,
+                    t_start,
+                    phase2_screen_message,
+                )
 
 
             duration = int((time.time() - t_start) * 1000)
