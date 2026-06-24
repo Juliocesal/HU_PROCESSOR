@@ -1,10 +1,15 @@
 import json
+import logging
+import time
 
 from django.conf import settings
 from django.http import JsonResponse
 from django.utils import timezone
 
 from queue_app.models import HUItem, Pallet
+from queue_app.services.performance_service import log_performance
+
+log = logging.getLogger(__name__)
 
 
 def ensure_sap_session():
@@ -95,12 +100,21 @@ def dispatch_continuous_queue(
     arm_continuous_queue_func,
     idle_timeout_seconds: int,
 ) -> None:
+    dispatch_started_at = time.perf_counter()
     process_queue_task.delay(
         run_f1=run_f1,
         run_f2=run_f2,
         run_pdf=run_pdf,
         continuous=True,
         idle_timeout=idle_timeout_seconds,
+    )
+    log_performance(
+        log,
+        'celery.dispatch_queue_task',
+        dispatch_started_at,
+        f1=run_f1,
+        f2=run_f2,
+        pdf=run_pdf,
     )
     arm_continuous_queue_func()
 

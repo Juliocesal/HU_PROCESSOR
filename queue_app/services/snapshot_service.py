@@ -1,3 +1,6 @@
+import logging
+import time
+
 from django.utils import timezone
 
 from queue_app.models import HUItem
@@ -5,6 +8,9 @@ from queue_app.services.stats_service import (
     calculate_queue_operational_status,
     calculate_queue_stats,
 )
+from queue_app.services.performance_service import log_performance
+
+log = logging.getLogger(__name__)
 
 SNAPSHOT_HU_FIELDS = [
     'id',
@@ -30,6 +36,7 @@ SNAPSHOT_PALLET_FIELDS = [
 
 def build_queue_snapshot_payload() -> dict:
     """Arma el mismo estado base que consume la UI al conectar o resincronizar."""
+    started_at = time.perf_counter()
     items = (
         HUItem.objects
         .select_related('pallet')
@@ -38,7 +45,7 @@ def build_queue_snapshot_payload() -> dict:
     )
     stats = calculate_queue_stats()
     pallet_cache = {}
-    return {
+    payload = {
         'items': [
             serialize_queue_snapshot_item(item, pallet_cache=pallet_cache)
             for item in items.iterator(chunk_size=500)
@@ -51,6 +58,13 @@ def build_queue_snapshot_payload() -> dict:
         ),
         'snapshot_at': timezone.now().isoformat(),
     }
+    log_performance(
+        log,
+        'db.build_queue_snapshot',
+        started_at,
+        items=len(payload['items']),
+    )
+    return payload
 
 
 def _snapshot_pallet_payload(item: HUItem, pallet_cache: dict[int, dict]) -> dict:

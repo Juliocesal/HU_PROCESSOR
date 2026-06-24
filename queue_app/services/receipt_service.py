@@ -9,6 +9,7 @@ from queue_app.services.queue_runtime import (
     _ensure_queue_ownership,
     _queue_lock_owned_by,
 )
+from queue_app.services.performance_service import log_performance
 
 log = logging.getLogger(__name__)
 
@@ -119,7 +120,16 @@ def _get_ze16_receipts_with_retries(
                 active_hu_count=hu_count,
             )
 
+        ze16_started_at = time.perf_counter()
         receipts = ze16.get_receipts_for_pallet(hu_codes)
+        log_performance(
+            log,
+            'sap.ze16.receipt_query',
+            ze16_started_at,
+            pallet=pallet_id,
+            attempt=attempt,
+            receipts=len(receipts),
+        )
         _ensure_queue_ownership(owner, f'ze16_receipts_received_{attempt}')
         if receipts:
             return receipts, attempt
@@ -158,15 +168,24 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None =
     from queue_app.utils import emit_queue_status, emit_receipt_done
 
     pythoncom.CoInitialize()
+    workflow_started_at = time.perf_counter()
     result = {'status': 'error', 'message': 'Unknown ZE16/PDF error', 'marked': 0}
     pdf_started = None
 
     try:
         _ensure_queue_ownership(owner, 'ze16_pdf_start')
+        db_started_at = time.perf_counter()
         pallet = Pallet.objects.get(pk=pallet_id)
         hu_codes = list(
             pallet.items.filter(status__in=[HUItem.STATUS_OK, HUItem.STATUS_DUPLICATE])
             .values_list('hu_code', flat=True)
+        )
+        log_performance(
+            log,
+            'db.fetch_pallet_for_receipt',
+            db_started_at,
+            pallet=pallet_id,
+            hus=len(hu_codes),
         )
         hu_count = len(hu_codes)
 
@@ -187,11 +206,14 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None =
             active_hu_count=hu_count,
         )
         sap = SAPClient()
+        sap_started_at = time.perf_counter()
         sap.connect()
+        log_performance(log, 'sap.connect_ze16', sap_started_at, pallet=pallet_id)
         _ensure_queue_ownership(owner, 'ze16_sap_connected')
         printed_by = getattr(settings, 'SAP_LOGIN_USER', '') or sap.get_user()
 
         ze16 = ZE16Client(sap.session)
+        ze16_started_at = time.perf_counter()
         receipts, receipt_attempts = _get_ze16_receipts_with_retries(
             ze16,
             hu_codes,
@@ -199,6 +221,14 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None =
             hu_count=hu_count,
             owner=owner,
             status_callback=emit_queue_status,
+        )
+        log_performance(
+            log,
+            'sap.ze16.receipt_retries',
+            ze16_started_at,
+            pallet=pallet_id,
+            attempts=receipt_attempts,
+            receipts=len(receipts),
         )
         hu_display_map = _build_hu_display_map(ze16, hu_codes)
 
@@ -223,12 +253,20 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None =
             active_pallet_id=pallet_id,
             active_hu_count=hu_count,
         )
+        pdf_generation_started_at = time.perf_counter()
         pdf_path = PalletReceiptPDF.generate(
             pallet_id=pallet_id,
             origin_label=effective_origin.label,
             receipts=receipts,
             hu_display_map=hu_display_map,
             printed_by=printed_by,
+        )
+        log_performance(
+            log,
+            'pdf.generate',
+            pdf_generation_started_at,
+            pallet=pallet_id,
+            receipts=len(receipts),
         )
         _ensure_queue_ownership(owner, 'pdf_generated')
         emit_queue_status(
@@ -239,7 +277,9 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None =
             active_pallet_id=pallet_id,
             active_hu_count=hu_count,
         )
+        print_started_at = time.perf_counter()
         printed = PalletReceiptPDF.print_pdf(pdf_path)
+        log_performance(log, 'pdf.print_and_spool', print_started_at, pallet=pallet_id, printed=printed)
         _ensure_queue_ownership(owner, 'pdf_printed')
 
         if not printed:
@@ -283,6 +323,13 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None =
         if emit_completion and (not owner or _queue_lock_owned_by(owner)):
             emit_receipt_done(pallet_id, result)
         pythoncom.CoUninitialize()
+        log_performance(
+            log,
+            'queue.ze16_pdf_total',
+            workflow_started_at,
+            pallet=pallet_id,
+            status=result.get('status'),
+        )
 
 
 def _save_pdf_result(pallet, result: dict, started_at: float | None, owner: str | None = None) -> dict:
@@ -315,9 +362,16 @@ def _save_pdf_result(pallet, result: dict, started_at: float | None, owner: str 
     }
     if completed_at:
         item_updates['receipt_done_at'] = completed_at
+    db_started_at = time.perf_counter()
     pallet.items.all().update(**item_updates)
-
     pallet.save(update_fields=update_fields)
+    log_performance(
+        log,
+        'db.save_pdf_result',
+        db_started_at,
+        pallet=pallet.pk,
+        status=pallet.pdf_status,
+    )
     result['pdf_status'] = pallet.pdf_status
     result['pdf_display'] = pallet.pdf_display
     result['pdf_msg'] = pallet.pdf_msg

@@ -1,4 +1,5 @@
 import logging
+import time
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
@@ -7,6 +8,7 @@ from queue_app.services.stats_service import (
     calculate_queue_operational_status,
     calculate_queue_stats,
 )
+from queue_app.services.performance_service import log_performance
 
 log = logging.getLogger(__name__)
 
@@ -248,8 +250,18 @@ def emit_pallet_done(pallet_id, hu_count, *, stats_func=None, send_func=None):
 
 def _send_group(event_type, data):
     """Envia eventos a Channels desde codigo sincrono, como tareas Celery."""
+    started_at = time.perf_counter()
     try:
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(QUEUE_UPDATES_GROUP, data)
+        log_performance(
+            log,
+            'websocket.group_send',
+            started_at,
+            event=event_type,
+            hu=data.get('hu_code'),
+            pallet=data.get('pallet_id'),
+        )
     except Exception as exc:
+        log_performance(log, 'websocket.group_send', started_at, event=event_type, failed=True)
         log.warning("emit_%s failed: %s", event_type, exc)

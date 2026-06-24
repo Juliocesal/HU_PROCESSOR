@@ -1,10 +1,12 @@
 import json
 import logging
+import time
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from queue_app.ws.events import QUEUE_UPDATES_GROUP
+from queue_app.services.performance_service import log_performance
 
 log = logging.getLogger(__name__)
 
@@ -165,7 +167,16 @@ class QueueConsumer(AsyncWebsocketConsumer):
         })
 
     async def _send_json(self, payload: dict) -> None:
-        await self.send(json.dumps(payload))
+        started_at = time.perf_counter()
+        encoded_payload = json.dumps(payload)
+        await self.send(encoded_payload)
+        log_performance(
+            log,
+            'websocket.client_send',
+            started_at,
+            event=payload.get('type'),
+            bytes=len(encoded_payload),
+        )
 
     async def _send_initial_state(self):
         """Envia el estado actual de la cola cuando el navegador abre la pagina."""

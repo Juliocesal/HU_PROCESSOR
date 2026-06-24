@@ -1,9 +1,11 @@
 import logging
+import time
 
 from django.utils import timezone
 
 from queue_app.services.queue_runtime import QueueOwnershipLost, _ensure_queue_ownership
 from queue_app.services.receipt_service import _run_pallet_boundary
+from queue_app.services.performance_service import log_performance
 
 log = logging.getLogger(__name__)
 
@@ -30,11 +32,15 @@ def _process_hu_item(
     from queue_app.models import HUItem
     from queue_app.utils import emit_item_update, emit_queue_status, emit_stats_update
 
+    hu_started_at = time.perf_counter()
+    hu_code_for_log = str(hu_item_id)
     pythoncom.CoInitialize()
 
     try:
         try:
+            db_started_at = time.perf_counter()
             item = HUItem.objects.select_related('pallet').get(pk=hu_item_id)
+            log_performance(log, 'db.fetch_hu', db_started_at, hu=item.hu_code, hu_id=hu_item_id)
         except HUItem.DoesNotExist:
             log.error("process_hu_item missing hu_id=%s", hu_item_id)
             return None
@@ -44,6 +50,7 @@ def _process_hu_item(
             return item
 
         origin = detect_origin(item.hu_code)
+        hu_code_for_log = item.hu_code
 
         _ensure_queue_ownership(owner, 'mark_hu_processing')
         item.status = HUItem.STATUS_PROCESSING
@@ -53,6 +60,7 @@ def _process_hu_item(
         item.pdf_msg = ''
         item.pdf_ms = 0
         _ensure_queue_ownership(owner, 'save_hu_processing')
+        db_started_at = time.perf_counter()
         item.save(update_fields=[
             'status',
             'processing_started_at',
@@ -61,6 +69,7 @@ def _process_hu_item(
             'pdf_msg',
             'pdf_ms',
         ])
+        log_performance(log, 'db.mark_hu_processing', db_started_at, hu=item.hu_code)
         emit_item_update(item)
         emit_stats_update(item.pallet)
 
@@ -74,7 +83,9 @@ def _process_hu_item(
             active_pallet_id=item.pallet_id,
             active_hu_count=1,
         )
+        sap_started_at = time.perf_counter()
         sap.connect()
+        log_performance(log, 'sap.connect_hu', sap_started_at, hu=item.hu_code)
         log.info("process_hu_item sap_connected hu=%s", item.hu_code)
 
         res1 = None
@@ -88,8 +99,18 @@ def _process_hu_item(
                 active_pallet_id=item.pallet_id,
                 active_hu_count=1,
             )
+            sap_started_at = time.perf_counter()
             sap.setup_phase1(origin=origin)
+            log_performance(log, 'sap.f1.setup', sap_started_at, hu=item.hu_code)
+            sap_started_at = time.perf_counter()
             res1 = sap.process_hu_phase1(item.hu_code, origin=origin)
+            log_performance(
+                log,
+                'sap.f1.execute',
+                sap_started_at,
+                hu=item.hu_code,
+                result=res1['status'],
+            )
             _ensure_queue_ownership(owner, 'save_f1_result')
             item.phase1_msg = res1['message']
             item.f1_done_at = timezone.now()
@@ -104,6 +125,7 @@ def _process_hu_item(
                 item.processing_ms = _calculate_elapsed_ms(item.processing_started_at)
                 item.error_msg = res1['message']
                 _ensure_queue_ownership(owner, 'save_hu_f1_error')
+                db_started_at = time.perf_counter()
                 item.save(update_fields=[
                     'status',
                     'phase1_msg',
@@ -112,6 +134,7 @@ def _process_hu_item(
                     'processing_ms',
                     'error_msg',
                 ])
+                log_performance(log, 'db.save_f1_error', db_started_at, hu=item.hu_code)
                 emit_item_update(item)
                 emit_stats_update(item.pallet)
                 log.warning(
@@ -142,11 +165,21 @@ def _process_hu_item(
                 active_pallet_id=item.pallet_id,
                 active_hu_count=1,
             )
+            sap_started_at = time.perf_counter()
             sap.setup_phase2(origin=origin)
+            log_performance(log, 'sap.f2.setup', sap_started_at, hu=item.hu_code)
+            sap_started_at = time.perf_counter()
             res2 = sap.process_hu_phase2(
                 item.hu_code,
                 phase2_wait=origin.phase2_wait,
                 origin=origin,
+            )
+            log_performance(
+                log,
+                'sap.f2.execute',
+                sap_started_at,
+                hu=item.hu_code,
+                result=res2['status'],
             )
             _ensure_queue_ownership(owner, 'save_f2_result')
             item.phase2_msg = res2['message']
@@ -182,6 +215,7 @@ def _process_hu_item(
         elif not item.error_msg:
             item.error_msg = item.phase2_msg or item.phase1_msg or 'Error de procesamiento'
         _ensure_queue_ownership(owner, 'save_hu_final_result')
+        db_started_at = time.perf_counter()
         item.save(update_fields=[
             'status',
             'phase1_msg',
@@ -192,6 +226,7 @@ def _process_hu_item(
             'processed_at',
             'processing_ms',
         ])
+        log_performance(log, 'db.save_hu_final', db_started_at, hu=item.hu_code, status=item.status)
         emit_item_update(item)
         emit_stats_update(item.pallet)
 
@@ -215,6 +250,7 @@ def _process_hu_item(
         return _mark_item_error(hu_item_id, str(e), owner=owner)
     finally:
         pythoncom.CoUninitialize()
+        log_performance(log, 'queue.hu_total', hu_started_at, hu=hu_code_for_log)
 
 
 def _mark_item_error(hu_item_id: int, message: str, owner: str | None = None):

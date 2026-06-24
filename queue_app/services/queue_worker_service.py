@@ -12,6 +12,7 @@ from queue_app.services.queue_runtime import (
     QueueOwnershipLost,
     _ensure_queue_ownership,
 )
+from queue_app.services.performance_service import log_performance
 
 log = logging.getLogger(__name__)
 
@@ -187,8 +188,11 @@ def run_queue_worker(
     from queue_app.models import HUItem, Pallet
 
     logger = logger or log
+    worker_started_at = time.perf_counter()
     owner = hooks.new_queue_owner_token('process_queue_task', request_id)
+    lock_started_at = time.perf_counter()
     if not hooks.acquire_queue_lock(owner):
+        log_performance(logger, 'redis.acquire_queue_lock', lock_started_at, acquired=False)
         message = 'Queue processing already active; start request ignored.'
         logger.warning(message)
         hooks.emit_queue_status(
@@ -199,6 +203,7 @@ def run_queue_worker(
             is_running=True,
         )
         return {'ok': False, 'error': message}
+    log_performance(logger, 'redis.acquire_queue_lock', lock_started_at, acquired=True)
 
     hooks.touch_queue_worker_heartbeat(owner)
     heartbeat_stop, heartbeat_thread = hooks.start_queue_worker_heartbeat(owner)
@@ -223,7 +228,15 @@ def run_queue_worker(
                 hooks.emit_queue_done(final)
                 return final
 
+            db_started_at = time.perf_counter()
             pallet_ids, pdf_ready_pallet_ids = hooks.collect_processable_pallet_ids(run_pdf)
+            log_performance(
+                logger,
+                'db.collect_processable_pallets',
+                db_started_at,
+                pallets=len(pallet_ids),
+                pdf_ready=len(pdf_ready_pallet_ids),
+            )
             if not pallet_ids:
                 hooks.set_processing_pallet_ids([], owner=owner)
                 if not continuous or idle_timeout <= 0 or (
@@ -317,11 +330,19 @@ def run_queue_worker(
                     hooks.emit_queue_done(final)
                     return final
 
+                db_started_at = time.perf_counter()
                 pallet = Pallet.objects.get(pk=pallet_id)
                 item_ids = list(
                     pallet.items.filter(status=HUItem.STATUS_PENDING)
                     .order_by('added_at', 'id')
                     .values_list('id', flat=True)
+                )
+                log_performance(
+                    logger,
+                    'db.fetch_pallet_hus',
+                    db_started_at,
+                    pallet=pallet_id,
+                    hus=len(item_ids),
                 )
 
                 if not item_ids:
@@ -345,6 +366,7 @@ def run_queue_worker(
                         hooks.emit_queue_done(final)
                         return final
 
+                    hu_started_at = time.perf_counter()
                     item = hooks.process_hu_item(
                         item_id,
                         run_f1=run_f1,
@@ -353,15 +375,31 @@ def run_queue_worker(
                         emit_pallet_completion=False,
                         owner=owner,
                     )
+                    log_performance(
+                        logger,
+                        'queue.process_hu',
+                        hu_started_at,
+                        pallet=pallet_id,
+                        hu_id=item_id,
+                        status=item.status if item else 'missing',
+                    )
                     hooks.ensure_queue_ownership(owner, 'hu_processed')
                     hooks.touch_queue_worker_heartbeat(owner)
                     hus_processed += 1
                     if item and item.status in (HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND):
                         errors += 1
 
+                db_started_at = time.perf_counter()
                 pallet_errors = pallet.items.filter(
                     status__in=[HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
                 ).count()
+                log_performance(
+                    logger,
+                    'db.count_pallet_errors',
+                    db_started_at,
+                    pallet=pallet_id,
+                    errors=pallet_errors,
+                )
                 if pallet_errors:
                     if run_pdf:
                         result = {
@@ -407,7 +445,15 @@ def run_queue_worker(
                         footer=f'Generando e imprimiendo recibo de P{pallet_id:02d}.',
                     )
                     hooks.touch_queue_worker_heartbeat(owner)
+                    boundary_started_at = time.perf_counter()
                     result = hooks.run_pallet_boundary(pallet_id, emit_completion=True, owner=owner)
+                    log_performance(
+                        logger,
+                        'queue.pallet_boundary',
+                        boundary_started_at,
+                        pallet=pallet_id,
+                        result=result.get('status') if result else 'missing',
+                    )
                     hooks.ensure_queue_ownership(owner, 'pallet_boundary_complete')
                     hooks.touch_queue_worker_heartbeat(owner)
                     if result and result.get('status') != 'ok':
@@ -453,4 +499,15 @@ def run_queue_worker(
             logger.warning("process_queue_task skip_sap_close_lost_ownership owner=%s", owner)
         heartbeat_stop.set()
         heartbeat_thread.join(timeout=1)
+        release_started_at = time.perf_counter()
         hooks.release_queue_lock(owner)
+        log_performance(logger, 'redis.release_queue_lock', release_started_at)
+        log_performance(
+            logger,
+            'celery.queue_task_total',
+            worker_started_at,
+            request_id=request_id,
+            pallets=pallets_processed,
+            hus=hus_processed,
+            errors=errors,
+        )

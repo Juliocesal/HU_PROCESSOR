@@ -1,7 +1,12 @@
+import logging
 import time
 
 from django.db.models import Count, Q
 from django.utils import timezone
+
+from queue_app.services.performance_service import log_performance
+
+log = logging.getLogger(__name__)
 
 _QUEUE_LOCK_STATS_CACHE_SECONDS = 1.0
 _QUEUE_LOCK_STATS_CACHE = {
@@ -54,6 +59,7 @@ def calculate_queue_stats() -> dict:
     from queue_app.models import HUItem, Pallet
     from queue_app.services.queue_runtime import is_queue_locked_quick
 
+    started_at = time.perf_counter()
     item_counts = HUItem.objects.aggregate(
         total=Count('id'),
         ok=Count('id', filter=Q(status__in=[
@@ -85,7 +91,7 @@ def calculate_queue_stats() -> dict:
     # Estos filtros ya representan WHERE por estado para KPIs/reportes:
     # status OK/duplicate = procesados, status error/hu_not_found = problemas,
     # status pending = pendientes, Pallet.status active = pallets abiertos.
-    return {
+    result = {
         'total': item_counts['total'],
         'ok': item_counts['ok'],
         'errors': item_counts['errors'],
@@ -98,6 +104,14 @@ def calculate_queue_stats() -> dict:
         'pdf_pending': pdf_pending,
         'is_running': is_running,
     }
+    log_performance(
+        log,
+        'db.calculate_queue_stats',
+        started_at,
+        total=result['total'],
+        pallets=result['pallets'],
+    )
+    return result
 
 
 def calculate_queue_operational_status() -> dict | None:

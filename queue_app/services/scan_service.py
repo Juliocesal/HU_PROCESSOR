@@ -1,10 +1,12 @@
 import logging
+import time
 from dataclasses import dataclass
 from typing import Callable
 
 from django.db import transaction
 
 from queue_app.models import HUItem, Pallet, ScanLog
+from queue_app.services.performance_service import log_performance
 
 log = logging.getLogger(__name__)
 
@@ -68,6 +70,7 @@ def queue_hu_scan(
     log_label='scan_hu',
 ) -> QueuedHUScan:
     """Valida duplicado y guarda un HU pendiente dentro del pallet correspondiente."""
+    started_at = time.perf_counter()
     with transaction.atomic():
         if HUItem.objects.select_for_update().filter(hu_code=raw).exists():
             ScanLog.objects.create(
@@ -93,4 +96,12 @@ def queue_hu_scan(
         if origin.auto_pallet:
             mark_pallet_ready(pallet)
 
+    log_performance(
+        log,
+        'db.queue_hu_scan',
+        started_at,
+        hu=raw,
+        pallet=pallet.pk,
+        origin=origin.code,
+    )
     return QueuedHUScan(item=item, pallet=pallet)
