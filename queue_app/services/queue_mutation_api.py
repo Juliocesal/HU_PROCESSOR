@@ -5,6 +5,7 @@ from django.db import connection, transaction
 from django.http import JsonResponse
 
 from queue_app.models import HUItem, Pallet
+from queue_app.services.stats_service import invalidate_queue_stats_cache
 
 
 REPROCESS_ERROR_STATUSES = [HUItem.STATUS_ERROR, HUItem.STATUS_HU_NOT_FOUND]
@@ -124,6 +125,7 @@ def delete_hu_response(
 
     pallet = item.pallet
     item.delete()
+    invalidate_queue_stats_cache()
     pdf_reset = recalculate_pallet_after_hu_delete_func(pallet)
     logger.info("delete_hu hu=%s pallet=%s", hu_code, pallet.pk)
 
@@ -181,6 +183,7 @@ def delete_pallet_response(
 
     count = pallet.items.count()
     pallet.delete()
+    invalidate_queue_stats_cache()
     stats = get_stats_func()
     emit_pallet_deleted_func(pallet_id, stats=stats)
     logger.info("delete_pallet id=%s hu_count=%s", pallet_id, count)
@@ -213,6 +216,7 @@ def clear_queue_response(
     Pallet.objects.all().delete()
     reset_queue_sequences()
     pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+    invalidate_queue_stats_cache()
     stats = get_stats_func()
     emit_queue_cleared_func(pallet.pk, stats=stats)
 
@@ -312,6 +316,7 @@ def reprocess_queue_response(
                 pdf_msg='',
                 pdf_ms=0,
             )
+        invalidate_queue_stats_cache()
 
         items = list(
             HUItem.objects
@@ -417,6 +422,7 @@ def reprocess_queue_response(
         pdf_msg='',
         pdf_ms=0,
     )
+    invalidate_queue_stats_cache()
 
     emit_stats_update_func(None)
     try:

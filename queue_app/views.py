@@ -36,6 +36,7 @@ from queue_app.services.diagnostics_service import (
     _queue_diagnostic_snapshot_without_redis,
     get_fast_sap_status,
     iniciar_sap as _diagnostics_iniciar_sap,
+    sap_start_blocker as _diagnostics_sap_start_blocker,
 )
 from queue_app.services.service_control_api import (
     service_control_action_response,
@@ -77,6 +78,7 @@ from queue_app.services.process_control_api import (
     queue_runtime_is_orphaned,
     recover_orphaned_queue_runtime_data as _service_recover_orphaned_queue_runtime_data,
     recover_orphaned_queue_runtime_response,
+    sap_start_blocker_response as _service_sap_start_blocker_response,
     sap_session_error_response as _service_sap_session_error_response,
     start_processing_response,
     stop_request_is_stale,
@@ -738,6 +740,13 @@ def _celery_start_blocker_response():
     )
 
 
+def _sap_start_blocker_response():
+    return _service_sap_start_blocker_response(
+        sap_start_blocker_func=_diagnostics_sap_start_blocker,
+        logger=log,
+    )
+
+
 def _auto_start_queue_after_pallet_close(run_f1=True, run_f2=True, run_pdf=True) -> dict:
     return _service_auto_start_queue_after_pallet_close(
         run_f1=run_f1,
@@ -1057,6 +1066,7 @@ def procesar_pendientes(request):
         pdf_queryset_func=pallets_ready_for_pdf_queryset,
         close_sap_session_if_idle_func=_close_sap_session_if_idle,
         celery_start_blocker_response_func=_celery_start_blocker_response,
+        sap_start_blocker_response_func=_sap_start_blocker_response,
         sap_session_error_response_func=_sap_session_error_response,
         dispatch_continuous_queue_func=_dispatch_continuous_queue,
         emit_queue_status_func=emit_queue_status,

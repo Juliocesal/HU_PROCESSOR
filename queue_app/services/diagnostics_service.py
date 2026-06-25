@@ -33,6 +33,12 @@ CELERY_NO_WORKER_MESSAGE = (
     'Celery apagado. Redis responde, pero no hay workers activos. '
     'La cola NO se procesara hasta iniciar Celery.'
 )
+SAP_START_BLOCKED_MESSAGE = (
+    'SAP está ocupado o no respondió a tiempo. Puede haber otra automatización '
+    'cargando datos. Daphne, Celery y Redis siguen activos.'
+)
+SAP_START_BLOCKED_STATUSES = {'timeout', 'busy', 'stale', 'unavailable', 'unknown'}
+SAP_START_BLOCKED_REASONS = {'inflight_probe', 'circuit_breaker'}
 SAP_STATUS_CACHE_TTL_SECONDS = 10
 SAP_STATUS_STALE_SECONDS = 60
 SAP_STATUS_TIMEOUT_SECONDS = 1.5
@@ -74,6 +80,8 @@ def _sap_status_payload(
     source='live',
     stale=False,
     checked_at='',
+    code='',
+    reason='',
 ) -> dict:
     return {
         'connected': bool(connected),
@@ -83,6 +91,8 @@ def _sap_status_payload(
         'checked_at': checked_at,
         'stale': bool(stale),
         'source': source,
+        'code': code,
+        'reason': reason,
     }
 
 
@@ -109,12 +119,21 @@ def _live_sap_status_probe() -> dict:
             source='error',
             stale=True,
             checked_at=timezone.now().isoformat(),
+            code='SAP_COM_BLOCKED',
+            reason='probe_error',
         )
         payload['error'] = _diagnostic_error_message(exc)
         return payload
 
 
-def _sap_status_from_cache(status: str, source: str, message: str) -> dict:
+def _sap_status_from_cache(
+    status: str,
+    source: str,
+    message: str,
+    *,
+    code='',
+    reason='',
+) -> dict:
     cached = _sap_status_cache or {}
     checked_at = cached.get('checked_at', '')
     age = 999999.0
@@ -135,6 +154,8 @@ def _sap_status_from_cache(status: str, source: str, message: str) -> dict:
         source=source,
         stale=stale,
         checked_at=checked_at,
+        code=code or cached.get('code', ''),
+        reason=reason or cached.get('reason', ''),
     )
 
 
@@ -160,6 +181,8 @@ def _harvest_sap_status_future_locked() -> None:
             source='error',
             stale=True,
             checked_at=timezone.now().isoformat(),
+            code='SAP_COM_BLOCKED',
+            reason='probe_error',
         )
         _sap_status_cache['error'] = _diagnostic_error_message(exc)
         _sap_status_circuit_until = time.time() + SAP_STATUS_CIRCUIT_BREAKER_SECONDS
@@ -196,6 +219,8 @@ def get_fast_sap_status() -> dict:
                 'timeout',
                 'cache',
                 'SAP no respondio a tiempo. Estado anterior usado temporalmente.',
+                code='SAP_COM_BLOCKED',
+                reason='inflight_probe',
             )
 
         if _sap_status_cache:
@@ -229,6 +254,8 @@ def get_fast_sap_status() -> dict:
                 'stale',
                 'cache',
                 'Verificacion SAP pausada temporalmente por timeouts recientes.',
+                code='SAP_COM_BLOCKED',
+                reason='circuit_breaker',
             )
 
         _sap_status_future = _sap_status_executor.submit(_live_sap_status_probe)
@@ -249,6 +276,8 @@ def get_fast_sap_status() -> dict:
             'timeout',
             'timeout',
             'SAP no respondio a tiempo. Estado SAP no confirmado.',
+            code='SAP_STATUS_TIMEOUT',
+            reason='live_timeout',
         )
     except Exception as exc:
         with _sap_status_lock:
@@ -264,6 +293,8 @@ def get_fast_sap_status() -> dict:
             source='error',
             stale=True,
             checked_at=timezone.now().isoformat(),
+            code='SAP_COM_BLOCKED',
+            reason='probe_error',
         )
         payload['error'] = _diagnostic_error_message(exc)
         return payload
@@ -275,6 +306,45 @@ def get_fast_sap_status() -> dict:
             _sap_status_circuit_until = 0.0
 
     return result
+
+
+def sap_start_blocker(sap_status_func=None) -> dict | None:
+    """
+    Bloquea inicios HTTP cuando SAP esta ocupado o no confirmado.
+
+    Fase 2 opcional: coordinar scripts externos con un lock Redis/archivo con
+    TTL para marcar "SAP automation running" sin depender solo del probe COM.
+    """
+    if sap_status_func is None:
+        sap_status_func = get_fast_sap_status
+
+    status = sap_status_func()
+    if not isinstance(status, dict):
+        status = {
+            'status': 'unknown',
+            'message': 'Estado SAP invalido.',
+            'source': 'invalid',
+            'code': 'SAP_COM_BLOCKED',
+            'reason': 'invalid_status',
+        }
+
+    sap_state = status.get('status') or ('connected' if status.get('connected') else 'unknown')
+    reason = status.get('reason') or ''
+    code = status.get('code') or ''
+    blocked = (
+        sap_state in SAP_START_BLOCKED_STATUSES
+        or reason in SAP_START_BLOCKED_REASONS
+        or code in {'SAP_COM_BLOCKED', 'SAP_STATUS_TIMEOUT'}
+    )
+    if not blocked:
+        return None
+
+    final_code = 'SAP_STATUS_TIMEOUT' if sap_state == 'timeout' or code == 'SAP_STATUS_TIMEOUT' else 'SAP_COM_BLOCKED'
+    return {
+        'code': final_code,
+        'message': SAP_START_BLOCKED_MESSAGE,
+        'sap': status,
+    }
 
 
 def _check_redis_status() -> dict:

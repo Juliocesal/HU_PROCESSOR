@@ -7,6 +7,7 @@ from channels.layers import get_channel_layer
 from queue_app.services.stats_service import (
     calculate_queue_operational_status,
     calculate_queue_stats,
+    invalidate_queue_stats_cache,
 )
 from queue_app.services.performance_service import log_performance
 
@@ -15,8 +16,15 @@ log = logging.getLogger(__name__)
 QUEUE_UPDATES_GROUP = 'queue_updates'
 
 
-def _stats(stats_func=None) -> dict:
-    return (stats_func or calculate_queue_stats)()
+def _stats(stats_func=None, *, force_refresh=False) -> dict:
+    stats_func = stats_func or calculate_queue_stats
+    if force_refresh:
+        try:
+            return stats_func(force_refresh=True)
+        except TypeError:
+            # Mantiene compatibilidad con callbacks de pruebas o integraciones.
+            pass
+    return stats_func()
 
 
 def _operational_status(status_func=None) -> dict | None:
@@ -59,9 +67,11 @@ def emit_item_update(item, *, send_func=None):
 
 def emit_stats_update(_pallet=None, *, stats=None, stats_func=None, send_func=None):
     """Emite los KPIs agregados recalculados."""
+    if stats is None:
+        invalidate_queue_stats_cache()
     _send('stats_update', {
         'type': 'stats_update',
-        **(stats if stats is not None else _stats(stats_func)),
+        **(stats if stats is not None else _stats(stats_func, force_refresh=True)),
     }, send_func)
 
 
@@ -71,7 +81,7 @@ def emit_pallet_created(pallet, *, stats_func=None, send_func=None):
         'type': 'pallet_created',
         'pallet_id': pallet.pk,
         'origin_code': pallet.origin_code or '',
-        'stats': _stats(stats_func),
+        'stats': _stats(stats_func, force_refresh=True),
     }, send_func)
 
 
@@ -90,7 +100,7 @@ def emit_hu_deleted(
         'hu_code': hu_code,
         'pallet_id': pallet_id,
         'pallet_deleted': pallet_deleted,
-        'stats': stats or _stats(stats_func),
+        'stats': stats or _stats(stats_func, force_refresh=True),
     }, send_func)
 
 
@@ -99,7 +109,7 @@ def emit_pallet_deleted(pallet_id, stats=None, *, stats_func=None, send_func=Non
     _send('pallet_deleted', {
         'type': 'pallet_deleted',
         'pallet_id': pallet_id,
-        'stats': stats or _stats(stats_func),
+        'stats': stats or _stats(stats_func, force_refresh=True),
     }, send_func)
 
 
@@ -111,7 +121,7 @@ def emit_queue_cleared(pallet_id, stats=None, *, stats_func=None, send_func=None
     _send('queue_cleared', {
         'type': 'queue_cleared',
         'pallet_id': pallet_id,
-        'stats': stats or _stats(stats_func),
+        'stats': stats or _stats(stats_func, force_refresh=True),
     }, send_func)
 
 
@@ -131,7 +141,7 @@ def emit_receipt_done(pallet_id, result, *, stats_func=None, send_func=None):
         'processing_started_at': result.get('processing_started_at', ''),
         'processing_finished_at': result.get('processing_finished_at', ''),
         'receipt_done_at': result.get('receipt_done_at', ''),
-        'stats': _stats(stats_func),
+        'stats': _stats(stats_func, force_refresh=True),
     }, send_func)
 
 
@@ -204,7 +214,7 @@ def emit_current_queue_status_if_available(
 
 def emit_queue_done(result, *, stats_func=None, send_func=None):
     """Emite el unico evento final de una corrida de cola."""
-    stats = _stats(stats_func)
+    stats = _stats(stats_func, force_refresh=True)
     # El evento final se emite justo antes de liberar el lock de Celery; para la
     # UI ya no debe considerarse una corrida activa.
     stats['is_running'] = False
@@ -215,6 +225,7 @@ def emit_queue_done(result, *, stats_func=None, send_func=None):
         'pallets_processed': result.get('pallets_processed', 0),
         'hus_processed': result.get('hus_processed', 0),
         'errors': result.get('errors', 0),
+        'sap_com_metrics': result.get('sap_com_metrics', {}),
         'stats': stats,
     }, send_func)
 
@@ -244,7 +255,7 @@ def emit_pallet_done(pallet_id, hu_count, *, stats_func=None, send_func=None):
             if pallet and pallet.receipt_done_at
             else ''
         ),
-        'stats': _stats(stats_func),
+        'stats': _stats(stats_func, force_refresh=True),
     }, send_func)
 
 

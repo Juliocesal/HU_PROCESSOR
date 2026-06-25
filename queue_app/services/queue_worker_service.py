@@ -1,5 +1,6 @@
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from typing import Callable
 
@@ -13,6 +14,7 @@ from queue_app.services.queue_runtime import (
     _ensure_queue_ownership,
 )
 from queue_app.services.performance_service import log_performance
+from queue_app.services.sap_com_guard import SAPCOMCircuitBreaker
 
 log = logging.getLogger(__name__)
 
@@ -135,6 +137,9 @@ def mark_pallet_processing_started(
     pallet.processing_started_at = timezone.now()
     pallet.processing_finished_at = None
     pallet.save(update_fields=['processing_started_at', 'processing_finished_at'])
+    from queue_app.services.stats_service import invalidate_queue_stats_cache
+
+    invalidate_queue_stats_cache()
 
 
 def mark_pallet_processing_finished(
@@ -151,21 +156,52 @@ def mark_pallet_processing_finished(
     ensure_queue_ownership_func(owner, 'mark_pallet_processing_finished')
     pallet.processing_finished_at = timezone.now()
     pallet.save(update_fields=['processing_finished_at'])
+    from queue_app.services.stats_service import invalidate_queue_stats_cache
+
+    invalidate_queue_stats_cache()
 
 
-def close_sap_after_queue_idle(*, logger: logging.Logger | None = None) -> None:
+def close_sap_after_queue_idle(
+    *,
+    logger: logging.Logger | None = None,
+    sap_com_breaker: SAPCOMCircuitBreaker | None = None,
+) -> None:
     """Cierra SAP al finalizar la corrida para evitar sesiones zombie por inactividad."""
     logger = logger or log
     if not getattr(settings, 'SAP_CLOSE_WHEN_QUEUE_IDLE', True):
         return
 
+    timeout_seconds = max(float(getattr(settings, 'SAP_COM_CONNECT_TIMEOUT_SECONDS', 30)), 1.0)
+    started_at = time.perf_counter()
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sap-close-worker')
     try:
         from core.sap_client import SAPClient
 
-        closed = SAPClient.close_sessions()
+        future = executor.submit(SAPClient.close_sessions)
+        closed = future.result(timeout=timeout_seconds)
+        log_performance(logger, 'sap.close_idle_sessions', started_at, closed=closed)
         logger.info("process_queue_task sap_idle_close closed=%s", closed)
+    except FutureTimeoutError:
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        timeout_ms = int(timeout_seconds * 1000)
+        logger.error(
+            "SAP_COM_BLOCKED operation=sap.close_idle_sessions duration_ms=%s timeout_ms=%s",
+            elapsed_ms,
+            timeout_ms,
+        )
+        if sap_com_breaker is not None:
+            sap_com_breaker.handle_timeout(
+                operation='sap.close_idle_sessions',
+                elapsed_ms=elapsed_ms,
+                timeout_ms=timeout_ms,
+                logger=logger,
+                cooldown=False,
+                emit_status=False,
+            )
     except Exception as e:
         logger.warning("process_queue_task sap_idle_close_failed error=%s", e)
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
 
 def run_queue_worker(
@@ -212,6 +248,11 @@ def run_queue_worker(
     errors = 0
     idle_deadline = None
     idle_status_sent = False
+    last_empty_poll_metric_at = 0.0
+    sap_session = None
+    sap_com_fatal = False
+    pythoncom = None
+    com_initialized = False
     idle_timeout = (
         QUEUE_DEFAULT_IDLE_TIMEOUT_SECONDS
         if continuous and idle_timeout is None
@@ -219,6 +260,14 @@ def run_queue_worker(
     )
 
     try:
+        import pythoncom as pythoncom_module
+        from queue_app.services.hu_processing_service import SAPWorkerSession
+
+        pythoncom = pythoncom_module
+        pythoncom.CoInitialize()
+        com_initialized = True
+        sap_session = SAPWorkerSession(status_callback=hooks.emit_queue_status)
+
         while True:
             hooks.ensure_queue_ownership(owner, 'queue_loop')
             hooks.touch_queue_worker_heartbeat(owner)
@@ -230,13 +279,17 @@ def run_queue_worker(
 
             db_started_at = time.perf_counter()
             pallet_ids, pdf_ready_pallet_ids = hooks.collect_processable_pallet_ids(run_pdf)
-            log_performance(
-                logger,
-                'db.collect_processable_pallets',
-                db_started_at,
-                pallets=len(pallet_ids),
-                pdf_ready=len(pdf_ready_pallet_ids),
-            )
+            poll_now = time.monotonic()
+            if pallet_ids or poll_now - last_empty_poll_metric_at >= 30:
+                log_performance(
+                    logger,
+                    'db.collect_processable_pallets',
+                    db_started_at,
+                    pallets=len(pallet_ids),
+                    pdf_ready=len(pdf_ready_pallet_ids),
+                )
+                if not pallet_ids:
+                    last_empty_poll_metric_at = poll_now
             if not pallet_ids:
                 hooks.set_processing_pallet_ids([], owner=owner)
                 if not continuous or idle_timeout <= 0 or (
@@ -264,7 +317,7 @@ def run_queue_worker(
                     logger.info("process_queue_task done result=%s", final)
                     return final
 
-                now = time.monotonic()
+                now = poll_now
                 if idle_deadline is None:
                     idle_deadline = now + idle_timeout
                     hooks.set_queue_idle_deadline(idle_timeout, owner=owner)
@@ -374,6 +427,7 @@ def run_queue_worker(
                         run_pallet_boundary=False,
                         emit_pallet_completion=False,
                         owner=owner,
+                        sap_session=sap_session,
                     )
                     log_performance(
                         logger,
@@ -446,7 +500,12 @@ def run_queue_worker(
                     )
                     hooks.touch_queue_worker_heartbeat(owner)
                     boundary_started_at = time.perf_counter()
-                    result = hooks.run_pallet_boundary(pallet_id, emit_completion=True, owner=owner)
+                    result = hooks.run_pallet_boundary(
+                        pallet_id,
+                        emit_completion=True,
+                        owner=owner,
+                        sap_com_breaker=sap_session.com_breaker,
+                    )
                     log_performance(
                         logger,
                         'queue.pallet_boundary',
@@ -479,6 +538,44 @@ def run_queue_worker(
         logger.warning("process_queue_task stopped_lost_ownership owner=%s error=%s", owner, e)
         return {'ok': False, 'stopped': True, 'error': str(e)}
     except Exception as e:
+        from core.sap_client import SAPCOMFatalBlockedError
+
+        if isinstance(e, SAPCOMFatalBlockedError):
+            sap_com_fatal = True
+            metrics = sap_session.metrics() if sap_session is not None else {}
+            message = (
+                'SAP_COM_BLOCKED_FATAL: SAP no respondió después de varios intentos. '
+                'Corrida detenida para evitar acumulación de hilos COM.'
+            )
+            logger.critical(
+                "process_queue_task SAP_COM_BLOCKED_FATAL owner=%s error=%s metrics=%s",
+                owner,
+                e,
+                metrics,
+            )
+            final = {
+                'status': 'error',
+                'message': message,
+                'pallets_processed': pallets_processed,
+                'hus_processed': hus_processed,
+                'errors': errors + 1,
+                'sap_com_metrics': metrics,
+            }
+            if hooks.queue_lock_owned_by(owner):
+                hooks.emit_queue_status(
+                    'Corrida detenida porque SAP no respondió.',
+                    badge='SAP',
+                    mode='error',
+                    footer=(
+                        'Libera SAP o espera a que termine la otra automatización. '
+                        'Luego puedes iniciar una nueva corrida.'
+                    ),
+                )
+                hooks.emit_queue_done(final)
+            else:
+                logger.warning("process_queue_task fatal_com_done_skipped_lost_ownership owner=%s", owner)
+            return final
+
         logger.exception("process_queue_task fatal_error")
         final = {
             'status': 'error',
@@ -493,21 +590,31 @@ def run_queue_worker(
             logger.warning("process_queue_task fatal_done_skipped_lost_ownership owner=%s", owner)
         return final
     finally:
-        if hooks.queue_lock_owned_by(owner):
-            hooks.close_sap_after_queue_idle()
-        else:
-            logger.warning("process_queue_task skip_sap_close_lost_ownership owner=%s", owner)
-        heartbeat_stop.set()
-        heartbeat_thread.join(timeout=1)
-        release_started_at = time.perf_counter()
-        hooks.release_queue_lock(owner)
-        log_performance(logger, 'redis.release_queue_lock', release_started_at)
-        log_performance(
-            logger,
-            'celery.queue_task_total',
-            worker_started_at,
-            request_id=request_id,
-            pallets=pallets_processed,
-            hus=hus_processed,
-            errors=errors,
-        )
+        try:
+            if hooks.queue_lock_owned_by(owner) and not sap_com_fatal:
+                hooks.close_sap_after_queue_idle(
+                    sap_com_breaker=sap_session.com_breaker if sap_session is not None else None
+                )
+            elif sap_com_fatal:
+                logger.warning("process_queue_task skip_sap_close_after_com_fatal owner=%s", owner)
+            else:
+                logger.warning("process_queue_task skip_sap_close_lost_ownership owner=%s", owner)
+            heartbeat_stop.set()
+            heartbeat_thread.join(timeout=1)
+            release_started_at = time.perf_counter()
+            hooks.release_queue_lock(owner)
+            log_performance(logger, 'redis.release_queue_lock', release_started_at)
+            log_performance(
+                logger,
+                'celery.queue_task_total',
+                worker_started_at,
+                request_id=request_id,
+                pallets=pallets_processed,
+                hus=hus_processed,
+                errors=errors,
+            )
+        finally:
+            if sap_session is not None:
+                sap_session.close()
+            if com_initialized and pythoncom is not None:
+                pythoncom.CoUninitialize()

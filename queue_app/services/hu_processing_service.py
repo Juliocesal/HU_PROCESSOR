@@ -1,13 +1,201 @@
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from dataclasses import dataclass, field
 
+from django.conf import settings
 from django.utils import timezone
 
 from queue_app.services.queue_runtime import QueueOwnershipLost, _ensure_queue_ownership
 from queue_app.services.receipt_service import _run_pallet_boundary
 from queue_app.services.performance_service import log_performance
+from queue_app.services.sap_com_guard import SAPCOMCircuitBreaker
 
 log = logging.getLogger(__name__)
+
+
+SAP_COM_CONNECT_TIMEOUT_SECONDS = max(float(getattr(settings, 'SAP_COM_CONNECT_TIMEOUT_SECONDS', 30)), 1.0)
+SAP_COM_PHASE_TIMEOUT_SECONDS = max(float(getattr(settings, 'SAP_COM_PHASE_TIMEOUT_SECONDS', 60)), 1.0)
+SAP_COM_CALL_WARN_SECONDS = max(float(getattr(settings, 'SAP_COM_CALL_WARN_SECONDS', 5)), 0.0)
+
+
+@dataclass
+class _SAPComThreadState:
+    client: object | None = None
+    checked_pallet_id: int | None = None
+    com_initialized: bool = False
+
+
+@dataclass
+class SAPWorkerSession:
+    """
+    Sesion COM exclusiva de una tarea Celery, reutilizada entre HUs secuenciales.
+
+    Todas las llamadas SAP viven en un hilo STA dedicado. El worker espera cada
+    operacion con timeout explicito; si COM queda bloqueado por otra
+    automatizacion SAP, se descarta el hilo y se devuelve error controlado.
+    """
+
+    status_callback: object | None = None
+    com_breaker: SAPCOMCircuitBreaker = field(init=False, repr=False)
+    _executor: ThreadPoolExecutor | None = field(default=None, init=False, repr=False)
+    _state: _SAPComThreadState | None = field(default=None, init=False, repr=False)
+
+    def __post_init__(self):
+        self.com_breaker = SAPCOMCircuitBreaker(status_callback=self.status_callback)
+
+    def _ensure_worker(self) -> tuple[ThreadPoolExecutor, _SAPComThreadState]:
+        if self._executor is None or self._state is None:
+            self._state = _SAPComThreadState()
+            self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sap-com-worker')
+        return self._executor, self._state
+
+    def _execute_in_com_thread(self, state: _SAPComThreadState, operation: str, callback):
+        import pythoncom
+
+        if not state.com_initialized:
+            pythoncom.CoInitialize()
+            state.com_initialized = True
+            log.info("sap_com_thread_initialized operation=%s", operation)
+        return callback(state)
+
+    def _discard_worker(self, *, reason: str) -> None:
+        executor = self._executor
+        self._executor = None
+        self._state = None
+        if executor is not None:
+            executor.shutdown(wait=False, cancel_futures=True)
+        log.warning("sap_com_worker_discarded reason=%s", reason)
+
+    def _run(self, operation: str, callback, *, timeout: float):
+        from core.sap_client import SAPCOMBlockedError, SAPCOMFatalBlockedError
+
+        executor, state = self._ensure_worker()
+        started_at = time.perf_counter()
+        future = executor.submit(self._execute_in_com_thread, state, operation, callback)
+        try:
+            result = future.result(timeout=timeout)
+            self.com_breaker.record_success(operation, log)
+            return result
+        except FutureTimeoutError as exc:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            timeout_ms = int(timeout * 1000)
+            future.cancel()
+            future.add_done_callback(
+                lambda _future: self.com_breaker.record_late_completion(operation, log)
+            )
+            self._discard_worker(reason=f'timeout:{operation}')
+            fatal = self.com_breaker.handle_timeout(
+                operation=operation,
+                elapsed_ms=elapsed_ms,
+                timeout_ms=timeout_ms,
+                logger=log,
+            )
+            if fatal:
+                raise SAPCOMFatalBlockedError(
+                    f"SAP COM no respondio despues de "
+                    f"{self.com_breaker.metrics()['consecutive_timeouts']} timeout(s). "
+                    "Corrida detenida para evitar acumulacion de hilos COM."
+                ) from exc
+            raise SAPCOMBlockedError(
+                f"SAP COM bloqueado en {operation} tras {timeout:g}s. "
+                "Puede haber otra automatizacion SAP ocupando SAP GUI."
+            ) from exc
+        finally:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            warn_ms = int(SAP_COM_CALL_WARN_SECONDS * 1000)
+            if warn_ms and elapsed_ms >= warn_ms:
+                log.warning(
+                    "sap_com_call_slow operation=%s duration_ms=%s warn_ms=%s",
+                    operation,
+                    elapsed_ms,
+                    warn_ms,
+                )
+
+    @staticmethod
+    def _acquire_client(state: _SAPComThreadState, pallet_id: int):
+        from core.sap_client import SAPClient
+
+        if state.client is None:
+            state.client = SAPClient()
+            state.client.connect(initialize_com=False)
+            state.checked_pallet_id = pallet_id
+            return state.client, 'connected'
+
+        if state.checked_pallet_id == pallet_id:
+            return state.client, 'reused'
+
+        health_started_at = time.perf_counter()
+        is_healthy = state.client.is_session_healthy()
+        log_performance(
+            log,
+            'sap.session_health',
+            health_started_at,
+            pallet=pallet_id,
+            healthy=is_healthy,
+        )
+        state.checked_pallet_id = pallet_id
+        if is_healthy:
+            return state.client, 'health_checked'
+
+        log.warning("sap_worker_session_reconnect pallet=%s", pallet_id)
+        state.client = SAPClient()
+        state.client.connect(initialize_com=False)
+        return state.client, 'reconnected'
+
+    def acquire(self, pallet_id: int):
+        """Devuelve una sesion sana y solo la sondea al cambiar de pallet."""
+        return self._run(
+            'sap.acquire',
+            lambda state: self._acquire_client(state, pallet_id),
+            timeout=SAP_COM_CONNECT_TIMEOUT_SECONDS,
+        )
+
+    def prepare(self, pallet_id: int) -> str:
+        """Prepara la sesion SAP y retorna la accion realizada para logging."""
+        _client, action = self.acquire(pallet_id)
+        return action
+
+    def call(self, pallet_id: int, operation: str, callback, *, timeout: float | None = None):
+        """Ejecuta una operacion SAP con timeout explicito en el hilo COM."""
+        return self._run(
+            operation,
+            lambda state: callback(self._acquire_client(state, pallet_id)[0]),
+            timeout=timeout or SAP_COM_PHASE_TIMEOUT_SECONDS,
+        )
+
+    def invalidate(self) -> None:
+        """Obliga a reconectar si SAP reporta una sesion invalida durante una HU."""
+        self._discard_worker(reason='invalidate')
+
+    def close(self) -> None:
+        """Libera el executor COM al terminar la corrida Celery."""
+        executor = self._executor
+        state = self._state
+        self._executor = None
+        self._state = None
+        if executor is None:
+            return
+
+        if state is not None and state.com_initialized:
+            try:
+                future = executor.submit(self._execute_in_com_thread, state, 'sap.com_uninitialize', _uninitialize_com)
+                future.result(timeout=3)
+            except Exception as exc:
+                log.warning("sap_com_thread_uninitialize_failed error=%s", exc)
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    def metrics(self) -> dict:
+        return self.com_breaker.metrics()
+
+
+def _uninitialize_com(state: _SAPComThreadState):
+    import pythoncom
+
+    if state.com_initialized:
+        pythoncom.CoUninitialize()
+        state.com_initialized = False
+        log.info("sap_com_thread_uninitialized")
 
 
 def _calculate_elapsed_ms(started_at) -> int:
@@ -25,16 +213,26 @@ def _process_hu_item(
     emit_pallet_completion=True,
     owner: str | None = None,
     run_pallet_boundary_func=_run_pallet_boundary,
+    sap_session: SAPWorkerSession | None = None,
 ):
     import pythoncom
     from core.hu_origins import detect_origin
-    from core.sap_client import SAPClient, SAPConnectionError
+    from core.sap_client import (
+        SAPBusyError,
+        SAPCOMBlockedError,
+        SAPCOMFatalBlockedError,
+        SAPConnectionError,
+        SAPDisconnectedError,
+        SAPClient,
+    )
     from queue_app.models import HUItem
     from queue_app.utils import emit_item_update, emit_queue_status, emit_stats_update
 
     hu_started_at = time.perf_counter()
     hu_code_for_log = str(hu_item_id)
-    pythoncom.CoInitialize()
+    manage_com = sap_session is None
+    if manage_com:
+        pythoncom.CoInitialize()
 
     try:
         try:
@@ -69,11 +267,13 @@ def _process_hu_item(
             'pdf_msg',
             'pdf_ms',
         ])
+        from queue_app.services.stats_service import invalidate_queue_stats_cache
+
+        invalidate_queue_stats_cache()
         log_performance(log, 'db.mark_hu_processing', db_started_at, hu=item.hu_code)
         emit_item_update(item)
         emit_stats_update(item.pallet)
 
-        sap = SAPClient()
         _ensure_queue_ownership(owner, 'emit_sap_connect_status')
         emit_queue_status(
             f'Conectando con SAP para HU {item.hu_code}.',
@@ -84,9 +284,23 @@ def _process_hu_item(
             active_hu_count=1,
         )
         sap_started_at = time.perf_counter()
-        sap.connect()
-        log_performance(log, 'sap.connect_hu', sap_started_at, hu=item.hu_code)
-        log.info("process_hu_item sap_connected hu=%s", item.hu_code)
+        if sap_session is None:
+            sap = SAPClient()
+            sap.connect()
+            log_performance(log, 'sap.connect_hu', sap_started_at, hu=item.hu_code)
+            log.info("process_hu_item sap_connected hu=%s", item.hu_code)
+        else:
+            sap = None
+            sap_action = sap_session.prepare(item.pallet_id)
+            log_performance(
+                log,
+                'sap.acquire_hu',
+                sap_started_at,
+                hu=item.hu_code,
+                pallet=item.pallet_id,
+                action=sap_action,
+            )
+            log.info("process_hu_item sap_%s hu=%s", sap_action, item.hu_code)
 
         res1 = None
 
@@ -100,10 +314,24 @@ def _process_hu_item(
                 active_hu_count=1,
             )
             sap_started_at = time.perf_counter()
-            sap.setup_phase1(origin=origin)
+            if sap_session is None:
+                sap.setup_phase1(origin=origin)
+            else:
+                sap_session.call(
+                    item.pallet_id,
+                    'sap.f1.setup',
+                    lambda client: client.setup_phase1(origin=origin),
+                )
             log_performance(log, 'sap.f1.setup', sap_started_at, hu=item.hu_code)
             sap_started_at = time.perf_counter()
-            res1 = sap.process_hu_phase1(item.hu_code, origin=origin)
+            if sap_session is None:
+                res1 = sap.process_hu_phase1(item.hu_code, origin=origin)
+            else:
+                res1 = sap_session.call(
+                    item.pallet_id,
+                    'sap.f1.execute',
+                    lambda client: client.process_hu_phase1(item.hu_code, origin=origin),
+                )
             log_performance(
                 log,
                 'sap.f1.execute',
@@ -134,6 +362,7 @@ def _process_hu_item(
                     'processing_ms',
                     'error_msg',
                 ])
+                invalidate_queue_stats_cache()
                 log_performance(log, 'db.save_f1_error', db_started_at, hu=item.hu_code)
                 emit_item_update(item)
                 emit_stats_update(item.pallet)
@@ -166,14 +395,32 @@ def _process_hu_item(
                 active_hu_count=1,
             )
             sap_started_at = time.perf_counter()
-            sap.setup_phase2(origin=origin)
+            if sap_session is None:
+                sap.setup_phase2(origin=origin)
+            else:
+                sap_session.call(
+                    item.pallet_id,
+                    'sap.f2.setup',
+                    lambda client: client.setup_phase2(origin=origin),
+                )
             log_performance(log, 'sap.f2.setup', sap_started_at, hu=item.hu_code)
             sap_started_at = time.perf_counter()
-            res2 = sap.process_hu_phase2(
-                item.hu_code,
-                phase2_wait=origin.phase2_wait,
-                origin=origin,
-            )
+            if sap_session is None:
+                res2 = sap.process_hu_phase2(
+                    item.hu_code,
+                    phase2_wait=origin.phase2_wait,
+                    origin=origin,
+                )
+            else:
+                res2 = sap_session.call(
+                    item.pallet_id,
+                    'sap.f2.execute',
+                    lambda client: client.process_hu_phase2(
+                        item.hu_code,
+                        phase2_wait=origin.phase2_wait,
+                        origin=origin,
+                    ),
+                )
             log_performance(
                 log,
                 'sap.f2.execute',
@@ -226,6 +473,7 @@ def _process_hu_item(
             'processed_at',
             'processing_ms',
         ])
+        invalidate_queue_stats_cache()
         log_performance(log, 'db.save_hu_final', db_started_at, hu=item.hu_code, status=item.status)
         emit_item_update(item)
         emit_stats_update(item.pallet)
@@ -242,14 +490,30 @@ def _process_hu_item(
     except QueueOwnershipLost:
         log.warning("process_hu_item stopped_lost_ownership hu_id=%s owner=%s", hu_item_id, owner)
         raise
+    except SAPCOMFatalBlockedError as e:
+        if sap_session is not None:
+            sap_session.invalidate()
+        log.critical("process_hu_item SAP_COM_BLOCKED_FATAL hu_id=%s error=%s", hu_item_id, e)
+        _mark_item_error(hu_item_id, str(e), owner=owner)
+        raise
     except SAPConnectionError as e:
-        log.error("process_hu_item sap_error hu_id=%s error=%s", hu_item_id, e)
+        if sap_session is not None:
+            sap_session.invalidate()
+        if isinstance(e, SAPCOMBlockedError):
+            log.error("process_hu_item SAP_COM_BLOCKED hu_id=%s error=%s", hu_item_id, e)
+        elif isinstance(e, SAPBusyError):
+            log.error("process_hu_item SAP_BUSY hu_id=%s error=%s", hu_item_id, e)
+        elif isinstance(e, SAPDisconnectedError):
+            log.error("process_hu_item SAP_DISCONNECTED hu_id=%s error=%s", hu_item_id, e)
+        else:
+            log.error("process_hu_item sap_error hu_id=%s error=%s", hu_item_id, e)
         return _mark_item_error(hu_item_id, str(e), owner=owner)
     except Exception as e:
         log.exception("process_hu_item fatal_error hu_id=%s", hu_item_id)
         return _mark_item_error(hu_item_id, str(e), owner=owner)
     finally:
-        pythoncom.CoUninitialize()
+        if manage_com:
+            pythoncom.CoUninitialize()
         log_performance(log, 'queue.hu_total', hu_started_at, hu=hu_code_for_log)
 
 
@@ -276,6 +540,9 @@ def _mark_item_error(hu_item_id: int, message: str, owner: str | None = None):
             'processed_at',
             'processing_ms',
         ])
+        from queue_app.services.stats_service import invalidate_queue_stats_cache
+
+        invalidate_queue_stats_cache()
         emit_item_update(item)
         emit_stats_update(item.pallet)
         return item

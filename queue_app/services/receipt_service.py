@@ -1,5 +1,6 @@
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 from django.conf import settings
 from django.utils import timezone
@@ -10,11 +11,21 @@ from queue_app.services.queue_runtime import (
     _queue_lock_owned_by,
 )
 from queue_app.services.performance_service import log_performance
+from queue_app.services.sap_com_guard import SAPCOMCircuitBreaker
 
 log = logging.getLogger(__name__)
 
 
-def _run_pallet_boundary(pallet_id: int, emit_completion=True, owner: str | None = None):
+SAP_COM_ZE16_TIMEOUT_SECONDS = max(float(getattr(settings, 'SAP_COM_ZE16_TIMEOUT_SECONDS', 180)), 1.0)
+SAP_COM_CALL_WARN_SECONDS = max(float(getattr(settings, 'SAP_COM_CALL_WARN_SECONDS', 5)), 0.0)
+
+
+def _run_pallet_boundary(
+    pallet_id: int,
+    emit_completion=True,
+    owner: str | None = None,
+    sap_com_breaker: SAPCOMCircuitBreaker | None = None,
+):
     """
     Ejecuta el recibo del pallet solo cuando todas sus HUs terminaron.
     """
@@ -53,12 +64,20 @@ def _run_pallet_boundary(pallet_id: int, emit_completion=True, owner: str | None
         len(valid_hus),
     )
     _ensure_queue_ownership(owner, 'run_pallet_boundary')
-    result = ze16_pdf_task_sync(pallet_id, emit_completion=emit_completion, owner=owner)
+    result = ze16_pdf_task_sync(
+        pallet_id,
+        emit_completion=emit_completion,
+        owner=owner,
+        sap_com_breaker=sap_com_breaker,
+    )
 
     if result.get('status') == 'ok':
         _ensure_queue_ownership(owner, 'mark_pallet_done')
         pallet.status = Pallet.STATUS_DONE
         pallet.save(update_fields=['status'])
+        from queue_app.services.stats_service import invalidate_queue_stats_cache
+
+        invalidate_queue_stats_cache()
 
     return result
 
@@ -155,19 +174,118 @@ def _get_ze16_receipts_with_retries(
     return {}, attempts
 
 
-def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None = None):
+def _query_ze16_receipts_with_timeout(
+    *,
+    pallet_id: int,
+    hu_codes: list[str],
+    hu_count: int,
+    owner: str | None,
+    status_callback,
+    sap_com_breaker: SAPCOMCircuitBreaker | None = None,
+) -> tuple[dict[str, str], int, str, dict[str, str]]:
+    from core.sap_client import SAPClient, SAPCOMBlockedError, SAPCOMFatalBlockedError
+    from core.ze16_client import ZE16Client, ZE16Error
+
+    breaker = sap_com_breaker or SAPCOMCircuitBreaker(status_callback=status_callback)
+
+    def query_in_com_thread():
+        import pythoncom
+
+        pythoncom.CoInitialize()
+        try:
+            sap = SAPClient()
+            sap_started_at = time.perf_counter()
+            sap.connect()
+            log_performance(log, 'sap.connect_ze16', sap_started_at, pallet=pallet_id)
+            _ensure_queue_ownership(owner, 'ze16_sap_connected')
+
+            printed_by = getattr(settings, 'SAP_LOGIN_USER', '') or sap.get_user()
+            ze16 = ZE16Client(sap.session)
+            ze16_started_at = time.perf_counter()
+            receipts, receipt_attempts = _get_ze16_receipts_with_retries(
+                ze16,
+                hu_codes,
+                pallet_id=pallet_id,
+                hu_count=hu_count,
+                owner=owner,
+                status_callback=status_callback,
+            )
+            log_performance(
+                log,
+                'sap.ze16.receipt_retries',
+                ze16_started_at,
+                pallet=pallet_id,
+                attempts=receipt_attempts,
+                receipts=len(receipts),
+            )
+            hu_display_map = _build_hu_display_map(ze16, hu_codes)
+            return receipts, receipt_attempts, printed_by, hu_display_map
+        finally:
+            pythoncom.CoUninitialize()
+
+    started_at = time.perf_counter()
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sap-ze16-worker')
+    try:
+        future = executor.submit(query_in_com_thread)
+        try:
+            result = future.result(timeout=SAP_COM_ZE16_TIMEOUT_SECONDS)
+            breaker.record_success('sap.ze16.receipt_query', log)
+            return result
+        except FutureTimeoutError as exc:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            timeout_ms = int(SAP_COM_ZE16_TIMEOUT_SECONDS * 1000)
+            future.cancel()
+            future.add_done_callback(
+                lambda _future: breaker.record_late_completion('sap.ze16.receipt_query', log)
+            )
+            executor.shutdown(wait=False, cancel_futures=True)
+            fatal = breaker.handle_timeout(
+                operation='sap.ze16.receipt_query',
+                elapsed_ms=elapsed_ms,
+                timeout_ms=timeout_ms,
+                logger=log,
+            )
+            if fatal:
+                raise SAPCOMFatalBlockedError(
+                    "SAP COM no respondio en ZE16. Corrida detenida para evitar "
+                    "acumulacion de hilos COM."
+                ) from exc
+            blocked = SAPCOMBlockedError("ZE16 COM timeout")
+            blocked.__cause__ = exc
+            raise ZE16Error(
+                f"SAP COM bloqueado en ZE16 tras {SAP_COM_ZE16_TIMEOUT_SECONDS:g}s. "
+                "Puede haber otra automatizacion SAP ocupando SAP GUI."
+            ) from blocked
+        finally:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            warn_ms = int(SAP_COM_CALL_WARN_SECONDS * 1000)
+            if warn_ms and elapsed_ms >= warn_ms:
+                log.warning(
+                    "sap_com_call_slow operation=sap.ze16.receipt_query pallet=%s duration_ms=%s warn_ms=%s",
+                    pallet_id,
+                    elapsed_ms,
+                    warn_ms,
+                )
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
+def ze16_pdf_task_sync(
+    pallet_id: int,
+    emit_completion=True,
+    owner: str | None = None,
+    sap_com_breaker: SAPCOMCircuitBreaker | None = None,
+):
     """
     Paso sincronico ZE16 + PDF + impresion. Retorna solo despues de print_pdf.
     """
-    import pythoncom
     from core.hu_origins import detect_origin, resolve_effective_origin
     from core.pdf_receipt import PalletReceiptPDF
-    from core.sap_client import SAPClient
-    from core.ze16_client import ZE16Client, ZE16Error
+    from core.sap_client import SAPCOMFatalBlockedError
+    from core.ze16_client import ZE16Error
     from queue_app.models import HUItem, Pallet
     from queue_app.utils import emit_queue_status, emit_receipt_done
 
-    pythoncom.CoInitialize()
     workflow_started_at = time.perf_counter()
     result = {'status': 'error', 'message': 'Unknown ZE16/PDF error', 'marked': 0}
     pdf_started = None
@@ -205,32 +323,14 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None =
             active_pallet_id=pallet_id,
             active_hu_count=hu_count,
         )
-        sap = SAPClient()
-        sap_started_at = time.perf_counter()
-        sap.connect()
-        log_performance(log, 'sap.connect_ze16', sap_started_at, pallet=pallet_id)
-        _ensure_queue_ownership(owner, 'ze16_sap_connected')
-        printed_by = getattr(settings, 'SAP_LOGIN_USER', '') or sap.get_user()
-
-        ze16 = ZE16Client(sap.session)
-        ze16_started_at = time.perf_counter()
-        receipts, receipt_attempts = _get_ze16_receipts_with_retries(
-            ze16,
-            hu_codes,
+        receipts, receipt_attempts, printed_by, hu_display_map = _query_ze16_receipts_with_timeout(
             pallet_id=pallet_id,
+            hu_codes=hu_codes,
             hu_count=hu_count,
             owner=owner,
             status_callback=emit_queue_status,
+            sap_com_breaker=sap_com_breaker,
         )
-        log_performance(
-            log,
-            'sap.ze16.receipt_retries',
-            ze16_started_at,
-            pallet=pallet_id,
-            attempts=receipt_attempts,
-            receipts=len(receipts),
-        )
-        hu_display_map = _build_hu_display_map(ze16, hu_codes)
 
         if not receipts:
             result = {
@@ -307,6 +407,12 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None =
     except QueueOwnershipLost:
         log.warning("ze16_pdf_task_sync stopped_lost_ownership pallet=%s owner=%s", pallet_id, owner)
         raise
+    except SAPCOMFatalBlockedError as e:
+        log.critical("ze16_pdf_task_sync SAP_COM_BLOCKED_FATAL pallet=%s error=%s", pallet_id, e)
+        result = {'status': 'error', 'message': str(e), 'marked': 0}
+        if 'pallet' in locals():
+            _save_pdf_result(pallet, result, pdf_started, owner=owner)
+        raise
     except ZE16Error as e:
         log.error("ze16_pdf_task_sync ZE16Error pallet=%s error=%s", pallet_id, e)
         result = {'status': 'error', 'message': f'ZE16 Error: {e}', 'marked': 0}
@@ -322,7 +428,6 @@ def ze16_pdf_task_sync(pallet_id: int, emit_completion=True, owner: str | None =
     finally:
         if emit_completion and (not owner or _queue_lock_owned_by(owner)):
             emit_receipt_done(pallet_id, result)
-        pythoncom.CoUninitialize()
         log_performance(
             log,
             'queue.ze16_pdf_total',
@@ -365,6 +470,9 @@ def _save_pdf_result(pallet, result: dict, started_at: float | None, owner: str 
     db_started_at = time.perf_counter()
     pallet.items.all().update(**item_updates)
     pallet.save(update_fields=update_fields)
+    from queue_app.services.stats_service import invalidate_queue_stats_cache
+
+    invalidate_queue_stats_cache()
     log_performance(
         log,
         'db.save_pdf_result',

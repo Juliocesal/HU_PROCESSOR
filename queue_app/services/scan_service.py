@@ -96,6 +96,9 @@ def queue_hu_scan(
         if origin.auto_pallet:
             mark_pallet_ready(pallet)
 
+    from queue_app.services.stats_service import invalidate_queue_stats_cache
+
+    invalidate_queue_stats_cache()
     log_performance(
         log,
         'db.queue_hu_scan',

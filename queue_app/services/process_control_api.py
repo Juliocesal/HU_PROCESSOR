@@ -166,6 +166,35 @@ def celery_start_blocker_response(*, celery_start_blocker_func) -> JsonResponse 
     }, status=503)
 
 
+def sap_start_blocker_response(*, sap_start_blocker_func, logger) -> JsonResponse | None:
+    blocker = sap_start_blocker_func()
+    if not blocker:
+        return None
+
+    sap_status = blocker.get('sap') or {}
+    code = blocker.get('code') or 'SAP_COM_BLOCKED'
+    logger.warning(
+        "PROCESS_START_REJECTED_SAP_UNAVAILABLE code=%s sap_status=%s reason=%s source=%s",
+        code,
+        sap_status.get('status'),
+        sap_status.get('reason'),
+        sap_status.get('source'),
+    )
+    logger.warning(
+        "%s sap_status=%s reason=%s source=%s",
+        code,
+        sap_status.get('status'),
+        sap_status.get('reason'),
+        sap_status.get('source'),
+    )
+    return JsonResponse({
+        'ok': False,
+        'code': code,
+        'error': blocker.get('message') or 'SAP no esta disponible para iniciar el proceso.',
+        'sap': sap_status,
+    }, status=409)
+
+
 def auto_start_queue_after_pallet_close(
     *,
     run_f1=True,
@@ -373,6 +402,9 @@ def recover_orphaned_queue_runtime_data(
             processing_finished_at=now,
         )
 
+    from queue_app.services.stats_service import invalidate_queue_stats_cache
+
+    invalidate_queue_stats_cache()
     emit_stats_update_func(None)
     result = {
         'status': 'stopped',
@@ -526,6 +558,7 @@ def procesar_pendientes_response(
     pdf_queryset_func,
     close_sap_session_if_idle_func,
     celery_start_blocker_response_func,
+    sap_start_blocker_response_func,
     sap_session_error_response_func,
     dispatch_continuous_queue_func,
     emit_queue_status_func,
@@ -559,7 +592,7 @@ def procesar_pendientes_response(
     if celery_error:
         return celery_error
 
-    sap_error = sap_session_error_response_func()
+    sap_error = sap_start_blocker_response_func()
     if sap_error:
         return sap_error
 

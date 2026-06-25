@@ -114,6 +114,7 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'pallets_processed': event['pallets_processed'],
             'hus_processed': event['hus_processed'],
             'errors': event['errors'],
+            'sap_com_metrics': event.get('sap_com_metrics', {}),
             'stats': event.get('stats', {}),
         })
 

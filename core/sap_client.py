@@ -5,6 +5,7 @@ import pythoncom
 import win32com.client
 from datetime import datetime
 from typing import TypedDict
+from django.utils import timezone
 from .hu_origins import Origin, detect_origin, UNKNOWN_ORIGIN
 from django.conf import settings
 
@@ -28,6 +29,7 @@ SAP_LOGIN_LANGUAGE = getattr(settings, 'SAP_LOGIN_LANGUAGE', 'EN')
 SAP_PROBE_BEFORE_WORK = getattr(settings, 'SAP_PROBE_BEFORE_WORK', True)
 SAP_STARTUP_TIMEOUT_SECONDS = float(getattr(settings, 'SAP_STARTUP_TIMEOUT_SECONDS', 30))
 SAP_STARTUP_POLL_SECONDS = max(float(getattr(settings, 'SAP_STARTUP_POLL_SECONDS', 1)), 0.1)
+SAP_SESSION_RESPONSIVE_SECONDS = max(float(getattr(settings, 'SAP_SESSION_RESPONSIVE_SECONDS', 2)), 0.1)
 NODE_MOVEINBHU = "F00098"
 NODE_TIJSEP    = "F00097"
 
@@ -38,6 +40,13 @@ WAIT_SHORT        = 1.0
 WAIT_TREE         = 3.0
 TIMEOUT_SAP       = 15.0
 POLL_INTERVAL     = 0.05
+SAP_TRANSACTION_MIN_WAIT_SECONDS = max(
+    float(getattr(settings, 'SAP_TRANSACTION_MIN_WAIT_SECONDS', 0.05)), 0.0,
+)
+SAP_TRANSACTION_READY_TIMEOUT_SECONDS = max(
+    float(getattr(settings, 'SAP_TRANSACTION_READY_TIMEOUT_SECONDS', TIMEOUT_SAP)),
+    SAP_TRANSACTION_MIN_WAIT_SECONDS,
+)
 
 
 # IDs exactos del VBA
@@ -116,6 +125,26 @@ class SAPConnectionError(Exception):
     pass
 
 
+class SAPBusyError(SAPConnectionError):
+    """SAP respondió, pero siguió ocupado más tiempo del permitido."""
+
+
+class SAPDisconnectedError(SAPConnectionError):
+    """La sesión SAP existe, pero está desconectada o no coincide con la esperada."""
+
+
+class SAPCOMBlockedError(SAPConnectionError):
+    """Una llamada COM/SAP GUI no regresó antes del timeout del worker."""
+
+
+class SAPCOMFatalBlockedError(SAPCOMBlockedError):
+    """SAP COM siguió bloqueado y la corrida actual debe abortarse."""
+
+
+class SAPBusySessionError(SAPBusyError):
+    """Hay sesiones SAP del usuario, pero ninguna esta libre para NEXHUS."""
+
+
 
 
 # -- Centinela de timestamp invalido -------------------------------------------
@@ -127,12 +156,14 @@ _INVALID_TS = datetime.min
 
 def _make_phase2_ts() -> datetime:
     """Retorna el timestamp de inicio de F2 para auditoria del pallet."""
-    return datetime.now()
+    return timezone.now()
 
 
 
 
 class SAPClient:
+    _last_session_selection_code = 'SAP_NO_READY_SESSION'
+    _last_session_selection_message = ''
 
 
     def __init__(self, sap_user: str | None = None, sap_client: str | None = None):
@@ -148,8 +179,16 @@ class SAPClient:
     # -- Conexion --------------------------------------------------------------
 
 
-    def connect(self, sistema: str = SISTEMA_SAP, auto_login: bool = True) -> bool:
-        pythoncom.CoInitialize()
+    def connect(
+        self,
+        sistema: str = SISTEMA_SAP,
+        auto_login: bool = True,
+        *,
+        initialize_com: bool = True,
+    ) -> bool:
+        """Conecta a SAP; el worker puede reutilizar su COM ya inicializado."""
+        if initialize_com:
+            pythoncom.CoInitialize()
         for attempt in range(2 if auto_login else 1):
             try:
                 app = self._get_sap_app()
@@ -186,6 +225,12 @@ class SAPClient:
                 )
                 return True
 
+            selection_code = self._last_session_selection_code
+            if selection_code == 'SAP_BUSY_SESSION':
+                raise SAPBusySessionError(
+                    self._last_session_selection_message
+                    or 'SAP_BUSY_SESSION: hay sesiones SAP ocupadas o con modal.'
+                )
 
             if auto_login and attempt == 0:
                 log.warning(
@@ -262,6 +307,103 @@ class SAPClient:
             return cls._clean(getattr(session.Info, 'Client', ''))
         except Exception:
             return ''
+
+
+    @classmethod
+    def _connection_labels(cls, connection) -> list[str]:
+        labels = []
+        for attr in ('Description', 'Name', 'ConnectionString'):
+            try:
+                value = cls._clean(getattr(connection, attr, ''))
+            except Exception:
+                value = ''
+            if value:
+                labels.append(value)
+        return labels
+
+
+    @classmethod
+    def _connection_display_name(cls, connection) -> str:
+        labels = cls._connection_labels(connection)
+        return ' | '.join(labels) if labels else '<unknown>'
+
+
+    @classmethod
+    def _connection_matches_expected(cls, connection) -> bool:
+        expected = cls._clean(SAP_CONNECTION_NAME).upper()
+        labels = [label.upper() for label in cls._connection_labels(connection)]
+        if not expected or not labels:
+            return True
+        return any(label == expected or expected in label or label in expected for label in labels)
+
+
+    @classmethod
+    def _has_blocking_modal(cls, session) -> bool:
+        return cls._find_on_session(session, "wnd[1]") is not None
+
+
+    @classmethod
+    def _session_transaction(cls, session) -> str:
+        try:
+            return cls._clean(getattr(session.Info, 'Transaction', ''))
+        except Exception:
+            return ''
+
+
+    @classmethod
+    def _session_user(cls, session) -> str:
+        try:
+            return cls._clean(getattr(session.Info, 'User', ''))
+        except Exception:
+            return ''
+
+
+    @staticmethod
+    def _session_busy(session) -> bool:
+        return bool(getattr(session, 'Busy'))
+
+
+    @staticmethod
+    def _responsive_elapsed_ms(started_at: float) -> int:
+        return int((time.perf_counter() - started_at) * 1000)
+
+
+    @classmethod
+    def _is_responsive_elapsed(cls, started_at: float) -> bool:
+        return (time.perf_counter() - started_at) <= SAP_SESSION_RESPONSIVE_SECONDS
+
+
+    @classmethod
+    def _log_session_selection(
+        cls,
+        *,
+        code: str,
+        conn_index: int,
+        session_index: int,
+        connection_name: str,
+        user: str,
+        transaction: str,
+        busy,
+        has_modal,
+        selected: bool,
+        reason: str,
+        started_at: float,
+    ) -> None:
+        log.info(
+            "%s conn_index=%s session_index=%s connection=%r user=%r "
+            "transaction=%r busy=%s has_modal=%s selected=%s reason=%s duration_ms=%s",
+            code,
+            conn_index,
+            session_index,
+            connection_name,
+            user,
+            transaction,
+            busy,
+            has_modal,
+            selected,
+            reason,
+            cls._responsive_elapsed_ms(started_at),
+        )
 
 
     @classmethod
@@ -393,14 +535,22 @@ class SAPClient:
 
     @staticmethod
     def _wait_session_idle(session, timeout: float = 5.0) -> bool:
+        started_at = time.perf_counter()
         deadline = time.time() + timeout
         while time.time() <= deadline:
             try:
                 if not session.Busy:
+                    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                    if elapsed_ms >= 1000:
+                        log.info("sap_wait_session_idle_done duration_ms=%s timeout_ms=%s", elapsed_ms, int(timeout * 1000))
                     return True
             except Exception:
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                log.warning("sap_wait_session_idle_disconnected duration_ms=%s", elapsed_ms)
                 return False
             time.sleep(POLL_INTERVAL)
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        log.warning("sap_wait_session_idle_timeout duration_ms=%s timeout_ms=%s", elapsed_ms, int(timeout * 1000))
         return False
 
 
@@ -415,6 +565,12 @@ class SAPClient:
         de que Celery capture un HU.
         """
         try:
+            if cls._session_busy(session):
+                log.warning("SAP_SESSION_BUSY_SKIPPED probe=false reason=busy_before_probe")
+                return False
+            if cls._has_blocking_modal(session):
+                log.warning("SAP_SESSION_MODAL_SKIPPED probe=false reason=modal_before_probe")
+                return False
             ok_code = cls._find_on_session(session, "wnd[0]/tbar[0]/okcd")
             wnd = cls._find_on_session(session, "wnd[0]")
             if ok_code is None or wnd is None:
@@ -456,7 +612,12 @@ class SAPClient:
                 return False
 
 
-            _ = session.Busy
+            if cls._session_busy(session):
+                log.warning("SAP_SESSION_BUSY_SKIPPED reason=session_is_alive")
+                return False
+            if cls._has_blocking_modal(session):
+                log.warning("SAP_SESSION_MODAL_SKIPPED reason=session_is_alive")
+                return False
             return cls._probe_session_for_work(session) if probe else True
         except Exception as e:
             log.warning("sap_session_not_alive error=%s", e)
@@ -472,28 +633,174 @@ class SAPClient:
         sap_user: str | None = None,
         sap_client: str | None = None,
     ):
+        cls._last_session_selection_code = 'SAP_NO_READY_SESSION'
+        cls._last_session_selection_message = 'SAP_NO_READY_SESSION: no hay sesion SAP disponible para NEXHUS.'
+        blocked_candidates = 0
         if int(app.Children.Count) == 0:
+            log.warning("SAP_NO_READY_SESSION reason=no_connections")
             return None
 
 
         for i_conn in range(int(app.Children.Count)):
             conn = app.Children(i_conn)
+            connection_name = cls._connection_display_name(conn)
+            connection_matches = cls._connection_matches_expected(conn)
             for i_sess in range(int(conn.Children.Count)):
+                started_at = time.perf_counter()
                 sess = conn.Children(i_sess)
+                user = ''
+                transaction = ''
+                busy = 'unknown'
+                has_modal = 'unknown'
                 try:
-                    if (
-                        cls._session_matches_identity(
-                            sess,
-                            sistema,
-                            sap_user=sap_user,
-                            sap_client=sap_client,
+                    user = cls._session_user(sess)
+                    transaction = cls._session_transaction(sess)
+                    busy = cls._session_busy(sess)
+                    if not cls._is_responsive_elapsed(started_at):
+                        blocked_candidates += 1
+                        cls._log_session_selection(
+                            code='SAP_SESSION_BUSY_SKIPPED',
+                            conn_index=i_conn,
+                            session_index=i_sess,
+                            connection_name=connection_name,
+                            user=user,
+                            transaction=transaction,
+                            busy=busy,
+                            has_modal=has_modal,
+                            selected=False,
+                            reason='session_not_responsive',
+                            started_at=started_at,
                         )
-                        and cls._session_is_alive(sess, probe=probe)
+                        continue
+
+                    if not connection_matches:
+                        cls._log_session_selection(
+                            code='SAP_SESSION_SKIPPED',
+                            conn_index=i_conn,
+                            session_index=i_sess,
+                            connection_name=connection_name,
+                            user=user,
+                            transaction=transaction,
+                            busy=busy,
+                            has_modal=has_modal,
+                            selected=False,
+                            reason='connection_mismatch',
+                            started_at=started_at,
+                        )
+                        continue
+
+                    if not cls._session_matches_identity(
+                        sess,
+                        sistema,
+                        sap_user=sap_user,
+                        sap_client=sap_client,
                     ):
+                        cls._log_session_selection(
+                            code='SAP_SESSION_SKIPPED',
+                            conn_index=i_conn,
+                            session_index=i_sess,
+                            connection_name=connection_name,
+                            user=user,
+                            transaction=transaction,
+                            busy=busy,
+                            has_modal=has_modal,
+                            selected=False,
+                            reason='identity_mismatch',
+                            started_at=started_at,
+                        )
+                        continue
+
+                    if busy:
+                        blocked_candidates += 1
+                        cls._log_session_selection(
+                            code='SAP_SESSION_BUSY_SKIPPED',
+                            conn_index=i_conn,
+                            session_index=i_sess,
+                            connection_name=connection_name,
+                            user=user,
+                            transaction=transaction,
+                            busy=busy,
+                            has_modal='not_checked_busy',
+                            selected=False,
+                            reason='busy',
+                            started_at=started_at,
+                        )
+                        continue
+
+                    has_modal = cls._has_blocking_modal(sess)
+                    if has_modal:
+                        blocked_candidates += 1
+                        cls._log_session_selection(
+                            code='SAP_SESSION_MODAL_SKIPPED',
+                            conn_index=i_conn,
+                            session_index=i_sess,
+                            connection_name=connection_name,
+                            user=user,
+                            transaction=transaction,
+                            busy=busy,
+                            has_modal=has_modal,
+                            selected=False,
+                            reason='modal',
+                            started_at=started_at,
+                        )
+                        continue
+
+                    if cls._session_is_alive(sess, probe=probe):
+                        cls._log_session_selection(
+                            code='SAP_READY_SESSION_SELECTED',
+                            conn_index=i_conn,
+                            session_index=i_sess,
+                            connection_name=connection_name,
+                            user=user,
+                            transaction=transaction,
+                            busy=busy,
+                            has_modal=has_modal,
+                            selected=True,
+                            reason='ready',
+                            started_at=started_at,
+                        )
                         return sess
+                    blocked_candidates += 1
+                    cls._log_session_selection(
+                        code='SAP_SESSION_BUSY_SKIPPED',
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        connection_name=connection_name,
+                        user=user,
+                        transaction=transaction,
+                        busy=busy,
+                        has_modal=has_modal,
+                        selected=False,
+                        reason='not_alive_or_probe_failed',
+                        started_at=started_at,
+                    )
                 except Exception as e:
-                    log.debug("sap_find_ready_session_skip error=%s", e)
+                    blocked_candidates += 1
+                    cls._log_session_selection(
+                        code='SAP_SESSION_BUSY_SKIPPED',
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        connection_name=connection_name,
+                        user=user,
+                        transaction=transaction,
+                        busy=busy,
+                        has_modal=has_modal,
+                        selected=False,
+                        reason=f'evaluation_error:{e}',
+                        started_at=started_at,
+                    )
                     continue
+        if blocked_candidates:
+            cls._last_session_selection_code = 'SAP_BUSY_SESSION'
+            cls._last_session_selection_message = (
+                'SAP_BUSY_SESSION: existen sesiones SAP del usuario/conexion, '
+                'pero estan ocupadas, con modal o no respondieron rapido.'
+            )
+        log.warning(
+            "%s blocked_candidates=%s",
+            cls._last_session_selection_code,
+            blocked_candidates,
+        )
         return None
 
 
@@ -628,7 +935,32 @@ class SAPClient:
                 time.sleep(2)
 
 
+                login_started_at = time.perf_counter()
                 session = connection.Children(0)
+                if cls._session_busy(session):
+                    log.warning(
+                        "SAP_SESSION_BUSY_SKIPPED conn_index=new session_index=0 "
+                        "connection=%r reason=login_session_busy duration_ms=%s",
+                        cls._connection_display_name(connection),
+                        cls._responsive_elapsed_ms(login_started_at),
+                    )
+                    return False, '', 'SAP_BUSY_SESSION: la sesion nueva de login esta ocupada.'
+                if cls._has_blocking_modal(session):
+                    log.warning(
+                        "SAP_SESSION_MODAL_SKIPPED conn_index=new session_index=0 "
+                        "connection=%r reason=login_session_modal duration_ms=%s",
+                        cls._connection_display_name(connection),
+                        cls._responsive_elapsed_ms(login_started_at),
+                    )
+                    return False, '', 'SAP_BUSY_SESSION: la sesion nueva de login tiene un modal activo.'
+                if not cls._is_responsive_elapsed(login_started_at):
+                    log.warning(
+                        "SAP_SESSION_BUSY_SKIPPED conn_index=new session_index=0 "
+                        "connection=%r reason=login_session_not_responsive duration_ms=%s",
+                        cls._connection_display_name(connection),
+                        cls._responsive_elapsed_ms(login_started_at),
+                    )
+                    return False, '', 'SAP_BUSY_SESSION: la sesion nueva de login no respondio a tiempo.'
                 client_field = cls._find_on_session(session, FIELD_LOGIN_CLIENT)
                 user_field = cls._find_on_session(session, FIELD_LOGIN_USER)
                 password_field = cls._find_on_session(session, FIELD_LOGIN_PASSWORD)
@@ -700,15 +1032,95 @@ class SAPClient:
 
 
     def _wait_idle(self, timeout: float = TIMEOUT_SAP) -> bool:
+        started_at = time.perf_counter()
         deadline = time.time() + timeout
         while True:
             try:
                 if not self._session.Busy:
+                    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                    if elapsed_ms >= 1000:
+                        log.info("sap_wait_idle_done duration_ms=%s timeout_ms=%s", elapsed_ms, int(timeout * 1000))
                     return True
             except Exception:
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                log.warning("sap_wait_idle_disconnected duration_ms=%s", elapsed_ms)
                 return True
             if time.time() > deadline:
+                elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                log.warning("sap_wait_idle_timeout duration_ms=%s timeout_ms=%s", elapsed_ms, int(timeout * 1000))
                 return False
+            time.sleep(POLL_INTERVAL)
+
+
+    @staticmethod
+    def _normalized_transaction_code(transaction_code: str) -> str:
+        """Normaliza /nZTRANSACCION para compararlo con Session.Info.Transaction."""
+        normalized = str(transaction_code or '').strip().upper()
+        return normalized[2:] if normalized.startswith('/N') else normalized
+
+
+    def _current_transaction_code(self) -> str:
+        try:
+            return str(self._session.Info.Transaction or '').strip()
+        except Exception:
+            return ''
+
+
+    def _wait_for_transaction_ready(
+        self,
+        tx_code: str,
+        ready_field: str | None = None,
+        timeout: float = SAP_TRANSACTION_READY_TIMEOUT_SECONDS,
+    ) -> tuple[bool, str, int, bool]:
+        """
+        Espera la transaccion destino sin retrasos fijos largos.
+
+        La pantalla puede reportar ``Busy=False`` antes de que SAP actualice sus
+        controles; por eso se exige un retardo minimo y luego se confirma la
+        transaccion y el campo destino o el arbol de navegacion.
+        """
+        started_at = time.monotonic()
+        deadline = started_at + max(timeout, SAP_TRANSACTION_MIN_WAIT_SECONDS)
+        expected_transaction = self._normalized_transaction_code(tx_code)
+        busy_seen = False
+
+        if SAP_TRANSACTION_MIN_WAIT_SECONDS:
+            time.sleep(SAP_TRANSACTION_MIN_WAIT_SECONDS)
+
+        while True:
+            try:
+                is_busy = bool(self._session.Busy)
+            except Exception:
+                elapsed_ms = int((time.monotonic() - started_at) * 1000)
+                return False, 'session_unavailable', elapsed_ms, busy_seen
+
+            busy_seen = busy_seen or is_busy
+            current_transaction = self._current_transaction_code()
+            transaction_ready = (
+                not is_busy
+                and self._normalized_transaction_code(current_transaction) == expected_transaction
+            )
+            if transaction_ready:
+                if ready_field and self._find(ready_field) is not None:
+                    elapsed_ms = int((time.monotonic() - started_at) * 1000)
+                    return True, 'field', elapsed_ms, busy_seen
+                if ready_field and self._find(TREE_PATH) is not None:
+                    elapsed_ms = int((time.monotonic() - started_at) * 1000)
+                    return False, 'tree', elapsed_ms, busy_seen
+                if ready_field is None:
+                    elapsed_ms = int((time.monotonic() - started_at) * 1000)
+                    return True, 'transaction', elapsed_ms, busy_seen
+
+            if time.monotonic() >= deadline:
+                elapsed_ms = int((time.monotonic() - started_at) * 1000)
+                log.warning(
+                    "SAP_BUSY tx=%s readiness_timeout duration_ms=%s timeout_ms=%s busy_seen=%s",
+                    tx_code,
+                    elapsed_ms,
+                    int(timeout * 1000),
+                    busy_seen,
+                )
+                return False, 'timeout', elapsed_ms, busy_seen
             time.sleep(POLL_INTERVAL)
 
 
@@ -727,14 +1139,29 @@ class SAPClient:
             sap_user=self._expected_user,
             sap_client=self._expected_client,
         ):
-            raise SAPConnectionError(
+            raise SAPDisconnectedError(
                 f"Sesion SAP no coincide con la identidad esperada durante {context}: "
                 f"{self._identity_label(self._sistema, self._expected_user, self._expected_client)}"
             )
 
 
         if not self._session_is_alive(self.session):
-            raise SAPConnectionError(f"Sesion SAP desconectada durante {context}")
+            raise SAPDisconnectedError(f"Sesion SAP desconectada durante {context}")
+
+
+    def is_session_healthy(self) -> bool:
+        """Comprueba una sesion ya conectada sin ejecutar el probe activo /n."""
+        if self._session is None:
+            return False
+        return (
+            self._session_matches_identity(
+                self._session,
+                self._sistema,
+                sap_user=self._expected_user,
+                sap_client=self._expected_client,
+            )
+            and self._session_is_alive(self._session, probe=False)
+        )
 
 
     def _get_popup(self):
@@ -890,26 +1317,35 @@ class SAPClient:
     # -- Navegacion ------------------------------------------------------------
 
 
-    def _abrir_transaccion(self, tx_code: str, origin: Origin | None = None) -> None:
-        wait_long, _, wait_tree, _ = (
-            self._get_origin_timings(origin)
-            if origin
-            else (WAIT_LONG, WAIT_SHORT, WAIT_TREE, 0)
-        )
-
-
+    def _abrir_transaccion(
+        self,
+        tx_code: str,
+        origin: Origin | None = None,
+        ready_field: str | None = None,
+    ) -> bool:
         okcd = self._find("wnd[0]/tbar[0]/okcd")
         if okcd:
             okcd.Text = tx_code
         wnd = self._find("wnd[0]")
         if wnd:
             wnd.sendVKey(0)
-        time.sleep(wait_long)
-        self._wait_idle()
-        time.sleep(wait_tree)
-        self._wait_idle()
+        field_ready, readiness, elapsed_ms, busy_seen = self._wait_for_transaction_ready(
+            tx_code,
+            ready_field=ready_field,
+        )
         self._raise_if_session_invalid(f"abrir transaccion {tx_code}")
-        log.info("tx_opened code=%s current_tx=%s", tx_code, self._session.Info.Transaction)
+        log.info(
+            "tx_opened code=%s current_tx=%s readiness=%s field_ready=%s "
+            "busy_seen=%s duration_ms=%s min_wait_ms=%s",
+            tx_code,
+            self._current_transaction_code(),
+            readiness,
+            field_ready,
+            busy_seen,
+            elapsed_ms,
+            int(SAP_TRANSACTION_MIN_WAIT_SECONDS * 1000),
+        )
+        return field_ready
 
 
     def _navegar_nodo(self, node_id: str, origin: Origin | None = None) -> bool:
@@ -948,10 +1384,14 @@ class SAPClient:
             pass
 
 
-        self._abrir_transaccion(TX_MOVEINBHU, origin=origin)
+        field_ready = self._abrir_transaccion(
+            TX_MOVEINBHU,
+            origin=origin,
+            ready_field=FIELD_F1_HU,
+        )
 
 
-        if self._find(FIELD_F1_HU) is None:
+        if not field_ready and self._find(FIELD_F1_HU) is None:
             self._navegar_nodo(NODE_MOVEINBHU, origin=origin)
 
 
@@ -966,10 +1406,14 @@ class SAPClient:
         self._close_all_popups()
 
 
-        self._abrir_transaccion(TX_TIJSEP, origin=origin)
+        field_ready = self._abrir_transaccion(
+            TX_TIJSEP,
+            origin=origin,
+            ready_field=FIELD_F2_HU,
+        )
 
 
-        if self._find(FIELD_F2_HU) is None:
+        if not field_ready and self._find(FIELD_F2_HU) is None:
             self._navegar_nodo(NODE_TIJSEP, origin=origin)
 
 
@@ -1010,7 +1454,13 @@ class SAPClient:
             if wnd_submit is None:
                 return Phase1Result(status="error", message="wnd[0] no disponible", sbar="")
             wnd_submit.sendVKey(8)
-            self._wait_idle()
+            if not self._wait_idle(timeout=TIMEOUT_SAP):
+                log.warning("SAP_BUSY hu=%s phase=F1 timeout_ms=%s", hu_code, int(TIMEOUT_SAP * 1000))
+                return Phase1Result(
+                    status="error",
+                    message=f"SAP ocupado: no respondio en {TIMEOUT_SAP:g}s",
+                    sbar="",
+                )
             time.sleep(wait_short)
 
 
@@ -1187,9 +1637,10 @@ class SAPClient:
             wnd_submit.sendVKey(0)
 
             if not self._wait_idle(timeout=TIMEOUT_SAP):
+                log.warning("SAP_BUSY hu=%s phase=F2 step=submit timeout_ms=%s", hu_code, int(TIMEOUT_SAP * 1000))
                 return Phase2Result(
                     status="error",
-                    message="TIMEOUT: SAP no respondio en 15s",
+                    message=f"SAP ocupado: no respondio en {TIMEOUT_SAP:g}s",
                     duration_ms=int((time.time() - t_start) * 1000),
                     phase2_ts=_INVALID_TS,
                 )
@@ -1223,9 +1674,10 @@ class SAPClient:
 
 
             if not self._wait_idle(timeout=TIMEOUT_SAP):
+                log.warning("SAP_BUSY hu=%s phase=F2 step=confirm timeout_ms=%s", hu_code, int(TIMEOUT_SAP * 1000))
                 return Phase2Result(
                     status="error",
-                    message="TIMEOUT: SAP no respondio en 15s",
+                    message=f"SAP ocupado: no respondio en {TIMEOUT_SAP:g}s",
                     duration_ms=int((time.time() - t_start) * 1000),
                     phase2_ts=_INVALID_TS,
                 )

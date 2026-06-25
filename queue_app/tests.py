@@ -1,4 +1,5 @@
 from datetime import timedelta
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -9,7 +10,12 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 
-from core.sap_client import SAPClient
+from core.sap_client import (
+    SAPClient,
+    SAPCOMBlockedError,
+    SAPCOMFatalBlockedError,
+    SAP_TRANSACTION_MIN_WAIT_SECONDS,
+)
 from core.ze16_client import ZE16Client
 from queue_app import service_control
 from queue_app.consumers import QueueConsumer
@@ -241,6 +247,148 @@ class ServiceControlTests(TestCase):
         self.assertFalse(any(status['actions'].values()))
 
 
+class SAPTransactionReadinessTests(TestCase):
+    def test_transaction_wait_confirms_ready_field_after_minimum_delay(self):
+        client = SAPClient()
+        client._session = SimpleNamespace(
+            Busy=False,
+            Info=SimpleNamespace(Transaction='ZMOVEINBHU'),
+        )
+        client._find = lambda element_id: object() if element_id == 'target-field' else None
+
+        with patch('core.sap_client.time.sleep') as sleep:
+            field_ready, readiness, _elapsed_ms, busy_seen = client._wait_for_transaction_ready(
+                '/nZMOVEINBHU',
+                ready_field='target-field',
+            )
+
+        self.assertTrue(field_ready)
+        self.assertEqual(readiness, 'field')
+        self.assertFalse(busy_seen)
+        sleep.assert_called_once_with(SAP_TRANSACTION_MIN_WAIT_SECONDS)
+
+
+    def test_transaction_wait_returns_tree_when_target_field_needs_navigation(self):
+        client = SAPClient()
+        client._session = SimpleNamespace(
+            Busy=False,
+            Info=SimpleNamespace(Transaction='ZMMTIJSEP'),
+        )
+        client._find = lambda element_id: object() if 'cntlIMAGE_CONTAINER' in element_id else None
+
+        with patch('core.sap_client.time.sleep'):
+            field_ready, readiness, _elapsed_ms, _busy_seen = client._wait_for_transaction_ready(
+                '/nZMMTIJSEP',
+                ready_field='target-field',
+            )
+
+        self.assertFalse(field_ready)
+        self.assertEqual(readiness, 'tree')
+
+
+class SAPWorkerSessionTests(TestCase):
+    def test_session_is_reused_within_pallet_and_checked_before_next_pallet(self):
+        from queue_app.services.hu_processing_service import SAPWorkerSession
+
+        sap_client = MagicMock()
+        sap_client.is_session_healthy.return_value = True
+
+        with patch('core.sap_client.SAPClient', return_value=sap_client):
+            session = SAPWorkerSession()
+            try:
+                first_client, first_action = session.acquire(pallet_id=1)
+                second_client, second_action = session.acquire(pallet_id=1)
+                third_client, third_action = session.acquire(pallet_id=2)
+            finally:
+                session.close()
+
+        self.assertIs(first_client, sap_client)
+        self.assertIs(second_client, sap_client)
+        self.assertIs(third_client, sap_client)
+        self.assertEqual((first_action, second_action, third_action), (
+            'connected',
+            'reused',
+            'health_checked',
+        ))
+        sap_client.connect.assert_called_once_with(initialize_com=False)
+        sap_client.is_session_healthy.assert_called_once()
+
+
+    @override_settings(SAP_COM_COOLDOWN_SECONDS=0)
+    def test_com_operation_timeout_raises_controlled_error(self):
+        from queue_app.services.hu_processing_service import SAPWorkerSession
+
+        sap_client = MagicMock()
+
+        with patch('core.sap_client.SAPClient', return_value=sap_client):
+            session = SAPWorkerSession()
+            try:
+                session.prepare(pallet_id=1)
+                started_at = time.perf_counter()
+                with self.assertRaises(SAPCOMBlockedError):
+                    session.call(
+                        1,
+                        'sap.test_blocked',
+                        lambda _client: time.sleep(0.05),
+                        timeout=0.01,
+                    )
+            finally:
+                session.close()
+
+        self.assertLess(time.perf_counter() - started_at, 0.5)
+        self.assertIsNone(session._executor)
+
+
+    @override_settings(SAP_COM_COOLDOWN_SECONDS=0, SAP_COM_MAX_CONSECUTIVE_TIMEOUTS=1)
+    def test_com_operation_timeout_can_abort_current_run(self):
+        from queue_app.services.hu_processing_service import SAPWorkerSession
+
+        sap_client = MagicMock()
+
+        with patch('core.sap_client.SAPClient', return_value=sap_client):
+            session = SAPWorkerSession()
+            try:
+                session.prepare(pallet_id=1)
+                with self.assertRaises(SAPCOMFatalBlockedError):
+                    session.call(
+                        1,
+                        'sap.test_fatal_blocked',
+                        lambda _client: time.sleep(0.05),
+                        timeout=0.01,
+                    )
+            finally:
+                session.close()
+
+        metrics = session.metrics()
+        self.assertEqual(metrics['consecutive_timeouts'], 1)
+        self.assertEqual(metrics['aborted_runs'], 1)
+        self.assertIsNone(session._executor)
+
+
+class QueueStatsCacheTests(TestCase):
+    def tearDown(self):
+        from queue_app.services.stats_service import invalidate_queue_stats_cache
+
+        invalidate_queue_stats_cache()
+
+
+    def test_stats_cache_is_invalidated_after_a_queue_mutation(self):
+        from queue_app.services.stats_service import (
+            calculate_queue_stats,
+            invalidate_queue_stats_cache,
+        )
+
+        pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
+        item = HUItem.objects.create(hu_code='TH0000268197', pallet=pallet)
+        invalidate_queue_stats_cache()
+        self.assertEqual(calculate_queue_stats()['pending'], 1)
+
+        item.status = HUItem.STATUS_OK
+        item.save(update_fields=['status'])
+        self.assertEqual(calculate_queue_stats()['pending'], 1)
+
+        invalidate_queue_stats_cache()
+        self.assertEqual(calculate_queue_stats()['pending'], 0)
 
 
 class SAPSessionValidationTests(TestCase):
@@ -323,18 +471,36 @@ class SAPSessionValidationTests(TestCase):
         self.assertEqual(result['phase2_ts'].year, 1)
 
 
-    def _make_sap_session(self, *, system='LUP', client='100', user='BOT1', wnd=None):
+    def _make_sap_session(
+        self,
+        *,
+        system='LUP',
+        client='100',
+        user='BOT1',
+        transaction='SESSION_MANAGER',
+        busy=False,
+        modal=False,
+        wnd=None,
+    ):
         class Session:
             def __init__(self):
-                self.Info = SimpleNamespace(SystemName=system, Client=client, User=user)
+                self.Info = SimpleNamespace(
+                    SystemName=system,
+                    Client=client,
+                    User=user,
+                    Transaction=transaction,
+                )
                 self.ActiveWindow = SimpleNamespace(Text='SAP GUI for Windows 770')
-                self.Busy = False
+                self.Busy = busy
                 self._wnd = wnd or SimpleNamespace(Text='SAP GUI for Windows 770')
+                self._modal = SimpleNamespace(Text='Modal SAP') if modal else None
 
 
             def findById(self, element_id):
                 if element_id == 'wnd[0]':
                     return self._wnd
+                if element_id == 'wnd[1]' and self._modal:
+                    return self._modal
                 if element_id == 'wnd[0]/sbar':
                     return SimpleNamespace(Text='')
                 raise LookupError(element_id)
@@ -343,7 +509,7 @@ class SAPSessionValidationTests(TestCase):
         return Session()
 
 
-    def _make_sap_app(self, sessions):
+    def _make_sap_app(self, sessions, *, connection_name='LUP Production [Public]'):
         class Children:
             def __init__(self, values):
                 self._values = values
@@ -357,6 +523,8 @@ class SAPSessionValidationTests(TestCase):
         class Connection:
             def __init__(self, values):
                 self.Children = Children(values)
+                self.Description = connection_name
+                self.Name = connection_name
 
 
         class App:
@@ -466,6 +634,67 @@ class SAPSessionValidationTests(TestCase):
 
 
         self.assertIs(session, expected)
+
+
+    def test_session_is_alive_rejects_busy_session(self):
+        busy = self._make_sap_session(user='BOT1', busy=True)
+
+
+        self.assertFalse(SAPClient._session_is_alive(busy))
+
+
+    def test_find_ready_session_skips_busy_and_selects_free_session(self):
+        busy = self._make_sap_session(user='BOT1', busy=True)
+        free = self._make_sap_session(user='BOT1', busy=False)
+        app = self._make_sap_app([busy, free])
+
+
+        session = SAPClient._find_ready_session(app, 'LUP', sap_user='BOT1')
+
+
+        self.assertIs(session, free)
+
+
+    def test_find_ready_session_skips_modal_and_selects_free_session(self):
+        modal = self._make_sap_session(user='BOT1', modal=True)
+        free = self._make_sap_session(user='BOT1')
+        app = self._make_sap_app([modal, free])
+
+
+        session = SAPClient._find_ready_session(app, 'LUP', sap_user='BOT1')
+
+
+        self.assertIs(session, free)
+
+
+    def test_find_ready_session_all_busy_fails_fast(self):
+        app = self._make_sap_app([
+            self._make_sap_session(user='BOT1', busy=True),
+            self._make_sap_session(user='BOT1', busy=True),
+        ])
+
+
+        with patch.object(SAPClient, '_probe_session_for_work') as probe:
+            session = SAPClient._find_ready_session(app, 'LUP', probe=True, sap_user='BOT1')
+
+
+        self.assertIsNone(session)
+        self.assertEqual(SAPClient._last_session_selection_code, 'SAP_BUSY_SESSION')
+        probe.assert_not_called()
+
+
+    def test_find_ready_session_does_not_probe_busy_sessions(self):
+        busy = self._make_sap_session(user='BOT1', busy=True)
+        free = self._make_sap_session(user='BOT1')
+        app = self._make_sap_app([busy, free])
+
+
+        with patch.object(SAPClient, '_probe_session_for_work', return_value=True) as probe:
+            session = SAPClient._find_ready_session(app, 'LUP', probe=True, sap_user='BOT1')
+
+
+        self.assertIs(session, free)
+        probe.assert_called_once_with(free)
 
 
     def test_close_sessions_closes_only_expected_identity(self):
@@ -873,14 +1102,20 @@ class ReprocessQueueTests(TestCase):
 
 
 class StartProcessingTests(TestCase):
-    def test_start_processing_is_blocked_without_sap_session(self):
+    def test_start_processing_is_blocked_when_sap_status_timeout(self):
         pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
         HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_PENDING)
 
 
         with (
             patch('queue_app.views._celery_start_blocker_response', return_value=None),
-            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(False, '', 'SAP no disponible')),
+            patch('queue_app.services.diagnostics_service.get_fast_sap_status', return_value={
+                'status': 'timeout',
+                'source': 'timeout',
+                'reason': 'live_timeout',
+                'code': 'SAP_STATUS_TIMEOUT',
+            }),
+            patch('core.sap_client.SAPClient.ensure_session_ready') as ensure_session_ready,
             patch('queue_app.views.process_queue_task.delay') as delay,
         ):
             response = self.client.post('/api/procesar/', data='{}', content_type='application/json')
@@ -888,6 +1123,8 @@ class StartProcessingTests(TestCase):
 
         self.assertEqual(response.status_code, 409)
         self.assertFalse(response.json()['ok'])
+        self.assertEqual(response.json()['code'], 'SAP_STATUS_TIMEOUT')
+        ensure_session_ready.assert_not_called()
         delay.assert_not_called()
 
 
@@ -994,6 +1231,7 @@ class StartProcessingTests(TestCase):
         with (
             patch('queue_app.views.is_queue_locked', return_value=False),
             patch('queue_app.views._celery_start_blocker_response', return_value=None),
+            patch('queue_app.views._sap_start_blocker_response', return_value=None),
             patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
             patch('queue_app.views.process_queue_task.delay', side_effect=RuntimeError('Redis down')),
             patch('core.sap_client.SAPClient.close_sessions') as close_sessions,
@@ -1024,6 +1262,7 @@ class StartProcessingTests(TestCase):
             patch('queue_app.views.emit_stats_update'),
             patch('queue_app.views.emit_queue_status'),
             patch('queue_app.views._celery_start_blocker_response', return_value=None),
+            patch('queue_app.views._sap_start_blocker_response', return_value=None),
             patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
             patch('queue_app.views.process_queue_task.delay') as delay,
         ):
@@ -1148,6 +1387,7 @@ class StartProcessingTests(TestCase):
         with (
             patch('queue_app.views.is_queue_locked', return_value=False),
             patch('queue_app.views._celery_start_blocker_response', return_value=None),
+            patch('queue_app.views._sap_start_blocker_response', return_value=None),
             patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
             patch('queue_app.views.process_queue_task.delay') as delay,
         ):
@@ -1659,11 +1899,13 @@ class SequentialQueueTaskTests(TestCase):
         hu2 = HUItem.objects.create(hu_code='T10045916002', pallet=p1)
         hu3 = HUItem.objects.create(hu_code='T10045916003', pallet=p2)
         events = []
+        sap_sessions = []
 
 
         def process_item(item_id, **kwargs):
             item = HUItem.objects.get(pk=item_id)
             events.append(('hu', item.pallet_id, item.hu_code))
+            sap_sessions.append(kwargs.get('sap_session'))
             item.status = HUItem.STATUS_OK
             item.save(update_fields=['status'])
             return item
@@ -1695,6 +1937,7 @@ class SequentialQueueTaskTests(TestCase):
             ('hu', p2.pk, hu3.hu_code),
             ('print', p2.pk),
         ])
+        self.assertTrue(all(session is sap_sessions[0] for session in sap_sessions))
 
 
     def test_queue_task_continues_after_pallet_with_hu_errors(self):

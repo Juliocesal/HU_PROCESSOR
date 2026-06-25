@@ -1,6 +1,8 @@
 import logging
 import time
+from threading import RLock
 
+from django.conf import settings
 from django.db.models import Count, Q
 from django.utils import timezone
 
@@ -13,6 +15,14 @@ _QUEUE_LOCK_STATS_CACHE = {
     'expires_at': 0.0,
     'value': False,
 }
+_QUEUE_STATS_CACHE_SECONDS = max(
+    float(getattr(settings, 'QUEUE_STATS_CACHE_SECONDS', 0.5)), 0.0,
+)
+_QUEUE_STATS_CACHE = {
+    'expires_at': 0.0,
+    'value': None,
+}
+_QUEUE_STATS_CACHE_LOCK = RLock()
 
 
 def _format_duration(seconds: int) -> str:
@@ -54,10 +64,28 @@ def _is_queue_locked_for_stats(is_queue_locked_func) -> bool:
     return locked
 
 
-def calculate_queue_stats() -> dict:
+def invalidate_queue_stats_cache() -> None:
+    """Descarta KPIs locales despues de modificar una HU o pallet."""
+    with _QUEUE_STATS_CACHE_LOCK:
+        _QUEUE_STATS_CACHE['expires_at'] = 0.0
+        _QUEUE_STATS_CACHE['value'] = None
+
+
+def calculate_queue_stats(*, force_refresh: bool = False) -> dict:
     """Devuelve los KPIs compartidos por vistas HTTP y eventos WebSocket."""
     from queue_app.models import HUItem, Pallet
     from queue_app.services.queue_runtime import is_queue_locked_quick
+
+    now = time.monotonic()
+    with _QUEUE_STATS_CACHE_LOCK:
+        cached_stats = _QUEUE_STATS_CACHE['value']
+        if (
+            not force_refresh
+            and cached_stats is not None
+            and now < _QUEUE_STATS_CACHE['expires_at']
+        ):
+            log.debug("queue_stats_cache_hit")
+            return dict(cached_stats)
 
     started_at = time.perf_counter()
     item_counts = HUItem.objects.aggregate(
@@ -111,7 +139,12 @@ def calculate_queue_stats() -> dict:
         total=result['total'],
         pallets=result['pallets'],
     )
-    return result
+    with _QUEUE_STATS_CACHE_LOCK:
+        _QUEUE_STATS_CACHE['value'] = dict(result)
+        _QUEUE_STATS_CACHE['expires_at'] = (
+            time.monotonic() + _QUEUE_STATS_CACHE_SECONDS
+        )
+    return dict(result)
 
 
 def calculate_queue_operational_status() -> dict | None:

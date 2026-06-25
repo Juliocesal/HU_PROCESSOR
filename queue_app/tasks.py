@@ -91,8 +91,8 @@ def _calculate_elapsed_ms(started_at) -> int:
     return _service_calculate_elapsed_ms(started_at)
 
 
-def _close_sap_after_queue_idle() -> None:
-    _service_close_sap_after_queue_idle(logger=log)
+def _close_sap_after_queue_idle(sap_com_breaker=None) -> None:
+    _service_close_sap_after_queue_idle(logger=log, sap_com_breaker=sap_com_breaker)
 
 
 def _queue_worker_hooks() -> QueueWorkerHooks:
@@ -189,6 +189,7 @@ def _process_hu_item(
     run_pallet_boundary=True,
     emit_pallet_completion=True,
     owner: str | None = None,
+    sap_session=None,
 ):
     return _service_process_hu_item(
         hu_item_id,
@@ -198,6 +199,7 @@ def _process_hu_item(
         emit_pallet_completion=emit_pallet_completion,
         owner=owner,
         run_pallet_boundary_func=_run_pallet_boundary,
+        sap_session=sap_session,
     )
 
 

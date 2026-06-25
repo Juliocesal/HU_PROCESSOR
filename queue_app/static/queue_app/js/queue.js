@@ -127,6 +127,8 @@
     checkSAP: 4000,
     serviceControl: 8000,
   };
+  const SAP_START_BLOCKED_MESSAGE = 'SAP está ocupado o no respondió a tiempo. Puede haber otra automatización cargando datos. Daphne, Celery y Redis siguen activos.';
+  const SAP_START_BLOCKED_CODES = new Set(['SAP_COM_BLOCKED', 'SAP_STATUS_TIMEOUT']);
   const NO_PROGRESS_WARNING_MS = 45000;
   const NO_PROGRESS_WARNING_COOLDOWN_MS = 60000;
   const SAP_STATUS_BASE_POLL_MS = 5000;
@@ -2492,12 +2494,11 @@
       const data = await readJsonResponse(res);
 
       if (!data.ok) {
-        flash(`Error: ${data.error}`, 'red');
+        applyStartProcessError(data);
         isRunning = false;
         clearStopRequestState();
-        setProgBadge('EN ESPERA', '');
-        setProgStatus('Error al iniciar.', '');
         document.getElementById('prog-bar').classList.remove('animated', 'done', 'error', 'waiting');
+        document.getElementById('prog-bar').classList.add('error');
         updateButtons();
         return;
       }
@@ -2516,7 +2517,7 @@
       clearStopRequestState();
       setProgBadge('EN ESPERA', '');
       setProgStatus(e.message || 'Error al iniciar.', 'error');
-      setFooterStatus('No se pudo confirmar el inicio. Revisa Daphne/Celery/Redis y vuelve a intentar.', 'error');
+      setFooterStatus('No se pudo confirmar el inicio. Revisa el diagnóstico para identificar si es SAP, Daphne, Celery o Redis.', 'error');
       document.getElementById('prog-bar').classList.remove('animated', 'waiting');
       document.getElementById('prog-bar').classList.add('error');
       updateButtons();
@@ -2992,6 +2993,35 @@
     }
     sapStatusFailureCount = 0;
     sapStatusPollDelayMs = SAP_STATUS_BASE_POLL_MS;
+  }
+
+  function isSapStartBlocked(data = {}) {
+    return SAP_START_BLOCKED_CODES.has(data.code);
+  }
+
+  function applyStartProcessError(data = {}) {
+    const sapBlocked = isSapStartBlocked(data);
+    const message = sapBlocked
+      ? SAP_START_BLOCKED_MESSAGE
+      : (data.error || data.message || 'Error al iniciar.');
+
+    flash(`Error: ${message}`, 'red');
+    setProgBadge('EN ESPERA', '');
+    setProgStatus(message, 'error');
+    setFooterStatus(
+      sapBlocked
+        ? 'SAP ocupado. Espera a que termine la otra automatización y vuelve a intentar.'
+        : 'No se pudo iniciar el proceso. Revisa el diagnóstico para identificar la causa.',
+      'error'
+    );
+    if (sapBlocked) {
+      addDiagnosticLog(
+        'warn',
+        'SAP',
+        message,
+        `code=${data.code || ''} status=${data.sap?.status || ''} reason=${data.sap?.reason || ''}`
+      );
+    }
   }
 
   function scheduleNextSapCheck(delayMs = sapStatusPollDelayMs) {

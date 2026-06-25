@@ -80,6 +80,7 @@ ASGI_APPLICATION = 'config.asgi.application'
 # intermitentes como "attempt to write a readonly database".
 SQLITE_TIMEOUT_SECONDS = config('SQLITE_TIMEOUT_SECONDS', default=30, cast=float)
 SQLITE_JOURNAL_MODE = config('SQLITE_JOURNAL_MODE', default='DELETE')
+QUEUE_STATS_CACHE_SECONDS = config('QUEUE_STATS_CACHE_SECONDS', default=0.5, cast=float)
 LOCAL_DATA_DIR = Path(
     config(
         'NEXHUS_DATA_DIR',
@@ -158,6 +159,22 @@ SAP_PROBE_BEFORE_WORK = config('SAP_PROBE_BEFORE_WORK', default=True, cast=bool)
 SAP_CLOSE_WHEN_QUEUE_IDLE = config('SAP_CLOSE_WHEN_QUEUE_IDLE', default=True, cast=bool)
 SAP_STARTUP_TIMEOUT_SECONDS = config('SAP_STARTUP_TIMEOUT_SECONDS', default=30, cast=float)
 SAP_STARTUP_POLL_SECONDS = config('SAP_STARTUP_POLL_SECONDS', default=1, cast=float)
+# Tras enviar /nTRANSACCION, SAP se espera de forma activa hasta que la
+# transaccion objetivo este lista. Este retardo evita sondear antes de que GUI
+# procese el comando sin imponer las antiguas pausas fijas de 0.7 segundos.
+SAP_TRANSACTION_MIN_WAIT_SECONDS = config(
+    'SAP_TRANSACTION_MIN_WAIT_SECONDS', default=0.05, cast=float,
+)
+SAP_TRANSACTION_READY_TIMEOUT_SECONDS = config(
+    'SAP_TRANSACTION_READY_TIMEOUT_SECONDS', default=15, cast=float,
+)
+SAP_COM_CONNECT_TIMEOUT_SECONDS = config('SAP_COM_CONNECT_TIMEOUT_SECONDS', default=30, cast=float)
+SAP_COM_PHASE_TIMEOUT_SECONDS = config('SAP_COM_PHASE_TIMEOUT_SECONDS', default=60, cast=float)
+SAP_COM_ZE16_TIMEOUT_SECONDS = config('SAP_COM_ZE16_TIMEOUT_SECONDS', default=180, cast=float)
+SAP_COM_CALL_WARN_SECONDS = config('SAP_COM_CALL_WARN_SECONDS', default=5, cast=float)
+SAP_COM_MAX_CONSECUTIVE_TIMEOUTS = config('SAP_COM_MAX_CONSECUTIVE_TIMEOUTS', default=2, cast=int)
+SAP_COM_COOLDOWN_SECONDS = config('SAP_COM_COOLDOWN_SECONDS', default=30, cast=float)
+SAP_SESSION_RESPONSIVE_SECONDS = config('SAP_SESSION_RESPONSIVE_SECONDS', default=2, cast=float)
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']
