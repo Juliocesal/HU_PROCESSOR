@@ -2,6 +2,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass, field
+from threading import current_thread
 
 from django.conf import settings
 from django.utils import timezone
@@ -37,6 +38,7 @@ class SAPWorkerSession:
     """
 
     status_callback: object | None = None
+    force_new_login_on_first_connect: bool = False
     com_breaker: SAPCOMCircuitBreaker = field(init=False, repr=False)
     _executor: ThreadPoolExecutor | None = field(default=None, init=False, repr=False)
     _state: _SAPComThreadState | None = field(default=None, init=False, repr=False)
@@ -53,11 +55,37 @@ class SAPWorkerSession:
     def _execute_in_com_thread(self, state: _SAPComThreadState, operation: str, callback):
         import pythoncom
 
+        started_at = time.perf_counter()
+        log.info(
+            "SAP_COM_OPERATION_START operation=%s thread=%s com_initialized=%s has_client=%s checked_pallet=%s",
+            operation,
+            current_thread().name,
+            state.com_initialized,
+            bool(state.client),
+            state.checked_pallet_id,
+        )
         if not state.com_initialized:
             pythoncom.CoInitialize()
             state.com_initialized = True
             log.info("sap_com_thread_initialized operation=%s", operation)
-        return callback(state)
+        try:
+            result = callback(state)
+            log.info(
+                "SAP_COM_OPERATION_DONE operation=%s duration_ms=%s has_client=%s checked_pallet=%s",
+                operation,
+                int((time.perf_counter() - started_at) * 1000),
+                bool(state.client),
+                state.checked_pallet_id,
+            )
+            return result
+        except Exception as exc:
+            log.exception(
+                "SAP_COM_OPERATION_ERROR operation=%s duration_ms=%s error=%s",
+                operation,
+                int((time.perf_counter() - started_at) * 1000),
+                exc,
+            )
+            raise
 
     def _discard_worker(self, *, reason: str) -> None:
         executor = self._executor
@@ -80,6 +108,16 @@ class SAPWorkerSession:
         except FutureTimeoutError as exc:
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
             timeout_ms = int(timeout * 1000)
+            log.error(
+                "SAP_COM_OPERATION_TIMEOUT operation=%s duration_ms=%s timeout_ms=%s "
+                "state_has_client=%s state_checked_pallet=%s state_com_initialized=%s",
+                operation,
+                elapsed_ms,
+                timeout_ms,
+                bool(state.client),
+                state.checked_pallet_id,
+                state.com_initialized,
+            )
             future.cancel()
             future.add_done_callback(
                 lambda _future: self.com_breaker.record_late_completion(operation, log)
@@ -113,19 +151,57 @@ class SAPWorkerSession:
                 )
 
     @staticmethod
-    def _acquire_client(state: _SAPComThreadState, pallet_id: int):
+    def _acquire_client(state: _SAPComThreadState, pallet_id: int, force_new_login=False):
         from core.sap_client import SAPClient
 
+        acquire_started_at = time.perf_counter()
+        log.info(
+            "SAP_ACQUIRE_START pallet=%s has_client=%s checked_pallet=%s",
+            pallet_id,
+            bool(state.client),
+            state.checked_pallet_id,
+        )
         if state.client is None:
+            connect_started_at = time.perf_counter()
+            log.info("SAP_ACQUIRE_CONNECT_START pallet=%s reason=no_cached_client", pallet_id)
             state.client = SAPClient()
-            state.client.connect(initialize_com=False)
+            connect_kwargs = {'initialize_com': False}
+            if force_new_login:
+                connect_kwargs['force_new_login'] = True
+            state.client.connect(**connect_kwargs)
+            try:
+                from queue_app.services.diagnostics_service import set_cached_sap_connected
+
+                sap_user = state.client.get_user()
+                if isinstance(sap_user, str) and sap_user.strip():
+                    set_cached_sap_connected(user=sap_user)
+            except Exception as exc:
+                log.debug("sap_status_cache_worker_connect_failed error=%s", exc)
             state.checked_pallet_id = pallet_id
+            log.info(
+                "SAP_ACQUIRE_CONNECT_DONE pallet=%s duration_ms=%s user=%s client=%s",
+                pallet_id,
+                int((time.perf_counter() - connect_started_at) * 1000),
+                state.client.get_user(),
+                state.client.get_client(),
+            )
+            log.info(
+                "SAP_ACQUIRE_DONE pallet=%s action=connected duration_ms=%s",
+                pallet_id,
+                int((time.perf_counter() - acquire_started_at) * 1000),
+            )
             return state.client, 'connected'
 
         if state.checked_pallet_id == pallet_id:
+            log.info(
+                "SAP_ACQUIRE_DONE pallet=%s action=reused duration_ms=%s",
+                pallet_id,
+                int((time.perf_counter() - acquire_started_at) * 1000),
+            )
             return state.client, 'reused'
 
         health_started_at = time.perf_counter()
+        log.info("SAP_ACQUIRE_HEALTH_START pallet=%s previous_pallet=%s", pallet_id, state.checked_pallet_id)
         is_healthy = state.client.is_session_healthy()
         log_performance(
             log,
@@ -136,18 +212,49 @@ class SAPWorkerSession:
         )
         state.checked_pallet_id = pallet_id
         if is_healthy:
+            log.info(
+                "SAP_ACQUIRE_DONE pallet=%s action=health_checked duration_ms=%s",
+                pallet_id,
+                int((time.perf_counter() - acquire_started_at) * 1000),
+            )
             return state.client, 'health_checked'
 
         log.warning("sap_worker_session_reconnect pallet=%s", pallet_id)
+        reconnect_started_at = time.perf_counter()
+        log.info("SAP_ACQUIRE_CONNECT_START pallet=%s reason=unhealthy_cached_client", pallet_id)
         state.client = SAPClient()
         state.client.connect(initialize_com=False)
+        try:
+            from queue_app.services.diagnostics_service import set_cached_sap_connected
+
+            sap_user = state.client.get_user()
+            if isinstance(sap_user, str) and sap_user.strip():
+                set_cached_sap_connected(user=sap_user)
+        except Exception as exc:
+            log.debug("sap_status_cache_worker_reconnect_failed error=%s", exc)
+        log.info(
+            "SAP_ACQUIRE_CONNECT_DONE pallet=%s duration_ms=%s user=%s client=%s",
+            pallet_id,
+            int((time.perf_counter() - reconnect_started_at) * 1000),
+            state.client.get_user(),
+            state.client.get_client(),
+        )
+        log.info(
+            "SAP_ACQUIRE_DONE pallet=%s action=reconnected duration_ms=%s",
+            pallet_id,
+            int((time.perf_counter() - acquire_started_at) * 1000),
+        )
         return state.client, 'reconnected'
 
     def acquire(self, pallet_id: int):
         """Devuelve una sesion sana y solo la sondea al cambiar de pallet."""
         return self._run(
             'sap.acquire',
-            lambda state: self._acquire_client(state, pallet_id),
+            lambda state: self._acquire_client(
+                state,
+                pallet_id,
+                force_new_login=self.force_new_login_on_first_connect,
+            ),
             timeout=SAP_COM_CONNECT_TIMEOUT_SECONDS,
         )
 
@@ -167,6 +274,17 @@ class SAPWorkerSession:
     def invalidate(self) -> None:
         """Obliga a reconectar si SAP reporta una sesion invalida durante una HU."""
         self._discard_worker(reason='invalidate')
+
+    def close_current_session(self, *, timeout: float | None = None) -> int:
+        """Cierra solo la sesion SAP que el worker activo ya esta usando."""
+        if self._executor is None or self._state is None or self._state.client is None:
+            log.info("sap_worker_close_current_session_skipped reason=no_cached_client")
+            return 0
+        return self._run(
+            'sap.close_worker_session',
+            _close_current_worker_session,
+            timeout=timeout or SAP_COM_CONNECT_TIMEOUT_SECONDS,
+        )
 
     def close(self) -> None:
         """Libera el executor COM al terminar la corrida Celery."""
@@ -196,6 +314,26 @@ def _uninitialize_com(state: _SAPComThreadState):
         pythoncom.CoUninitialize()
         state.com_initialized = False
         log.info("sap_com_thread_uninitialized")
+
+
+def _close_current_worker_session(state: _SAPComThreadState) -> int:
+    client = state.client
+    if client is None:
+        return 0
+    close_current_session = getattr(client, 'close_current_session', None)
+    if not callable(close_current_session):
+        return 0
+    closed = int(close_current_session() or 0)
+    if closed:
+        state.client = None
+        state.checked_pallet_id = None
+        try:
+            from queue_app.services.diagnostics_service import set_cached_sap_disconnected
+
+            set_cached_sap_disconnected()
+        except Exception as exc:
+            log.debug("sap_status_cache_worker_close_failed error=%s", exc)
+    return closed
 
 
 def _calculate_elapsed_ms(started_at) -> int:

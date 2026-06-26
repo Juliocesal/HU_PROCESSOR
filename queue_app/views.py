@@ -37,6 +37,7 @@ from queue_app.services.diagnostics_service import (
     get_fast_sap_status,
     iniciar_sap as _diagnostics_iniciar_sap,
     sap_start_blocker as _diagnostics_sap_start_blocker,
+    sap_start_decision as _diagnostics_sap_start_decision,
 )
 from queue_app.services.service_control_api import (
     service_control_action_response,
@@ -715,11 +716,17 @@ def _has_ready_queue_work(run_pdf=True) -> bool:
     )
 
 
-def _dispatch_continuous_queue(run_f1=True, run_f2=True, run_pdf=True) -> None:
+def _dispatch_continuous_queue(
+    run_f1=True,
+    run_f2=True,
+    run_pdf=True,
+    force_new_sap_login=False,
+) -> None:
     _service_dispatch_continuous_queue(
         run_f1=run_f1,
         run_f2=run_f2,
         run_pdf=run_pdf,
+        force_new_sap_login=force_new_sap_login,
         process_queue_task=process_queue_task,
         arm_continuous_queue_func=arm_continuous_queue,
         idle_timeout_seconds=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
@@ -745,6 +752,10 @@ def _sap_start_blocker_response():
         sap_start_blocker_func=_diagnostics_sap_start_blocker,
         logger=log,
     )
+
+
+def _sap_start_decision():
+    return _diagnostics_sap_start_decision()
 
 
 def _auto_start_queue_after_pallet_close(run_f1=True, run_f2=True, run_pdf=True) -> dict:
@@ -1067,6 +1078,7 @@ def procesar_pendientes(request):
         close_sap_session_if_idle_func=_close_sap_session_if_idle,
         celery_start_blocker_response_func=_celery_start_blocker_response,
         sap_start_blocker_response_func=_sap_start_blocker_response,
+        sap_start_decision_func=_sap_start_decision,
         sap_session_error_response_func=_sap_session_error_response,
         dispatch_continuous_queue_func=_dispatch_continuous_queue,
         emit_queue_status_func=emit_queue_status,

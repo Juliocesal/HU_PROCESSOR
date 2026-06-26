@@ -165,6 +165,7 @@ def close_sap_after_queue_idle(
     *,
     logger: logging.Logger | None = None,
     sap_com_breaker: SAPCOMCircuitBreaker | None = None,
+    sap_worker_session=None,
 ) -> None:
     """Cierra SAP al finalizar la corrida para evitar sesiones zombie por inactividad."""
     logger = logger or log
@@ -173,6 +174,16 @@ def close_sap_after_queue_idle(
 
     timeout_seconds = max(float(getattr(settings, 'SAP_COM_CONNECT_TIMEOUT_SECONDS', 30)), 1.0)
     started_at = time.perf_counter()
+    if sap_worker_session is not None:
+        try:
+            closed = sap_worker_session.close_current_session(timeout=timeout_seconds)
+            log_performance(logger, 'sap.close_worker_session', started_at, closed=closed)
+            logger.info("process_queue_task sap_worker_session_close closed=%s", closed)
+            return
+        except Exception as exc:
+            logger.warning("process_queue_task sap_worker_session_close_failed error=%s", exc)
+            return
+
     executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sap-close-worker')
     try:
         from core.sap_client import SAPClient
@@ -212,6 +223,7 @@ def run_queue_worker(
     run_pdf=True,
     continuous=False,
     idle_timeout=None,
+    force_new_sap_login=False,
     hooks: QueueWorkerHooks,
     logger: logging.Logger | None = None,
 ):
@@ -266,7 +278,10 @@ def run_queue_worker(
         pythoncom = pythoncom_module
         pythoncom.CoInitialize()
         com_initialized = True
-        sap_session = SAPWorkerSession(status_callback=hooks.emit_queue_status)
+        sap_session = SAPWorkerSession(
+            status_callback=hooks.emit_queue_status,
+            force_new_login_on_first_connect=force_new_sap_login,
+        )
 
         while True:
             hooks.ensure_queue_ownership(owner, 'queue_loop')
@@ -505,6 +520,7 @@ def run_queue_worker(
                         emit_completion=True,
                         owner=owner,
                         sap_com_breaker=sap_session.com_breaker,
+                        sap_worker_session=sap_session,
                     )
                     log_performance(
                         logger,
@@ -593,7 +609,8 @@ def run_queue_worker(
         try:
             if hooks.queue_lock_owned_by(owner) and not sap_com_fatal:
                 hooks.close_sap_after_queue_idle(
-                    sap_com_breaker=sap_session.com_breaker if sap_session is not None else None
+                    sap_com_breaker=sap_session.com_breaker if sap_session is not None else None,
+                    sap_worker_session=sap_session,
                 )
             elif sap_com_fatal:
                 logger.warning("process_queue_task skip_sap_close_after_com_fatal owner=%s", owner)

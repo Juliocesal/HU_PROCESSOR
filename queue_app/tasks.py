@@ -91,8 +91,12 @@ def _calculate_elapsed_ms(started_at) -> int:
     return _service_calculate_elapsed_ms(started_at)
 
 
-def _close_sap_after_queue_idle(sap_com_breaker=None) -> None:
-    _service_close_sap_after_queue_idle(logger=log, sap_com_breaker=sap_com_breaker)
+def _close_sap_after_queue_idle(sap_com_breaker=None, sap_worker_session=None) -> None:
+    _service_close_sap_after_queue_idle(
+        logger=log,
+        sap_com_breaker=sap_com_breaker,
+        sap_worker_session=sap_worker_session,
+    )
 
 
 def _queue_worker_hooks() -> QueueWorkerHooks:
@@ -139,6 +143,7 @@ def process_queue_task(
     run_pdf=True,
     continuous=False,
     idle_timeout=None,
+    force_new_sap_login=False,
 ):
     """
     Procesa toda la cola en orden deterministico:
@@ -151,6 +156,7 @@ def process_queue_task(
         run_pdf=run_pdf,
         continuous=continuous,
         idle_timeout=idle_timeout,
+        force_new_sap_login=force_new_sap_login,
         hooks=_queue_worker_hooks(),
         logger=log,
     )

@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -12,6 +13,7 @@ from django.utils import timezone
 
 from core.sap_client import (
     SAPClient,
+    SAPBusySessionError,
     SAPCOMBlockedError,
     SAPCOMFatalBlockedError,
     SAP_TRANSACTION_MIN_WAIT_SECONDS,
@@ -314,6 +316,41 @@ class SAPWorkerSessionTests(TestCase):
         sap_client.is_session_healthy.assert_called_once()
 
 
+    def test_first_connect_can_force_new_login_without_session_scan(self):
+        from queue_app.services.hu_processing_service import SAPWorkerSession
+
+        sap_client = MagicMock()
+
+        with patch('core.sap_client.SAPClient', return_value=sap_client):
+            session = SAPWorkerSession(force_new_login_on_first_connect=True)
+            try:
+                session.acquire(pallet_id=1)
+            finally:
+                session.close()
+
+        sap_client.connect.assert_called_once_with(
+            initialize_com=False,
+            force_new_login=True,
+        )
+
+    def test_worker_can_close_only_cached_sap_session(self):
+        from queue_app.services.hu_processing_service import SAPWorkerSession
+
+        sap_client = MagicMock()
+        sap_client.close_current_session.return_value = 1
+
+        with patch('core.sap_client.SAPClient', return_value=sap_client):
+            session = SAPWorkerSession()
+            try:
+                session.acquire(pallet_id=1)
+                closed = session.close_current_session(timeout=1)
+            finally:
+                session.close()
+
+        self.assertEqual(closed, 1)
+        sap_client.close_current_session.assert_called_once()
+
+
     @override_settings(SAP_COM_COOLDOWN_SECONDS=0)
     def test_com_operation_timeout_raises_controlled_error(self):
         from queue_app.services.hu_processing_service import SAPWorkerSession
@@ -363,6 +400,118 @@ class SAPWorkerSessionTests(TestCase):
         self.assertEqual(metrics['consecutive_timeouts'], 1)
         self.assertEqual(metrics['aborted_runs'], 1)
         self.assertIsNone(session._executor)
+
+
+class QueueWorkerCloseTests(TestCase):
+    def test_close_sap_after_queue_idle_uses_worker_session_without_global_scan(self):
+        from queue_app.services.queue_worker_service import close_sap_after_queue_idle
+
+        sap_worker_session = MagicMock()
+        sap_worker_session.close_current_session.return_value = 1
+
+        with patch('core.sap_client.SAPClient.close_sessions') as close_sessions:
+            close_sap_after_queue_idle(
+                logger=logging.getLogger(__name__),
+                sap_worker_session=sap_worker_session,
+            )
+
+        sap_worker_session.close_current_session.assert_called_once()
+        close_sessions.assert_not_called()
+
+
+class DiagnosticsSapStatusTests(TestCase):
+    def test_sap_status_skips_live_probe_while_queue_is_locked(self):
+        from queue_app.services import diagnostics_service
+
+        old_future = diagnostics_service._sap_status_future
+        old_cache = diagnostics_service._sap_status_cache
+        old_circuit_until = diagnostics_service._sap_status_circuit_until
+        diagnostics_service._sap_status_future = None
+        diagnostics_service._sap_status_cache = None
+        diagnostics_service._sap_status_circuit_until = 0
+        try:
+            with (
+                patch('queue_app.services.diagnostics_service.is_queue_locked', return_value=True),
+                patch.object(diagnostics_service._sap_status_executor, 'submit') as submit,
+            ):
+                status = diagnostics_service.get_fast_sap_status()
+        finally:
+            diagnostics_service._sap_status_future = old_future
+            diagnostics_service._sap_status_cache = old_cache
+            diagnostics_service._sap_status_circuit_until = old_circuit_until
+
+        self.assertEqual(status['status'], 'stale')
+        self.assertEqual(status['code'], 'SAP_WORKER_ACTIVE')
+        self.assertEqual(status['reason'], 'queue_locked')
+        self.assertFalse(status['connected'])
+        submit.assert_not_called()
+
+    def test_sap_status_reports_worker_connected_cache_while_queue_is_locked(self):
+        from queue_app.services import diagnostics_service
+
+        old_future = diagnostics_service._sap_status_future
+        old_cache = diagnostics_service._sap_status_cache
+        old_circuit_until = diagnostics_service._sap_status_circuit_until
+        diagnostics_service._sap_status_future = None
+        diagnostics_service._sap_status_cache = None
+        diagnostics_service._sap_status_circuit_until = 0
+        try:
+            diagnostics_service.set_cached_sap_connected(user='LOPEZHJC')
+            with (
+                patch('queue_app.services.diagnostics_service.is_queue_locked', return_value=True),
+                patch.object(diagnostics_service._sap_status_executor, 'submit') as submit,
+            ):
+                status = diagnostics_service.get_fast_sap_status()
+        finally:
+            diagnostics_service._sap_status_future = old_future
+            diagnostics_service._sap_status_cache = old_cache
+            diagnostics_service._sap_status_circuit_until = old_circuit_until
+
+        self.assertEqual(status['status'], 'connected')
+        self.assertTrue(status['connected'])
+        self.assertEqual(status['user'], 'LOPEZHJC')
+        submit.assert_not_called()
+
+
+class ReceiptSAPReuseTests(TestCase):
+    @override_settings(SAP_LOGIN_USER='LOPEZHJC')
+    def test_ze16_pdf_reuses_worker_sap_client_without_reconnecting(self):
+        from queue_app.services import receipt_service
+
+        pallet = Pallet.objects.create(status=Pallet.STATUS_READY)
+        HUItem.objects.create(
+            hu_code='TH0000268197',
+            pallet=pallet,
+            status=HUItem.STATUS_OK,
+        )
+        sap_client = MagicMock()
+        sap_client.session = object()
+        sap_worker_session = MagicMock()
+
+        def run_on_worker_client(pallet_id, operation, callback, timeout=None):
+            self.assertEqual(pallet_id, pallet.pk)
+            self.assertEqual(operation, 'sap.ze16.receipt_query')
+            return callback(sap_client)
+
+        sap_worker_session.call.side_effect = run_on_worker_client
+
+        with (
+            patch('core.sap_client.SAPClient') as sap_client_class,
+            patch.object(ZE16Client, 'get_receipts_for_pallet', return_value={'TH0000268197': '72195396'}),
+            patch('core.pdf_receipt.PalletReceiptPDF.generate', return_value='receipt.pdf'),
+            patch('core.pdf_receipt.PalletReceiptPDF.print_pdf', return_value=True),
+            patch('queue_app.utils.emit_queue_status'),
+            patch('queue_app.utils.emit_receipt_done'),
+        ):
+            result = receipt_service.ze16_pdf_task_sync(
+                pallet.pk,
+                owner=None,
+                sap_worker_session=sap_worker_session,
+            )
+
+        self.assertEqual(result['status'], 'ok')
+        sap_client_class.assert_not_called()
+        sap_worker_session.call.assert_called_once()
 
 
 class QueueStatsCacheTests(TestCase):
@@ -655,6 +804,216 @@ class SAPSessionValidationTests(TestCase):
         self.assertIs(session, free)
 
 
+    def test_find_ready_session_ignores_other_user_busy_and_selects_configured_user(self):
+        other_busy = self._make_sap_session(user='JUAN.MORENO', busy=True)
+        nexhus_free = self._make_sap_session(user='LOPEZHJC')
+        app = self._make_sap_app([other_busy, nexhus_free])
+
+
+        session = SAPClient._find_ready_session(app, 'LUP', sap_user='LOPEZHJC')
+
+
+        self.assertIs(session, nexhus_free)
+        self.assertEqual(SAPClient._last_session_selection_code, 'SAP_NO_READY_SESSION')
+
+
+    def test_find_ready_session_skips_other_user_before_reading_slow_fields(self):
+        calls = {
+            'user': 0,
+            'transaction': 0,
+            'busy': 0,
+            'find': 0,
+            'system': 0,
+            'client': 0,
+        }
+
+
+        class Info:
+            @property
+            def User(self):
+                calls['user'] += 1
+                return 'JUAN.MORENO'
+
+
+            @property
+            def Transaction(self):
+                calls['transaction'] += 1
+                raise AssertionError('No debe leer Transaction de sesiones de otro usuario')
+
+
+            @property
+            def SystemName(self):
+                calls['system'] += 1
+                raise AssertionError('No debe leer SystemName de sesiones de otro usuario')
+
+
+            @property
+            def Client(self):
+                calls['client'] += 1
+                raise AssertionError('No debe leer Client de sesiones de otro usuario')
+
+
+        class OtherUserSession:
+            def __init__(self):
+                self.Info = Info()
+
+
+            @property
+            def Busy(self):
+                calls['busy'] += 1
+                raise AssertionError('No debe leer Busy de sesiones de otro usuario')
+
+
+            def findById(self, element_id):
+                calls['find'] += 1
+                raise AssertionError(f'No debe tocar {element_id} en sesiones de otro usuario')
+
+
+        app = self._make_sap_app([OtherUserSession()])
+
+
+        with patch.object(SAPClient, '_probe_session_for_work') as probe:
+            session = SAPClient._find_ready_session(
+                app,
+                'LUP',
+                probe=True,
+                sap_user='LOPEZHJC',
+            )
+
+
+        self.assertIsNone(session)
+        self.assertEqual(calls['user'], 1)
+        self.assertEqual(calls['transaction'], 0)
+        self.assertEqual(calls['busy'], 0)
+        self.assertEqual(calls['find'], 0)
+        self.assertEqual(calls['system'], 0)
+        self.assertEqual(calls['client'], 0)
+        self.assertEqual(SAPClient._last_session_selection_code, 'SAP_NO_READY_SESSION')
+        probe.assert_not_called()
+
+
+    def test_find_ready_session_skips_unknown_user_before_reading_slow_fields(self):
+        calls = {
+            'user': 0,
+            'transaction': 0,
+            'busy': 0,
+            'find': 0,
+        }
+
+
+        class Info:
+            @property
+            def User(self):
+                calls['user'] += 1
+                return ''
+
+
+            @property
+            def Transaction(self):
+                calls['transaction'] += 1
+                raise AssertionError('No debe leer Transaction si no hay usuario SAP')
+
+
+        class UnknownUserSession:
+            def __init__(self):
+                self.Info = Info()
+
+
+            @property
+            def Busy(self):
+                calls['busy'] += 1
+                raise AssertionError('No debe leer Busy si no hay usuario SAP')
+
+
+            def findById(self, element_id):
+                calls['find'] += 1
+                raise AssertionError(f'No debe tocar {element_id} si no hay usuario SAP')
+
+
+        app = self._make_sap_app([UnknownUserSession()])
+
+
+        with patch.object(SAPClient, '_probe_session_for_work') as probe:
+            session = SAPClient._find_ready_session(
+                app,
+                'LUP',
+                probe=True,
+                sap_user='LOPEZHJC',
+            )
+
+
+        self.assertIsNone(session)
+        self.assertEqual(calls['user'], 1)
+        self.assertEqual(calls['transaction'], 0)
+        self.assertEqual(calls['busy'], 0)
+        self.assertEqual(calls['find'], 0)
+        self.assertEqual(SAPClient._last_session_selection_code, 'SAP_NO_READY_SESSION')
+        probe.assert_not_called()
+
+
+    def test_connect_opens_new_login_when_only_other_user_is_busy(self):
+        other_busy = self._make_sap_session(user='JUAN.MORENO', busy=True)
+        nexhus_free = self._make_sap_session(user='LOPEZHJC')
+        first_app = self._make_sap_app([other_busy])
+        second_app = self._make_sap_app([other_busy, nexhus_free])
+        client = SAPClient(sap_user='LOPEZHJC')
+
+
+        with (
+            patch.object(SAPClient, '_get_sap_app', side_effect=[first_app, second_app]),
+            patch.object(SAPClient, 'close_sessions', return_value=0),
+            patch.object(SAPClient, 'open_and_login', return_value=(True, 'LOPEZHJC', 'OK')) as login,
+            patch('core.sap_client.SAP_PROBE_BEFORE_WORK', False),
+        ):
+            connected = client.connect(auto_login=True)
+
+
+        self.assertTrue(connected)
+        self.assertIs(client.session, nexhus_free)
+        login.assert_called_once()
+
+
+    def test_connect_force_new_login_skips_existing_session_scan(self):
+        login_session = self._make_sap_session(user='LOPEZHJC')
+        client = SAPClient(sap_user='LOPEZHJC')
+
+
+        with (
+            patch.object(SAPClient, '_get_sap_app') as get_app,
+            patch.object(SAPClient, '_find_ready_session') as find_ready,
+            patch.object(
+                SAPClient,
+                'open_and_login',
+                return_value=(True, 'LOPEZHJC', 'OK', login_session),
+            ) as login,
+        ):
+            connected = client.connect(auto_login=True, force_new_login=True)
+
+
+        self.assertTrue(connected)
+        self.assertIs(client.session, login_session)
+        get_app.assert_not_called()
+        find_ready.assert_not_called()
+        login.assert_called_once()
+
+
+    def test_connect_returns_busy_when_configured_user_session_is_busy(self):
+        own_busy = self._make_sap_session(user='LOPEZHJC', busy=True)
+        app = self._make_sap_app([own_busy])
+        client = SAPClient(sap_user='LOPEZHJC')
+
+
+        with (
+            patch.object(SAPClient, '_get_sap_app', return_value=app),
+            patch.object(SAPClient, 'open_and_login') as login,
+        ):
+            with self.assertRaises(SAPBusySessionError):
+                client.connect(auto_login=True)
+
+
+        login.assert_not_called()
+
+
     def test_find_ready_session_skips_modal_and_selects_free_session(self):
         modal = self._make_sap_session(user='BOT1', modal=True)
         free = self._make_sap_session(user='BOT1')
@@ -729,6 +1088,63 @@ class SAPSessionValidationTests(TestCase):
 
         self.assertEqual(count, 1)
         self.assertEqual(closed, ['BOT1'])
+
+
+    def test_close_sessions_skips_other_user_without_reading_slow_fields(self):
+        calls = {
+            'user': 0,
+            'system': 0,
+            'client': 0,
+            'find': 0,
+        }
+
+
+        class Info:
+            @property
+            def User(self):
+                calls['user'] += 1
+                return 'JUAN.MORENO'
+
+
+            @property
+            def SystemName(self):
+                calls['system'] += 1
+                raise AssertionError('No debe leer SystemName al cerrar sesiones ajenas')
+
+
+            @property
+            def Client(self):
+                calls['client'] += 1
+                raise AssertionError('No debe leer Client al cerrar sesiones ajenas')
+
+
+        class OtherUserSession:
+            def __init__(self):
+                self.Info = Info()
+
+
+            def findById(self, element_id):
+                calls['find'] += 1
+                raise AssertionError(f'No debe tocar {element_id} al cerrar sesiones ajenas')
+
+
+        app = self._make_sap_app([OtherUserSession()])
+
+
+        with (
+            patch.object(SAPClient, '_get_sap_app', return_value=app),
+            patch('core.sap_client.pythoncom.CoInitialize'),
+            patch('core.sap_client.pythoncom.CoUninitialize'),
+        ):
+            count = SAPClient.close_sessions(sistema='LUP', sap_user='LOPEZHJC')
+
+
+        self.assertEqual(count, 0)
+        self.assertEqual(calls['user'], 1)
+        self.assertEqual(calls['system'], 0)
+        self.assertEqual(calls['client'], 0)
+        self.assertEqual(calls['find'], 0)
+
 
 class AlreadySeparatedProcessingTests(TestCase):
     def test_phase1_destination_notice_still_runs_f2(self):
@@ -1102,7 +1518,7 @@ class ReprocessQueueTests(TestCase):
 
 
 class StartProcessingTests(TestCase):
-    def test_start_processing_is_blocked_when_sap_status_timeout(self):
+    def test_start_processing_allows_direct_login_when_sap_status_probe_is_timeout(self):
         pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
         HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_PENDING)
 
@@ -1121,11 +1537,11 @@ class StartProcessingTests(TestCase):
             response = self.client.post('/api/procesar/', data='{}', content_type='application/json')
 
 
-        self.assertEqual(response.status_code, 409)
-        self.assertFalse(response.json()['ok'])
-        self.assertEqual(response.json()['code'], 'SAP_STATUS_TIMEOUT')
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
         ensure_session_ready.assert_not_called()
-        delay.assert_not_called()
+        delay.assert_called_once()
+        self.assertTrue(delay.call_args.kwargs['force_new_sap_login'])
 
 
     def test_start_processing_is_blocked_when_worker_lock_is_active(self):
@@ -1900,6 +2316,7 @@ class SequentialQueueTaskTests(TestCase):
         hu3 = HUItem.objects.create(hu_code='T10045916003', pallet=p2)
         events = []
         sap_sessions = []
+        boundary_sessions = []
 
 
         def process_item(item_id, **kwargs):
@@ -1913,6 +2330,7 @@ class SequentialQueueTaskTests(TestCase):
 
         def print_pallet(pallet_id, **kwargs):
             events.append(('print', pallet_id))
+            boundary_sessions.append(kwargs.get('sap_worker_session'))
             Pallet.objects.filter(pk=pallet_id).update(status=Pallet.STATUS_DONE)
             return {'status': 'ok', 'message': 'printed', 'marked': 1}
 
@@ -1938,6 +2356,7 @@ class SequentialQueueTaskTests(TestCase):
             ('print', p2.pk),
         ])
         self.assertTrue(all(session is sap_sessions[0] for session in sap_sessions))
+        self.assertTrue(all(session is sap_sessions[0] for session in boundary_sessions))
 
 
     def test_queue_task_continues_after_pallet_with_hu_errors(self):

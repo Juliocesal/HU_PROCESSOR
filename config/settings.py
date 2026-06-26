@@ -155,6 +155,7 @@ SAP_LOGON_EXE = config(
 SAP_LOGIN_USER = config('SAP_LOGIN_USER', default='')
 SAP_LOGIN_PASSWORD = config('SAP_LOGIN_PASSWORD', default='')
 SAP_LOGIN_LANGUAGE = config('SAP_LOGIN_LANGUAGE', default='EN')
+SAP_STRICT_LOGIN_USER = config('SAP_STRICT_LOGIN_USER', default=True, cast=bool)
 SAP_PROBE_BEFORE_WORK = config('SAP_PROBE_BEFORE_WORK', default=True, cast=bool)
 SAP_CLOSE_WHEN_QUEUE_IDLE = config('SAP_CLOSE_WHEN_QUEUE_IDLE', default=True, cast=bool)
 SAP_STARTUP_TIMEOUT_SECONDS = config('SAP_STARTUP_TIMEOUT_SECONDS', default=30, cast=float)
@@ -175,6 +176,7 @@ SAP_COM_CALL_WARN_SECONDS = config('SAP_COM_CALL_WARN_SECONDS', default=5, cast=
 SAP_COM_MAX_CONSECUTIVE_TIMEOUTS = config('SAP_COM_MAX_CONSECUTIVE_TIMEOUTS', default=2, cast=int)
 SAP_COM_COOLDOWN_SECONDS = config('SAP_COM_COOLDOWN_SECONDS', default=30, cast=float)
 SAP_SESSION_RESPONSIVE_SECONDS = config('SAP_SESSION_RESPONSIVE_SECONDS', default=2, cast=float)
+SAP_SESSION_TRACE_ENABLED = config('SAP_SESSION_TRACE_ENABLED', default=True, cast=bool)
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [BASE_DIR / 'static']

@@ -96,18 +96,22 @@ def dispatch_continuous_queue(
     run_f1=True,
     run_f2=True,
     run_pdf=True,
+    force_new_sap_login=False,
     process_queue_task,
     arm_continuous_queue_func,
     idle_timeout_seconds: int,
 ) -> None:
     dispatch_started_at = time.perf_counter()
-    process_queue_task.delay(
-        run_f1=run_f1,
-        run_f2=run_f2,
-        run_pdf=run_pdf,
-        continuous=True,
-        idle_timeout=idle_timeout_seconds,
-    )
+    task_kwargs = {
+        'run_f1': run_f1,
+        'run_f2': run_f2,
+        'run_pdf': run_pdf,
+        'continuous': True,
+        'idle_timeout': idle_timeout_seconds,
+    }
+    if force_new_sap_login:
+        task_kwargs['force_new_sap_login'] = True
+    process_queue_task.delay(**task_kwargs)
     log_performance(
         log,
         'celery.dispatch_queue_task',
@@ -559,6 +563,7 @@ def procesar_pendientes_response(
     close_sap_session_if_idle_func,
     celery_start_blocker_response_func,
     sap_start_blocker_response_func,
+    sap_start_decision_func=None,
     sap_session_error_response_func,
     dispatch_continuous_queue_func,
     emit_queue_status_func,
@@ -592,12 +597,38 @@ def procesar_pendientes_response(
     if celery_error:
         return celery_error
 
-    sap_error = sap_start_blocker_response_func()
-    if sap_error:
-        return sap_error
+    force_new_sap_login = False
+    if sap_start_decision_func is not None:
+        sap_decision = sap_start_decision_func()
+        if sap_decision.get('blocked'):
+            sap_status = sap_decision.get('sap') or {}
+            code = sap_decision.get('code') or 'SAP_COM_BLOCKED'
+            logger.warning(
+                "PROCESS_START_REJECTED_SAP_UNAVAILABLE code=%s sap_status=%s reason=%s source=%s",
+                code,
+                sap_status.get('status'),
+                sap_status.get('reason'),
+                sap_status.get('source'),
+            )
+            return JsonResponse({
+                'ok': False,
+                'code': code,
+                'error': sap_decision.get('message') or 'SAP no esta disponible para iniciar el proceso.',
+                'sap': sap_status,
+            }, status=409)
+        force_new_sap_login = bool(sap_decision.get('force_new_sap_login'))
+    else:
+        sap_error = sap_start_blocker_response_func()
+        if sap_error:
+            return sap_error
 
     try:
-        dispatch_continuous_queue_func(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+        dispatch_continuous_queue_func(
+            run_f1=run_f1,
+            run_f2=run_f2,
+            run_pdf=run_pdf,
+            force_new_sap_login=force_new_sap_login,
+        )
     except Exception as exc:
         close_sap_session_if_idle_func()
         logger.exception("procesar_pendientes celery_dispatch_failed")

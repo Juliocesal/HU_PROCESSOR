@@ -25,6 +25,8 @@ def _run_pallet_boundary(
     emit_completion=True,
     owner: str | None = None,
     sap_com_breaker: SAPCOMCircuitBreaker | None = None,
+    sap_worker_session=None,
+    sap_client=None,
 ):
     """
     Ejecuta el recibo del pallet solo cuando todas sus HUs terminaron.
@@ -69,6 +71,8 @@ def _run_pallet_boundary(
         emit_completion=emit_completion,
         owner=owner,
         sap_com_breaker=sap_com_breaker,
+        sap_worker_session=sap_worker_session,
+        sap_client=sap_client,
     )
 
     if result.get('status') == 'ok':
@@ -182,44 +186,83 @@ def _query_ze16_receipts_with_timeout(
     owner: str | None,
     status_callback,
     sap_com_breaker: SAPCOMCircuitBreaker | None = None,
+    sap_worker_session=None,
+    sap_client=None,
 ) -> tuple[dict[str, str], int, str, dict[str, str]]:
     from core.sap_client import SAPClient, SAPCOMBlockedError, SAPCOMFatalBlockedError
     from core.ze16_client import ZE16Client, ZE16Error
 
     breaker = sap_com_breaker or SAPCOMCircuitBreaker(status_callback=status_callback)
 
+    def query_with_client(sap, *, reused_worker_client=False):
+        if reused_worker_client:
+            log.info(
+                "RECEIPT_REUSING_WORKER_SAP_CLIENT pallet=%s hu_count=%s",
+                pallet_id,
+                hu_count,
+            )
+        printed_by = getattr(settings, 'SAP_LOGIN_USER', '') or sap.get_user()
+        ze16 = ZE16Client(sap.session)
+        ze16_started_at = time.perf_counter()
+        receipts, receipt_attempts = _get_ze16_receipts_with_retries(
+            ze16,
+            hu_codes,
+            pallet_id=pallet_id,
+            hu_count=hu_count,
+            owner=owner,
+            status_callback=status_callback,
+        )
+        log_performance(
+            log,
+            'sap.ze16.receipt_retries',
+            ze16_started_at,
+            pallet=pallet_id,
+            attempts=receipt_attempts,
+            receipts=len(receipts),
+        )
+        hu_display_map = _build_hu_display_map(ze16, hu_codes)
+        return receipts, receipt_attempts, printed_by, hu_display_map
+
+    if sap_worker_session is not None:
+        log.info(
+            "SAP_WORKER_CLIENT_REUSED_FOR_ZE16 pallet=%s hu_count=%s",
+            pallet_id,
+            hu_count,
+        )
+        try:
+            return sap_worker_session.call(
+                pallet_id,
+                'sap.ze16.receipt_query',
+                lambda sap: query_with_client(sap, reused_worker_client=True),
+                timeout=SAP_COM_ZE16_TIMEOUT_SECONDS,
+            )
+        except SAPCOMFatalBlockedError:
+            raise
+        except SAPCOMBlockedError as exc:
+            raise ZE16Error(
+                f"SAP COM bloqueado en ZE16 tras {SAP_COM_ZE16_TIMEOUT_SECONDS:g}s. "
+                "Puede haber otra automatizacion SAP ocupando SAP GUI."
+            ) from exc
+
+    if sap_client is not None:
+        return query_with_client(sap_client, reused_worker_client=True)
+
     def query_in_com_thread():
         import pythoncom
 
         pythoncom.CoInitialize()
         try:
+            log.info(
+                "RECEIPT_CREATING_OWN_SAP_CLIENT pallet=%s hu_count=%s",
+                pallet_id,
+                hu_count,
+            )
             sap = SAPClient()
             sap_started_at = time.perf_counter()
             sap.connect()
             log_performance(log, 'sap.connect_ze16', sap_started_at, pallet=pallet_id)
             _ensure_queue_ownership(owner, 'ze16_sap_connected')
-
-            printed_by = getattr(settings, 'SAP_LOGIN_USER', '') or sap.get_user()
-            ze16 = ZE16Client(sap.session)
-            ze16_started_at = time.perf_counter()
-            receipts, receipt_attempts = _get_ze16_receipts_with_retries(
-                ze16,
-                hu_codes,
-                pallet_id=pallet_id,
-                hu_count=hu_count,
-                owner=owner,
-                status_callback=status_callback,
-            )
-            log_performance(
-                log,
-                'sap.ze16.receipt_retries',
-                ze16_started_at,
-                pallet=pallet_id,
-                attempts=receipt_attempts,
-                receipts=len(receipts),
-            )
-            hu_display_map = _build_hu_display_map(ze16, hu_codes)
-            return receipts, receipt_attempts, printed_by, hu_display_map
+            return query_with_client(sap)
         finally:
             pythoncom.CoUninitialize()
 
@@ -275,6 +318,8 @@ def ze16_pdf_task_sync(
     emit_completion=True,
     owner: str | None = None,
     sap_com_breaker: SAPCOMCircuitBreaker | None = None,
+    sap_worker_session=None,
+    sap_client=None,
 ):
     """
     Paso sincronico ZE16 + PDF + impresion. Retorna solo despues de print_pdf.
@@ -330,6 +375,8 @@ def ze16_pdf_task_sync(
             owner=owner,
             status_callback=emit_queue_status,
             sap_com_breaker=sap_com_breaker,
+            sap_worker_session=sap_worker_session,
+            sap_client=sap_client,
         )
 
         if not receipts:

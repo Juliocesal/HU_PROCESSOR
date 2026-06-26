@@ -43,6 +43,12 @@ SAP_STATUS_CACHE_TTL_SECONDS = 10
 SAP_STATUS_STALE_SECONDS = 60
 SAP_STATUS_TIMEOUT_SECONDS = 1.5
 SAP_STATUS_CIRCUIT_BREAKER_SECONDS = 20
+SAP_STATUS_SLOW_PROBE_COOLDOWN_SECONDS = int(
+    getattr(settings, 'SAP_STATUS_SLOW_PROBE_COOLDOWN_SECONDS', 180)
+)
+SAP_STATUS_SKIP_LIVE_PROBE_WHILE_QUEUE_LOCKED = bool(
+    getattr(settings, 'SAP_STATUS_SKIP_LIVE_PROBE_WHILE_QUEUE_LOCKED', True)
+)
 REDIS_STATUS_TIMEOUT_SECONDS = 0.25
 
 _sap_status_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sap-status')
@@ -87,6 +93,7 @@ def _sap_status_payload(
         'connected': bool(connected),
         'status': status,
         'user': user if connected else '',
+        'configured_user': getattr(settings, 'SAP_LOGIN_USER', ''),
         'message': message,
         'checked_at': checked_at,
         'stale': bool(stale),
@@ -96,22 +103,74 @@ def _sap_status_payload(
     }
 
 
+def set_cached_sap_connected(user='', message='SAP conectado en worker NEXHUS.') -> None:
+    """Actualiza el cache cuando Celery ya confirmo una sesion SAP real."""
+    global _sap_status_cache, _sap_status_circuit_until
+
+    with _sap_status_lock:
+        _sap_status_cache = _sap_status_payload(
+            'connected',
+            connected=True,
+            user=user,
+            message=message,
+            source='worker',
+            stale=False,
+            checked_at=timezone.now().isoformat(),
+        )
+        _sap_status_circuit_until = 0.0
+
+
+def set_cached_sap_disconnected(message='Sesion SAP NEXHUS cerrada por el worker.') -> None:
+    """Actualiza el cache cuando Celery cierra la sesion SAP que tenia tomada."""
+    global _sap_status_cache
+
+    with _sap_status_lock:
+        _sap_status_cache = _sap_status_payload(
+            'disconnected',
+            connected=False,
+            message=message,
+            source='worker',
+            stale=False,
+            checked_at=timezone.now().isoformat(),
+        )
+
+
 def _live_sap_status_probe() -> dict:
     """Consulta SAP COM en un thread separado para que el request HTTP no se bloquee."""
     from core.sap_client import SAPClient
 
+    started_at = time.perf_counter()
+    configured_user = getattr(settings, 'SAP_LOGIN_USER', '')
+    log.info("SAP_STATUS_PROBE_START configured_user=%r", configured_user)
     try:
         ok, user = SAPClient.check_session()
         checked_at = timezone.now().isoformat()
-        return _sap_status_payload(
+        payload = _sap_status_payload(
             'connected' if ok else 'disconnected',
             connected=ok,
             user=user,
-            message='Sesion SAP activa' if ok else 'Sesion SAP desconectada o no valida',
+            message=(
+                f'Sesion SAP NEXHUS activa para {configured_user}'
+                if ok and configured_user
+                else 'Sesion SAP activa'
+                if ok
+                else f'No hay sesion SAP NEXHUS activa para {configured_user}'
+                if configured_user
+                else 'Sesion SAP desconectada o no valida'
+            ),
             source='live',
             stale=False,
             checked_at=checked_at,
         )
+        payload['duration_ms'] = int((time.perf_counter() - started_at) * 1000)
+        log.info(
+            "SAP_STATUS_PROBE_DONE status=%s connected=%s user=%r duration_ms=%s",
+            payload.get('status'),
+            payload.get('connected'),
+            payload.get('user'),
+            payload['duration_ms'],
+        )
+        return payload
     except Exception as exc:
         payload = _sap_status_payload(
             'unavailable',
@@ -123,6 +182,12 @@ def _live_sap_status_probe() -> dict:
             reason='probe_error',
         )
         payload['error'] = _diagnostic_error_message(exc)
+        payload['duration_ms'] = int((time.perf_counter() - started_at) * 1000)
+        log.warning(
+            "SAP_STATUS_PROBE_ERROR duration_ms=%s error=%s",
+            payload['duration_ms'],
+            _diagnostic_error_message(exc),
+        )
         return payload
 
 
@@ -167,7 +232,21 @@ def _harvest_sap_status_future_locked() -> None:
 
     try:
         _sap_status_cache = _sap_status_future.result()
-        _sap_status_circuit_until = 0.0
+        duration_ms = int(_sap_status_cache.get('duration_ms') or 0)
+        timeout_ms = int(SAP_STATUS_TIMEOUT_SECONDS * 1000)
+        if duration_ms > timeout_ms:
+            _sap_status_circuit_until = time.time() + SAP_STATUS_SLOW_PROBE_COOLDOWN_SECONDS
+            _sap_status_log_once(
+                'sap_status_slow_probe_cooldown',
+                logging.WARNING,
+                (
+                    "sap_status_slow_probe_cooldown_started "
+                    f"duration_ms={duration_ms} cooldown_s={SAP_STATUS_SLOW_PROBE_COOLDOWN_SECONDS}"
+                ),
+                interval=30,
+            )
+        else:
+            _sap_status_circuit_until = 0.0
         _sap_status_log_once(
             'sap_status_recovered',
             logging.INFO,
@@ -258,6 +337,38 @@ def get_fast_sap_status() -> dict:
                 reason='circuit_breaker',
             )
 
+        if SAP_STATUS_SKIP_LIVE_PROBE_WHILE_QUEUE_LOCKED:
+            try:
+                if is_queue_locked():
+                    cached = _sap_status_cache or {}
+                    _sap_status_log_once(
+                        'sap_status_queue_locked',
+                        logging.INFO,
+                        'sap_status_live_probe_skipped reason=queue_locked',
+                        interval=30,
+                    )
+                    if cached.get('connected'):
+                        return _sap_status_payload(
+                            'connected',
+                            connected=True,
+                            user=cached.get('user', ''),
+                            message='SAP activo en worker NEXHUS.',
+                            source='cache',
+                            stale=False,
+                            checked_at=cached.get('checked_at', ''),
+                            code='SAP_WORKER_ACTIVE',
+                            reason='queue_locked',
+                        )
+                    return _sap_status_from_cache(
+                        'stale',
+                        'cache',
+                        'Verificacion SAP pausada mientras NEXHUS procesa la cola.',
+                        code='SAP_WORKER_ACTIVE',
+                        reason='queue_locked',
+                    )
+            except Exception as exc:
+                log.debug("sap_status_queue_lock_check_failed error=%s", exc)
+
         _sap_status_future = _sap_status_executor.submit(_live_sap_status_probe)
         future = _sap_status_future
 
@@ -308,9 +419,9 @@ def get_fast_sap_status() -> dict:
     return result
 
 
-def sap_start_blocker(sap_status_func=None) -> dict | None:
+def sap_start_decision(sap_status_func=None) -> dict:
     """
-    Bloquea inicios HTTP cuando SAP esta ocupado o no confirmado.
+    Decide si el inicio debe bloquearse o si Celery debe abrir login directo.
 
     Fase 2 opcional: coordinar scripts externos con un lock Redis/archivo con
     TTL para marcar "SAP automation running" sin depender solo del probe COM.
@@ -331,20 +442,60 @@ def sap_start_blocker(sap_status_func=None) -> dict | None:
     sap_state = status.get('status') or ('connected' if status.get('connected') else 'unknown')
     reason = status.get('reason') or ''
     code = status.get('code') or ''
+    connected = bool(status.get('connected'))
+    user = status.get('user') or ''
+
+    if connected:
+        return {
+            'blocked': False,
+            'force_new_sap_login': False,
+            'sap': status,
+        }
+
+    if (
+        sap_state in {'timeout', 'stale', 'disconnected'}
+        or reason in SAP_START_BLOCKED_REASONS
+        or code in {'SAP_COM_BLOCKED', 'SAP_STATUS_TIMEOUT'}
+    ) and not user:
+        log.warning(
+            "PROCESS_START_ALLOW_DIRECT_SAP_LOGIN sap_status=%s reason=%s source=%s code=%s",
+            sap_state,
+            reason,
+            status.get('source'),
+            code,
+        )
+        return {
+            'blocked': False,
+            'force_new_sap_login': True,
+            'sap': status,
+            'code': code or 'SAP_OPEN_LOGIN_DIRECT',
+        }
+
     blocked = (
         sap_state in SAP_START_BLOCKED_STATUSES
         or reason in SAP_START_BLOCKED_REASONS
         or code in {'SAP_COM_BLOCKED', 'SAP_STATUS_TIMEOUT'}
     )
     if not blocked:
-        return None
+        return {
+            'blocked': False,
+            'force_new_sap_login': False,
+            'sap': status,
+        }
 
     final_code = 'SAP_STATUS_TIMEOUT' if sap_state == 'timeout' or code == 'SAP_STATUS_TIMEOUT' else 'SAP_COM_BLOCKED'
     return {
+        'blocked': True,
+        'force_new_sap_login': False,
         'code': final_code,
         'message': SAP_START_BLOCKED_MESSAGE,
         'sap': status,
     }
+
+
+def sap_start_blocker(sap_status_func=None) -> dict | None:
+    decision = sap_start_decision(sap_status_func=sap_status_func)
+    return decision if decision.get('blocked') else None
 
 
 def _check_redis_status() -> dict:

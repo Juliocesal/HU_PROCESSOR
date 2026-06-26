@@ -26,10 +26,12 @@ SAP_LOGIN_USER = getattr(settings, 'SAP_LOGIN_USER', '')
 SAP_LOGIN_PASSWORD = getattr(settings, 'SAP_LOGIN_PASSWORD', '')
 SAP_LOGIN_CLIENT = getattr(settings, 'SAP_LOGIN_CLIENT', '')
 SAP_LOGIN_LANGUAGE = getattr(settings, 'SAP_LOGIN_LANGUAGE', 'EN')
+SAP_STRICT_LOGIN_USER = getattr(settings, 'SAP_STRICT_LOGIN_USER', True)
 SAP_PROBE_BEFORE_WORK = getattr(settings, 'SAP_PROBE_BEFORE_WORK', True)
 SAP_STARTUP_TIMEOUT_SECONDS = float(getattr(settings, 'SAP_STARTUP_TIMEOUT_SECONDS', 30))
 SAP_STARTUP_POLL_SECONDS = max(float(getattr(settings, 'SAP_STARTUP_POLL_SECONDS', 1)), 0.1)
 SAP_SESSION_RESPONSIVE_SECONDS = max(float(getattr(settings, 'SAP_SESSION_RESPONSIVE_SECONDS', 2)), 0.1)
+SAP_SESSION_TRACE_ENABLED = bool(getattr(settings, 'SAP_SESSION_TRACE_ENABLED', True))
 NODE_MOVEINBHU = "F00098"
 NODE_TIJSEP    = "F00097"
 
@@ -185,19 +187,81 @@ class SAPClient:
         auto_login: bool = True,
         *,
         initialize_com: bool = True,
+        force_new_login: bool = False,
     ) -> bool:
         """Conecta a SAP; el worker puede reutilizar su COM ya inicializado."""
+        connect_started_at = self._trace_start(
+            'SAP_CONNECT_START',
+            system=sistema,
+            expected_user=self._expected_user,
+            expected_client=self._expected_client,
+            auto_login=auto_login,
+            initialize_com=initialize_com,
+            probe=SAP_PROBE_BEFORE_WORK,
+            force_new_login=force_new_login,
+        )
         if initialize_com:
             pythoncom.CoInitialize()
+        if force_new_login and auto_login:
+            login_started_at = self._trace_start(
+                'SAP_CONNECT_OPEN_LOGIN_START',
+                attempt=0,
+                reason='force_new_login',
+            )
+            ok, user, message, session = self.open_and_login(
+                sistema=sistema,
+                sap_user=self._expected_user,
+                sap_client=self._expected_client,
+                return_session=True,
+            )
+            self._trace_done(
+                'SAP_CONNECT_OPEN_LOGIN_DONE',
+                login_started_at,
+                attempt=0,
+                ok=ok,
+                message=message,
+            )
+            if ok and session is not None:
+                self._attach_session(session, sistema, connect_started_at)
+                return True
+            raise SAPConnectionError(message)
+
         for attempt in range(2 if auto_login else 1):
             try:
+                get_app_started_at = self._trace_start(
+                    'SAP_CONNECT_GET_APP_START',
+                    attempt=attempt + 1,
+                )
                 app = self._get_sap_app()
+                self._trace_done(
+                    'SAP_CONNECT_GET_APP_DONE',
+                    get_app_started_at,
+                    attempt=attempt + 1,
+                )
             except Exception as e:
+                self._trace_done(
+                    'SAP_CONNECT_GET_APP_ERROR',
+                    get_app_started_at,
+                    attempt=attempt + 1,
+                    error=str(e),
+                )
                 if auto_login and attempt == 0:
+                    login_started_at = self._trace_start(
+                        'SAP_CONNECT_OPEN_LOGIN_START',
+                        attempt=attempt + 1,
+                        reason='get_sap_app_failed',
+                    )
                     ok, _, message = self.open_and_login(
                         sistema=sistema,
                         sap_user=self._expected_user,
                         sap_client=self._expected_client,
+                    )
+                    self._trace_done(
+                        'SAP_CONNECT_OPEN_LOGIN_DONE',
+                        login_started_at,
+                        attempt=attempt + 1,
+                        ok=ok,
+                        message=message,
                     )
                     if not ok:
                         raise SAPConnectionError(message)
@@ -205,6 +269,10 @@ class SAPClient:
                 raise SAPConnectionError(f"No se pudo obtener SAPGUI: {e}")
 
 
+            find_started_at = self._trace_start(
+                'SAP_CONNECT_FIND_READY_START',
+                attempt=attempt + 1,
+            )
             session = self._find_ready_session(
                 app,
                 sistema,
@@ -212,17 +280,15 @@ class SAPClient:
                 sap_user=self._expected_user,
                 sap_client=self._expected_client,
             )
+            self._trace_done(
+                'SAP_CONNECT_FIND_READY_DONE',
+                find_started_at,
+                attempt=attempt + 1,
+                selected=bool(session),
+                selection_code=self._last_session_selection_code,
+            )
             if session is not None:
-                self._session = session
-                self._sistema = sistema
-                self._usuario = session.Info.User
-                self._cliente = self._get_session_client(session)
-                log.info(
-                    "sap_connected system=%s client=%s user=%s",
-                    sistema,
-                    self._cliente,
-                    self._usuario,
-                )
+                self._attach_session(session, sistema, connect_started_at)
                 return True
 
             selection_code = self._last_session_selection_code
@@ -237,24 +303,71 @@ class SAPClient:
                     "sap_no_ready_session identity=%s - restarting owned SAP session",
                     self._identity_label(sistema, self._expected_user, self._expected_client),
                 )
+                close_started_at = self._trace_start(
+                    'SAP_CONNECT_CLOSE_OWN_SESSIONS_START',
+                    attempt=attempt + 1,
+                )
                 self.close_sessions(
                     sistema=sistema,
                     sap_user=self._expected_user,
                     sap_client=self._expected_client,
+                )
+                self._trace_done(
+                    'SAP_CONNECT_CLOSE_OWN_SESSIONS_DONE',
+                    close_started_at,
+                    attempt=attempt + 1,
+                )
+                login_started_at = self._trace_start(
+                    'SAP_CONNECT_OPEN_LOGIN_START',
+                    attempt=attempt + 1,
+                    reason='no_ready_session',
                 )
                 ok, _, message = self.open_and_login(
                     sistema=sistema,
                     sap_user=self._expected_user,
                     sap_client=self._expected_client,
                 )
+                self._trace_done(
+                    'SAP_CONNECT_OPEN_LOGIN_DONE',
+                    login_started_at,
+                    attempt=attempt + 1,
+                    ok=ok,
+                    message=message,
+                )
                 if not ok:
                     raise SAPConnectionError(message)
                 continue
 
 
+        self._trace_done(
+            'SAP_CONNECT_DONE',
+            connect_started_at,
+            result='no_ready_session',
+            selection_code=self._last_session_selection_code,
+        )
         raise SAPConnectionError(
             f"No se encontro sesion SAP activa para "
             f"{self._identity_label(sistema, self._expected_user, self._expected_client)}"
+        )
+
+
+    def _attach_session(self, session, sistema: str, connect_started_at: float) -> None:
+        self._session = session
+        self._sistema = sistema
+        self._usuario = session.Info.User
+        self._cliente = self._get_session_client(session)
+        log.info(
+            "sap_connected system=%s client=%s user=%s",
+            sistema,
+            self._cliente,
+            self._usuario,
+        )
+        self._trace_done(
+            'SAP_CONNECT_DONE',
+            connect_started_at,
+            result='connected',
+            user=self._usuario,
+            client=self._cliente,
         )
 
 
@@ -271,6 +384,50 @@ class SAPClient:
 
     def get_client(self) -> str:
         return self._cliente
+
+
+    def close_current_session(self) -> int:
+        """Cierra solo la sesion SAP que este cliente ya tiene tomada."""
+        if self._session is None:
+            log.info("SAP_CLOSE_CURRENT_SESSION_SKIPPED reason=no_attached_session")
+            return 0
+
+        started_at = self._trace_start(
+            'SAP_CLOSE_CURRENT_SESSION_START',
+            user=self._usuario,
+            client=self._cliente,
+        )
+        try:
+            wnd = self._find_on_session(self._session, "wnd[0]")
+            if wnd is None:
+                self._trace_done(
+                    'SAP_CLOSE_CURRENT_SESSION_DONE',
+                    started_at,
+                    closed=0,
+                    reason='missing_main_window',
+                )
+                return 0
+
+            wnd.Close()
+            time.sleep(0.5)
+            yes_button = self._find_on_session(self._session, "wnd[1]/usr/btnSPOP-OPTION1")
+            if yes_button:
+                yes_button.press()
+            self._session = None
+            self._trace_done(
+                'SAP_CLOSE_CURRENT_SESSION_DONE',
+                started_at,
+                closed=1,
+                reason='closed_attached_session',
+            )
+            return 1
+        except Exception as exc:
+            self._trace_done(
+                'SAP_CLOSE_CURRENT_SESSION_ERROR',
+                started_at,
+                error=str(exc),
+            )
+            return 0
 
 
     # -- Inicio automatico de SAP ---------------------------------------------
@@ -366,6 +523,35 @@ class SAPClient:
     @staticmethod
     def _responsive_elapsed_ms(started_at: float) -> int:
         return int((time.perf_counter() - started_at) * 1000)
+
+
+    @classmethod
+    def _trace_enabled(cls) -> bool:
+        return SAP_SESSION_TRACE_ENABLED
+
+
+    @classmethod
+    def _trace_start(cls, code: str, **details) -> float:
+        started_at = time.perf_counter()
+        if cls._trace_enabled():
+            log.info("%s %s", code, cls._format_trace_details(details))
+        return started_at
+
+
+    @classmethod
+    def _trace_done(cls, code: str, started_at: float, **details) -> None:
+        if not cls._trace_enabled():
+            return
+        details['duration_ms'] = cls._responsive_elapsed_ms(started_at)
+        log.info("%s %s", code, cls._format_trace_details(details))
+
+
+    @staticmethod
+    def _format_trace_details(details: dict) -> str:
+        return " ".join(
+            f"{key}={value!r}" if isinstance(value, str) else f"{key}={value}"
+            for key, value in details.items()
+        )
 
 
     @classmethod
@@ -636,43 +822,127 @@ class SAPClient:
         cls._last_session_selection_code = 'SAP_NO_READY_SESSION'
         cls._last_session_selection_message = 'SAP_NO_READY_SESSION: no hay sesion SAP disponible para NEXHUS.'
         blocked_candidates = 0
-        if int(app.Children.Count) == 0:
+        expected_user = cls._expected_sap_user(sap_user).upper()
+        strict_user = bool(SAP_STRICT_LOGIN_USER and expected_user)
+        scan_started_at = cls._trace_start(
+            'SAP_SESSION_SCAN_START',
+            system=sistema,
+            expected_user=expected_user,
+            expected_client=cls._expected_sap_client(sap_client),
+            strict_user=strict_user,
+            probe=probe,
+        )
+        count_started_at = cls._trace_start('SAP_SESSION_SCAN_CONNECTION_COUNT_START')
+        connection_count = int(app.Children.Count)
+        cls._trace_done(
+            'SAP_SESSION_SCAN_CONNECTION_COUNT_DONE',
+            count_started_at,
+            connections=connection_count,
+        )
+        if connection_count == 0:
             log.warning("SAP_NO_READY_SESSION reason=no_connections")
+            cls._trace_done(
+                'SAP_SESSION_SCAN_DONE',
+                scan_started_at,
+                connections=0,
+                blocked_candidates=0,
+                result='no_connections',
+            )
             return None
 
 
-        for i_conn in range(int(app.Children.Count)):
+        scanned_sessions = 0
+        own_sessions = 0
+        other_sessions = 0
+        unknown_sessions = 0
+        for i_conn in range(connection_count):
+            conn_started_at = cls._trace_start(
+                'SAP_SESSION_SCAN_CONNECTION_START',
+                conn_index=i_conn,
+            )
             conn = app.Children(i_conn)
             connection_name = cls._connection_display_name(conn)
             connection_matches = cls._connection_matches_expected(conn)
-            for i_sess in range(int(conn.Children.Count)):
+            session_count_started_at = cls._trace_start(
+                'SAP_SESSION_SCAN_SESSION_COUNT_START',
+                conn_index=i_conn,
+                connection=connection_name,
+                connection_matches=connection_matches,
+            )
+            session_count = int(conn.Children.Count)
+            cls._trace_done(
+                'SAP_SESSION_SCAN_SESSION_COUNT_DONE',
+                session_count_started_at,
+                conn_index=i_conn,
+                sessions=session_count,
+            )
+            cls._trace_done(
+                'SAP_SESSION_SCAN_CONNECTION_DONE',
+                conn_started_at,
+                conn_index=i_conn,
+                connection=connection_name,
+                connection_matches=connection_matches,
+                sessions=session_count,
+            )
+            for i_sess in range(session_count):
                 started_at = time.perf_counter()
+                scanned_sessions += 1
                 sess = conn.Children(i_sess)
                 user = ''
                 transaction = ''
                 busy = 'unknown'
                 has_modal = 'unknown'
                 try:
+                    user_started_at = cls._trace_start(
+                        'SAP_SESSION_USER_READ_START',
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        connection=connection_name,
+                    )
                     user = cls._session_user(sess)
-                    transaction = cls._session_transaction(sess)
-                    busy = cls._session_busy(sess)
-                    if not cls._is_responsive_elapsed(started_at):
-                        blocked_candidates += 1
+                    cls._trace_done(
+                        'SAP_SESSION_USER_READ_DONE',
+                        user_started_at,
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        user=user,
+                    )
+
+                    if strict_user and not user:
+                        unknown_sessions += 1
                         cls._log_session_selection(
-                            code='SAP_SESSION_BUSY_SKIPPED',
+                            code='SAP_SESSION_UNKNOWN_USER_SKIPPED',
                             conn_index=i_conn,
                             session_index=i_sess,
                             connection_name=connection_name,
                             user=user,
-                            transaction=transaction,
-                            busy=busy,
-                            has_modal=has_modal,
+                            transaction='not_checked_unknown_user',
+                            busy='not_checked_unknown_user',
+                            has_modal='not_checked_unknown_user',
                             selected=False,
-                            reason='session_not_responsive',
+                            reason='unknown_user',
                             started_at=started_at,
                         )
                         continue
 
+                    if strict_user and user.upper() != expected_user:
+                        other_sessions += 1
+                        cls._log_session_selection(
+                            code='SAP_SESSION_OTHER_USER_SKIPPED',
+                            conn_index=i_conn,
+                            session_index=i_sess,
+                            connection_name=connection_name,
+                            user=user,
+                            transaction='not_checked_other_user',
+                            busy='not_checked_other_user',
+                            has_modal='not_checked_other_user',
+                            selected=False,
+                            reason='other_user',
+                            started_at=started_at,
+                        )
+                        continue
+
+                    own_sessions += 1
                     if not connection_matches:
                         cls._log_session_selection(
                             code='SAP_SESSION_SKIPPED',
@@ -689,12 +959,40 @@ class SAPClient:
                         )
                         continue
 
-                    if not cls._session_matches_identity(
+                    transaction_started_at = cls._trace_start(
+                        'SAP_SESSION_TRANSACTION_READ_START',
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        user=user,
+                    )
+                    transaction = cls._session_transaction(sess)
+                    cls._trace_done(
+                        'SAP_SESSION_TRANSACTION_READ_DONE',
+                        transaction_started_at,
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        transaction=transaction,
+                    )
+                    identity_started_at = cls._trace_start(
+                        'SAP_SESSION_IDENTITY_CHECK_START',
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        user=user,
+                    )
+                    identity_matches = cls._session_matches_identity(
                         sess,
                         sistema,
                         sap_user=sap_user,
                         sap_client=sap_client,
-                    ):
+                    )
+                    cls._trace_done(
+                        'SAP_SESSION_IDENTITY_CHECK_DONE',
+                        identity_started_at,
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        matches=identity_matches,
+                    )
+                    if not identity_matches:
                         cls._log_session_selection(
                             code='SAP_SESSION_SKIPPED',
                             conn_index=i_conn,
@@ -710,10 +1008,41 @@ class SAPClient:
                         )
                         continue
 
+                    busy_started_at = cls._trace_start(
+                        'SAP_SESSION_BUSY_READ_START',
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        user=user,
+                    )
+                    busy = cls._session_busy(sess)
+                    cls._trace_done(
+                        'SAP_SESSION_BUSY_READ_DONE',
+                        busy_started_at,
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        busy=busy,
+                    )
+                    if not cls._is_responsive_elapsed(started_at):
+                        blocked_candidates += 1
+                        cls._log_session_selection(
+                            code='SAP_OWN_SESSION_BUSY_SKIPPED',
+                            conn_index=i_conn,
+                            session_index=i_sess,
+                            connection_name=connection_name,
+                            user=user,
+                            transaction=transaction,
+                            busy=busy,
+                            has_modal=has_modal,
+                            selected=False,
+                            reason='session_not_responsive',
+                            started_at=started_at,
+                        )
+                        continue
+
                     if busy:
                         blocked_candidates += 1
                         cls._log_session_selection(
-                            code='SAP_SESSION_BUSY_SKIPPED',
+                            code='SAP_OWN_SESSION_BUSY_SKIPPED',
                             conn_index=i_conn,
                             session_index=i_sess,
                             connection_name=connection_name,
@@ -727,7 +1056,20 @@ class SAPClient:
                         )
                         continue
 
+                    modal_started_at = cls._trace_start(
+                        'SAP_SESSION_MODAL_CHECK_START',
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        user=user,
+                    )
                     has_modal = cls._has_blocking_modal(sess)
+                    cls._trace_done(
+                        'SAP_SESSION_MODAL_CHECK_DONE',
+                        modal_started_at,
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        has_modal=has_modal,
+                    )
                     if has_modal:
                         blocked_candidates += 1
                         cls._log_session_selection(
@@ -745,7 +1087,21 @@ class SAPClient:
                         )
                         continue
 
+                    alive_started_at = cls._trace_start(
+                        'SAP_SESSION_ALIVE_CHECK_START',
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        user=user,
+                        probe=probe,
+                    )
                     if cls._session_is_alive(sess, probe=probe):
+                        cls._trace_done(
+                            'SAP_SESSION_ALIVE_CHECK_DONE',
+                            alive_started_at,
+                            conn_index=i_conn,
+                            session_index=i_sess,
+                            alive=True,
+                        )
                         cls._log_session_selection(
                             code='SAP_READY_SESSION_SELECTED',
                             conn_index=i_conn,
@@ -759,10 +1115,28 @@ class SAPClient:
                             reason='ready',
                             started_at=started_at,
                         )
+                        cls._trace_done(
+                            'SAP_SESSION_SCAN_DONE',
+                            scan_started_at,
+                            connections=connection_count,
+                            sessions=scanned_sessions,
+                            own_sessions=own_sessions,
+                            other_sessions=other_sessions,
+                            unknown_sessions=unknown_sessions,
+                            blocked_candidates=blocked_candidates,
+                            result='ready_session_selected',
+                        )
                         return sess
+                    cls._trace_done(
+                        'SAP_SESSION_ALIVE_CHECK_DONE',
+                        alive_started_at,
+                        conn_index=i_conn,
+                        session_index=i_sess,
+                        alive=False,
+                    )
                     blocked_candidates += 1
                     cls._log_session_selection(
-                        code='SAP_SESSION_BUSY_SKIPPED',
+                        code='SAP_OWN_SESSION_BUSY_SKIPPED',
                         conn_index=i_conn,
                         session_index=i_sess,
                         connection_name=connection_name,
@@ -775,9 +1149,11 @@ class SAPClient:
                         started_at=started_at,
                     )
                 except Exception as e:
-                    blocked_candidates += 1
+                    is_own_session = bool(expected_user and user.upper() == expected_user)
+                    if is_own_session:
+                        blocked_candidates += 1
                     cls._log_session_selection(
-                        code='SAP_SESSION_BUSY_SKIPPED',
+                        code='SAP_OWN_SESSION_BUSY_SKIPPED' if is_own_session else 'SAP_SESSION_SKIPPED',
                         conn_index=i_conn,
                         session_index=i_sess,
                         connection_name=connection_name,
@@ -801,6 +1177,17 @@ class SAPClient:
             cls._last_session_selection_code,
             blocked_candidates,
         )
+        cls._trace_done(
+            'SAP_SESSION_SCAN_DONE',
+            scan_started_at,
+            connections=connection_count,
+            sessions=scanned_sessions,
+            own_sessions=own_sessions,
+            other_sessions=other_sessions,
+            unknown_sessions=unknown_sessions,
+            blocked_candidates=blocked_candidates,
+            result=cls._last_session_selection_code,
+        )
         return None
 
 
@@ -814,6 +1201,7 @@ class SAPClient:
         """Cierra solo las sesiones SAP que coinciden con la identidad esperada."""
         closed = 0
         expected_user = cls._expected_sap_user(sap_user)
+        expected_user_upper = expected_user.upper()
         expected_client = cls._expected_sap_client(sap_client)
         try:
             pythoncom.CoInitialize()
@@ -824,6 +1212,24 @@ class SAPClient:
                     for i_sess in reversed(range(int(conn.Children.Count))):
                         sess = conn.Children(i_sess)
                         try:
+                            user = cls._session_user(sess)
+                            if expected_user_upper and not user:
+                                log.info(
+                                    "SAP_SESSION_UNKNOWN_USER_SKIPPED conn_index=%s session_index=%s "
+                                    "reason=close_sessions_unknown_user",
+                                    i_conn,
+                                    i_sess,
+                                )
+                                continue
+                            if expected_user_upper and user.upper() != expected_user_upper:
+                                log.info(
+                                    "SAP_SESSION_OTHER_USER_SKIPPED conn_index=%s session_index=%s "
+                                    "user=%r reason=close_sessions_other_user",
+                                    i_conn,
+                                    i_sess,
+                                    user,
+                                )
+                                continue
                             if not cls._session_matches_identity(
                                 sess,
                                 sistema,
@@ -914,10 +1320,17 @@ class SAPClient:
         sistema: str = SISTEMA_SAP,
         sap_user: str | None = None,
         sap_client: str | None = None,
+        *,
+        return_session: bool = False,
     ) -> tuple[bool, str, str]:
         """Abre SAP Logon, crea la conexion configurada y llena la pantalla de login."""
+        def result(ok: bool, user: str, message: str, session=None):
+            if return_session:
+                return ok, user, message, session
+            return ok, user, message
+
         if not os.path.isfile(SAP_LOGON_EXE):
-            return False, '', f'saplogon.exe no encontrado: {SAP_LOGON_EXE}'
+            return result(False, '', f'saplogon.exe no encontrado: {SAP_LOGON_EXE}')
 
 
         expected_user = cls._expected_sap_user(sap_user)
@@ -931,12 +1344,23 @@ class SAPClient:
             pythoncom.CoInitialize()
             try:
                 app = cls._wait_for_sap_app()
+                log.info(
+                    "SAP_OPENING_NEW_CONNECTION_FOR_CONFIGURED_USER connection=%r user=%r",
+                    SAP_CONNECTION_NAME,
+                    expected_user,
+                )
                 connection = app.OpenConnection(SAP_CONNECTION_NAME, True)
                 time.sleep(2)
 
 
                 login_started_at = time.perf_counter()
                 session = connection.Children(0)
+                log.info(
+                    "SAP_LOGIN_SESSION_CREATED connection=%r user=%r duration_ms=%s",
+                    cls._connection_display_name(connection),
+                    expected_user,
+                    cls._responsive_elapsed_ms(login_started_at),
+                )
                 if cls._session_busy(session):
                     log.warning(
                         "SAP_SESSION_BUSY_SKIPPED conn_index=new session_index=0 "
@@ -944,7 +1368,7 @@ class SAPClient:
                         cls._connection_display_name(connection),
                         cls._responsive_elapsed_ms(login_started_at),
                     )
-                    return False, '', 'SAP_BUSY_SESSION: la sesion nueva de login esta ocupada.'
+                    return result(False, '', 'SAP_BUSY_SESSION: la sesion nueva de login esta ocupada.')
                 if cls._has_blocking_modal(session):
                     log.warning(
                         "SAP_SESSION_MODAL_SKIPPED conn_index=new session_index=0 "
@@ -952,7 +1376,7 @@ class SAPClient:
                         cls._connection_display_name(connection),
                         cls._responsive_elapsed_ms(login_started_at),
                     )
-                    return False, '', 'SAP_BUSY_SESSION: la sesion nueva de login tiene un modal activo.'
+                    return result(False, '', 'SAP_BUSY_SESSION: la sesion nueva de login tiene un modal activo.')
                 if not cls._is_responsive_elapsed(login_started_at):
                     log.warning(
                         "SAP_SESSION_BUSY_SKIPPED conn_index=new session_index=0 "
@@ -960,7 +1384,7 @@ class SAPClient:
                         cls._connection_display_name(connection),
                         cls._responsive_elapsed_ms(login_started_at),
                     )
-                    return False, '', 'SAP_BUSY_SESSION: la sesion nueva de login no respondio a tiempo.'
+                    return result(False, '', 'SAP_BUSY_SESSION: la sesion nueva de login no respondio a tiempo.')
                 client_field = cls._find_on_session(session, FIELD_LOGIN_CLIENT)
                 user_field = cls._find_on_session(session, FIELD_LOGIN_USER)
                 password_field = cls._find_on_session(session, FIELD_LOGIN_PASSWORD)
@@ -969,7 +1393,7 @@ class SAPClient:
 
                 if user_field and password_field:
                     if not expected_user or not SAP_LOGIN_PASSWORD:
-                        return (
+                        return result(
                             False,
                             '',
                             'Credenciales SAP no configuradas: define SAP_LOGIN_USER y SAP_LOGIN_PASSWORD.',
@@ -987,30 +1411,39 @@ class SAPClient:
 
 
                 cls._handle_multiple_logon(session)
+                cls._wait_session_idle(session, timeout=10.0)
+                if cls._has_disconnected_dialog(session) or cls._is_login_screen(session):
+                    return result(False, '', 'SAP login no completo: la sesion sigue en pantalla de login.', session)
+
+                if not cls._session_matches_identity(
+                    session,
+                    sistema,
+                    sap_user=expected_user,
+                    sap_client=expected_client,
+                ):
+                    return result(
+                        False,
+                        '',
+                        f'La sesion SAP creada no coincide con '
+                        f'{cls._identity_label(sistema, expected_user, expected_client)}.',
+                        session,
+                    )
+
+                if cls._session_busy(session) or cls._has_blocking_modal(session):
+                    return result(False, '', 'SAP_BUSY_SESSION: la sesion nueva no quedo disponible.', session)
+
+                if not cls._session_is_alive(session, probe=SAP_PROBE_BEFORE_WORK):
+                    return result(False, '', 'La sesion SAP creada no respondio a la verificacion final.', session)
+
+                user = cls._session_user(session) or expected_user
+                return result(True, user, 'SAP inicializado y autenticado correctamente', session)
             finally:
                 pythoncom.CoUninitialize()
 
 
-            connected, user = cls.check_session(
-                sistema,
-                probe=SAP_PROBE_BEFORE_WORK,
-                sap_user=expected_user,
-                sap_client=expected_client,
-            )
-            if connected:
-                return True, user, 'SAP inicializado y autenticado correctamente'
-            return (
-                False,
-                '',
-                f'No se encontro sesion SAP para '
-                f'{cls._identity_label(sistema, expected_user, expected_client)} '
-                'despues del login SAP',
-            )
-
-
         except Exception as e:
             log.exception("sap_auto_login_failed")
-            return False, '', f'No se pudo inicializar SAP automaticamente: {e}'
+            return result(False, '', f'No se pudo inicializar SAP automaticamente: {e}')
 
 
     def _get_origin_timings(

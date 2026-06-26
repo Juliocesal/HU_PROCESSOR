@@ -153,6 +153,14 @@
   let scanOutboxTimer = null;
   let scanOutboxHadFailures = false;
 
+  function isSapWorkerActiveStatus(data = {}) {
+    return data.code === 'SAP_WORKER_ACTIVE' || data.reason === 'queue_locked';
+  }
+
+  function sapDisplayUser(data = {}) {
+    return data.user || data.configured_user || '';
+  }
+
   function sanitizeDiagnosticText(value) {
     return String(value ?? '')
       .replace(/((password|passwd|pwd|pass|bcode|token|secret)\s*[:=]\s*)[^&\s,;}"']+/ig, '$1***')
@@ -321,9 +329,17 @@
       {
         key: 'sap',
         label: 'SAP',
-        level: serviceLevel(status?.sap, true),
-        message: status?.sap?.message || 'Sin estado SAP.',
-        detail: status?.sap?.user ? `user=${status.sap.user}` : (status?.sap?.error || status?.sap?.action || ''),
+        level: isSapWorkerActiveStatus(status?.sap)
+          ? (status?.sap?.connected ? 'ok' : 'info')
+          : serviceLevel(status?.sap, true),
+        message: isSapWorkerActiveStatus(status?.sap)
+          ? (status?.sap?.connected
+            ? 'SAP activo en worker NEXHUS.'
+            : 'NEXHUS esta procesando; SAP no confirmado todavia.')
+          : (status?.sap?.message || 'Sin estado SAP.'),
+        detail: sapDisplayUser(status?.sap)
+          ? `user=${sapDisplayUser(status.sap)}`
+          : (status?.sap?.error || status?.sap?.action || ''),
       },
       {
         key: 'websocket',
@@ -2526,6 +2542,15 @@
 
   // -- Detener proceso -----------------------------------------------------------
   async function stopProcess() {
+    if (!isRunning && !hasOrphanedQueueRuntime()) {
+      clearStopRequestState();
+      setProgBadge('EN ESPERA', '');
+      setProgStatus('No hay proceso activo para detener.', '');
+      setFooterStatus('En espera.', '');
+      flash('No hay proceso activo para detener.', 'orange');
+      updateButtons();
+      return;
+    }
     const alreadyWaitingForStop = stopRequested;
     const stopWaitMs = stopRequestedAt ? Date.now() - stopRequestedAt : 0;
     const forceRecovery = alreadyWaitingForStop || hasOrphanedQueueRuntime();
@@ -2929,10 +2954,26 @@
 
   // -- SAP Status polling (equivale al QTimer de _check_sap) --------------------
   function sapStatusLogConfig(status, data = {}) {
+    if (isSapWorkerActiveStatus(data)) {
+      const user = sapDisplayUser(data);
+      if (!data.connected) {
+        return {
+          level: 'info',
+          label: `SAP en worker${user ? ' - ' + user : ''}`,
+          message: 'NEXHUS esta procesando; verificacion SAP pausada para no bloquear COM.',
+        };
+      }
+      return {
+        level: 'ok',
+        label: `CONECTADO${user ? ' - ' + user : ''}`,
+        message: 'SAP activo en worker NEXHUS.',
+      };
+    }
+
     const configs = {
       connected: {
         level: 'ok',
-        label: `CONECTADO${data.user ? ' - ' + data.user : ''}`,
+        label: `CONECTADO${sapDisplayUser(data) ? ' - ' + sapDisplayUser(data) : ''}`,
         message: 'SAP conectado.',
       },
       disconnected: {
@@ -2965,7 +3006,9 @@
   }
 
   function updateSapIndicator(data = {}) {
-    const status = data.status || (data.connected ? 'connected' : 'disconnected');
+    const status = isSapWorkerActiveStatus(data) && data.connected
+      ? 'connected'
+      : (data.status || (data.connected ? 'connected' : 'disconnected'));
     const config = sapStatusLogConfig(status, data);
     document.getElementById('conn-dot').className = `conn-dot ${status === 'connected' ? 'ok' : ''}`;
     document.getElementById('conn-label').textContent = config.label;
