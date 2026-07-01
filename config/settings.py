@@ -4,13 +4,22 @@ from decouple import config
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
+def _env_list(name: str, default: str) -> list[str]:
+    raw = config(name, default=default)
+    raw = raw.strip()
+    if raw.startswith('[') and raw.endswith(']'):
+        raw = raw[1:-1]
+    return [
+        item.strip().strip('"').strip("'")
+        for item in raw.split(',')
+        if item.strip().strip('"').strip("'")
+    ]
+
+
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
-ALLOWED_HOSTS = [
-    "localhost",
-    "127.0.0.1",
-    "10.107.77.183",
-]
+ALLOWED_HOSTS = _env_list('ALLOWED_HOSTS', 'localhost,127.0.0.1,10.110.202.84')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -118,7 +127,7 @@ NEXHUS_REDIS_EXE = config(
     default=r'C:\Users\LOPEZHEJ\Downloads\Redis-x64-5.0.14.1\redis-server.exe',
 )
 NEXHUS_DAPHNE_BIND = config('NEXHUS_DAPHNE_BIND', default='0.0.0.0')
-NEXHUS_DAPHNE_PORT = config('NEXHUS_DAPHNE_PORT', default=8000, cast=int)
+NEXHUS_DAPHNE_PORT = config('NEXHUS_DAPHNE_PORT', default=9821, cast=int)
 NEXHUS_DAPHNE_SELF_STOP_ENABLED = config(
     'NEXHUS_DAPHNE_SELF_STOP_ENABLED',
     default=False,
@@ -192,15 +201,10 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = config(
     default=not DEBUG,
     cast=bool,
 )
-CSRF_TRUSTED_ORIGINS = config(
-    "CSRF_TRUSTED_ORIGINS",
-    default=""
+CSRF_TRUSTED_ORIGINS = _env_list(
+    'CSRF_TRUSTED_ORIGINS',
+    'http://localhost:9821,http://127.0.0.1:9821,http://10.110.202.84:9821',
 )
-CSRF_TRUSTED_ORIGINS = [
-    origin.strip()
-    for origin in CSRF_TRUSTED_ORIGINS.split(",")
-    if origin.strip()
-]
 SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=not DEBUG, cast=bool)
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

@@ -12,45 +12,6 @@ from queue_app.services.performance_service import log_performance
 log = logging.getLogger(__name__)
 
 
-def ensure_sap_session():
-    from core.sap_client import SAPClient
-
-    return SAPClient.ensure_session_ready()
-
-
-def sap_session_error_response(*, ensure_sap_session_func, diagnostic_error_message_func, logger):
-    try:
-        result = ensure_sap_session_func()
-    except Exception as exc:
-        logger.exception("sap_session_validation_failed")
-        return JsonResponse({
-            'ok': False,
-            'error': f'No se pudo validar la sesion SAP: {diagnostic_error_message_func(exc)}',
-            'sap_connected': False,
-            'sap_user': '',
-        }, status=409)
-
-    if not isinstance(result, (list, tuple)) or len(result) < 3:
-        logger.warning("sap_session_invalid_response result=%r", result)
-        return JsonResponse({
-            'ok': False,
-            'error': 'No se pudo validar la sesion SAP: respuesta invalida del inicializador.',
-            'sap_connected': False,
-            'sap_user': '',
-        }, status=409)
-
-    connected, user, message = result[:3]
-    if connected:
-        return None
-
-    return JsonResponse({
-        'ok': False,
-        'error': message,
-        'sap_connected': False,
-        'sap_user': user,
-    }, status=409)
-
-
 def close_sap_session_if_idle(*, logger) -> None:
     """Cierra SAP si se abrio pero no se pudo despachar una tarea Celery."""
     if not getattr(settings, 'SAP_CLOSE_WHEN_QUEUE_IDLE', True):
@@ -175,8 +136,16 @@ def sap_start_blocker_response(*, sap_start_blocker_func, logger) -> JsonRespons
     if not blocker:
         return None
 
-    sap_status = blocker.get('sap') or {}
-    code = blocker.get('code') or 'SAP_COM_BLOCKED'
+    return sap_start_decision_error_response(blocker, logger=logger)
+
+
+def sap_start_decision_error_response(decision: dict, *, logger) -> JsonResponse | None:
+    """Convierte una decision SAP cacheada en respuesta HTTP sin tocar SAP COM."""
+    if not decision or not decision.get('blocked'):
+        return None
+
+    sap_status = decision.get('sap') or {}
+    code = decision.get('code') or 'SAP_COM_BLOCKED'
     logger.warning(
         "PROCESS_START_REJECTED_SAP_UNAVAILABLE code=%s sap_status=%s reason=%s source=%s",
         code,
@@ -194,7 +163,7 @@ def sap_start_blocker_response(*, sap_start_blocker_func, logger) -> JsonRespons
     return JsonResponse({
         'ok': False,
         'code': code,
-        'error': blocker.get('message') or 'SAP no esta disponible para iniciar el proceso.',
+        'error': decision.get('message') or 'SAP no esta disponible para iniciar el proceso.',
         'sap': sap_status,
     }, status=409)
 
@@ -208,7 +177,7 @@ def auto_start_queue_after_pallet_close(
     is_queue_locked_func,
     has_ready_queue_work_func,
     celery_start_blocker_func,
-    ensure_sap_session_func,
+    sap_start_decision_func,
     dispatch_continuous_queue_func,
     emit_stats_update_func,
     emit_queue_status_func,
@@ -239,17 +208,36 @@ def auto_start_queue_after_pallet_close(
             'redis': celery_blocker['redis'],
         }
 
-    connected, user, message = ensure_sap_session_func()
-    if not connected:
+    sap_decision = sap_start_decision_func()
+    if sap_decision.get('blocked'):
+        sap_status = sap_decision.get('sap') or {}
+        code = sap_decision.get('code') or 'SAP_COM_BLOCKED'
+        logger.warning(
+            "PROCESS_START_REJECTED_SAP_UNAVAILABLE code=%s sap_status=%s reason=%s source=%s",
+            code,
+            sap_status.get('status'),
+            sap_status.get('reason'),
+            sap_status.get('source'),
+        )
         return {
             'auto_started': False,
             'auto_start_reason': 'sap_unavailable',
-            'auto_start_error': message,
-            'sap_user': user,
+            'auto_start_error': (
+                sap_decision.get('message')
+                or 'SAP no esta disponible para iniciar el proceso.'
+            ),
+            'code': code,
+            'sap': sap_status,
         }
+    force_new_sap_login = bool(sap_decision.get('force_new_sap_login'))
 
     try:
-        dispatch_continuous_queue_func(run_f1=run_f1, run_f2=run_f2, run_pdf=run_pdf)
+        dispatch_continuous_queue_func(
+            run_f1=run_f1,
+            run_f2=run_f2,
+            run_pdf=run_pdf,
+            force_new_sap_login=force_new_sap_login,
+        )
     except Exception as exc:
         logger.exception("auto_start_queue_after_pallet_close_failed")
         return {
@@ -275,7 +263,7 @@ def start_processing_response(
     close_active_pallet_for_processing_func,
     close_sap_session_if_idle_func,
     celery_start_blocker_response_func,
-    sap_session_error_response_func,
+    sap_start_decision_func,
     dispatch_continuous_queue_func,
     emit_queue_status_func,
     pdf_queryset_func,
@@ -304,12 +292,14 @@ def start_processing_response(
     if celery_error:
         return celery_error
 
-    sap_error = sap_session_error_response_func()
+    sap_decision = sap_start_decision_func()
+    sap_error = sap_start_decision_error_response(sap_decision, logger=logger)
     if sap_error:
         return sap_error
+    force_new_sap_login = bool(sap_decision.get('force_new_sap_login'))
 
     try:
-        dispatch_continuous_queue_func()
+        dispatch_continuous_queue_func(force_new_sap_login=force_new_sap_login)
     except Exception as exc:
         close_sap_session_if_idle_func()
         logger.exception("start_processing celery_dispatch_failed")
@@ -564,7 +554,6 @@ def procesar_pendientes_response(
     celery_start_blocker_response_func,
     sap_start_blocker_response_func,
     sap_start_decision_func=None,
-    sap_session_error_response_func,
     dispatch_continuous_queue_func,
     emit_queue_status_func,
     logger,

@@ -4,21 +4,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Documentación | HUFlow Engine</title>
+  <title>Documentación | NexHUs</title>
   <link rel="stylesheet" href="{% static 'queue_app/css/documentation.css' %}">
-  <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js" defer></script>
+  <script src="{% static 'queue_app/vendor/lucide/lucide.min.js' %}" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#contenido">Saltar al contenido</a>
 
   <header class="doc-topbar" id="top">
     <div class="doc-brand">
-      <a class="doc-back" href="/" aria-label="Volver a la cola">
-        <i data-lucide="arrow-left"></i>
-      </a>
       <div>
         <strong>SAP</strong>
-        <span>Logistics &gt; HUFlow Engine</span>
+        <span>Logistics &gt; NexHUs</span>
       </div>
     </div>
     <a class="doc-primary-link" href="/">Volver a la cola</a>
@@ -30,7 +27,7 @@
         <p class="doc-eyebrow">Manual técnico y operativo</p>
         <h1 id="doc-title">Documentación del Proyecto</h1>
         <p>
-          Guía central para operar, mantener y continuar el desarrollo de HUFlow Engine:
+          Guía central para operar, mantener y continuar el desarrollo de NexHUs:
           escaneo de HUs, pallets, SAP, cola de procesamiento, diagnóstico e impresión.
         </p>
       </div>
@@ -54,16 +51,17 @@
           <a href="#estructura">7. Estructura del Proyecto</a>
           <a href="#negocio">8. Procesos de Negocio</a>
           <a href="#sap">9. Integración SAP</a>
-          <a href="#api">10. API Interna</a>
-          <a href="#websockets">11. WebSockets</a>
-          <a href="#database">12. Base de Datos</a>
-          <a href="#errores">13. Manejo de Errores</a>
-          <a href="#diagnostico">14. Diagnóstico del Sistema</a>
-          <a href="#seguridad">15. Seguridad</a>
-          <a href="#mantenimiento">16. Mantenimiento</a>
-          <a href="#troubleshooting">17. Solución de Problemas</a>
-          <a href="#versiones">18. Historial de Versiones</a>
-          <a href="#creditos">19. Créditos</a>
+          <a href="#impresion">10. Diseño Optimizado de Impresión</a>
+          <a href="#api">11. API Interna</a>
+          <a href="#websockets">12. WebSockets</a>
+          <a href="#database">13. Base de Datos</a>
+          <a href="#errores">14. Manejo de Errores</a>
+          <a href="#diagnostico">15. Diagnóstico del Sistema</a>
+          <a href="#seguridad">16. Seguridad</a>
+          <a href="#mantenimiento">17. Mantenimiento</a>
+          <a href="#troubleshooting">18. Solución de Problemas</a>
+          <a href="#versiones">19. Historial de Versiones</a>
+          <a href="#creditos">20. Créditos</a>
         </nav>
       </aside>
 
@@ -74,8 +72,10 @@
             <div>
               <h3>Objetivo del sistema</h3>
               <p>
-                HUFlow Engine centraliza el escaneo de HUs, la agrupación por pallet y
-                el procesamiento secuencial en SAP hasta generar e imprimir el recibo PDF.
+                NexHUs centraliza el escaneo de HUs, la agrupación por pallet y
+                el procesamiento secuencial en SAP (Order Acknowledge y Separazione)
+                hasta generar e imprimir el documento de recepción de material para
+                el área de Inbound.
               </p>
             </div>
             <div>
@@ -88,8 +88,9 @@
             <div>
               <h3>Beneficios</h3>
               <p>
-                Operación más rápida, menos errores de captura, visibilidad en tiempo real
-                y mejor soporte cuando hay fallas de SAP, Redis, Celery, base de datos o impresión.
+                Operación más rápida, menos errores de captura, visibilidad en tiempo real,
+                ahorro de hojas/tóner gracias al diseño optimizado del recibo, y mejor soporte
+                cuando hay fallas de SAP, Redis, Celery, base de datos o impresión.
               </p>
             </div>
           </div>
@@ -109,17 +110,18 @@
             <p>
               El frontend renderiza la cola y escucha eventos por WebSocket. Django recibe escaneos,
               valida datos, persiste HUs/pallets y despacha tareas. Redis funciona como broker,
-              storage de locks y canal de coordinación. Celery ejecuta SAP GUI Automation en modo
-              secuencial. Daphne sirve HTTP y WebSockets mediante ASGI.
+              storage de locks y canal de coordinación. Celery ejecuta SAP GUI Scripting en modo
+              secuencial sobre SAP Logon. Daphne sirve HTTP y WebSockets mediante ASGI.
             </p>
             <ul class="doc-list">
               <li><strong>Frontend:</strong> HTML, CSS y JavaScript para escaneo, tabla, progreso, diagnóstico y resincronización.</li>
               <li><strong>Backend:</strong> vistas Django, modelos, utilidades de cola y endpoints internos.</li>
-              <li><strong>Base de datos:</strong> SQLite actual, con ruta de migración a SQL Server para históricos.</li>
+              <li><strong>Base de datos:</strong> SQLite actual</li>
               <li><strong>Redis:</strong> broker Celery, locks, heartbeat y estado runtime.</li>
               <li><strong>Celery:</strong> worker único recomendado para evitar sesiones SAP concurrentes.</li>
               <li><strong>Daphne/Channels:</strong> servidor ASGI y WebSockets de actualización en tiempo real.</li>
-              <li><strong>SAP GUI Scripting:</strong> automatiza transacciones F1, F2 y ZE16.</li>
+              <li><strong>SAP GUI Scripting:</strong> automatiza Order Acknowledge, Separazione y generación de receipt dentro de SAP Logon.</li>
+              <li><strong>SumatraPDF:</strong> imprime el documento de recepción con un diseño optimizado para ahorrar hojas, tóner y tiempo.</li>
             </ul>
           </div>
         </section>
@@ -131,9 +133,9 @@
             <li><strong>Validaciones:</strong> se detecta origen, duplicados, longitud y separadores de pallet.</li>
             <li><strong>Creación de pallets:</strong> ITA, FHR y BRA/ATL operan como single-HU; THA y CNA pueden agruparse.</li>
             <li><strong>Envío a cola:</strong> el botón Iniciar Proceso despacha la tarea a Celery si hay worker activo.</li>
-            <li><strong>Procesamiento SAP:</strong> el worker ejecuta F1 y F2 de forma secuencial.</li>
-            <li><strong>Receipt:</strong> después de F2 se usa ZE16 para generar el documento.</li>
-            <li><strong>Impresión PDF:</strong> `pdf_receipt.py` crea el PDF y lo manda a SumatraPDF/impresora.</li>
+            <li><strong>Procesamiento SAP:</strong> el worker ejecuta Order Acknowledge (F1) y Separazione (F2) de forma secuencial en SAP Logon vía SAP GUI Scripting.</li>
+            <li><strong>Receipt:</strong> después de F2 se usa ZE16 para generar el documento de recepción de material.</li>
+            <li><strong>Impresión PDF:</strong> <code>pdf_receipt.py</code> crea el PDF con el diseño optimizado y lo manda a SumatraPDF/impresora del área de Inbound.</li>
           </ol>
           <pre class="doc-code"><code>Operador
   ↓ escanea HU
@@ -146,8 +148,8 @@ Base de datos
 UI actualizada
   ↓ iniciar proceso
 Celery
-  ↓ SAP F1/F2/ZE16
-PDF + impresora
+  ↓ SAP Order Acknowledge / Separazione / ZE16
+PDF optimizado + impresora
   ↓ queue_done
 UI finalizada</code></pre>
         </section>
@@ -157,7 +159,7 @@ UI finalizada</code></pre>
           <div class="doc-tags">
             <span>Python</span><span>Django</span><span>SQLite</span><span>Redis</span>
             <span>Celery</span><span>Daphne</span><span>Channels</span><span>HTML</span>
-            <span>CSS</span><span>JavaScript</span><span>SAP GUI Scripting</span><span>SumatraPDF</span>
+            <span>CSS</span><span>JavaScript</span><span>SAP GUI Scripting</span><span>SAP Logon</span><span>SumatraPDF</span>
           </div>
         </section>
 
@@ -166,19 +168,62 @@ UI finalizada</code></pre>
           <h3>Requisitos</h3>
           <ul class="doc-list">
             <li>Windows con usuario interactivo abierto.</li>
-            <li>Python, SAP GUI, Redis para Windows y SumatraPDF.</li>
+            <li>Python, SAP Logon (GUI Scripting habilitado), Redis para Windows y SumatraPDF.</li>
             <li>Acceso de red al servidor y puerto definido para Daphne.</li>
           </ul>
           <h3>Crear entorno virtual e instalar dependencias</h3>
           <pre class="doc-code"><code>python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt</code></pre>
+          <h3>Configurar archivo .env</h3>
+          <p>
+            Antes de levantar el sistema, crear o validar el archivo <code>.env</code> en la raíz del proyecto.
+            No compartir passwords ni copiar este archivo a repositorios externos.
+          </p>
+          <pre class="doc-code"><code># .env - nunca subir al git
+SECRET_KEY=*
+DEBUG=True
+ALLOWED_HOSTS=localhost,127.0.0.1,10.110.202.84
+CSRF_TRUSTED_ORIGINS=http://localhost:9821,http://127.0.0.1:9821,http://10.110.202.84:9821
+SECURE_SSL_REDIRECT=False
+SESSION_COOKIE_SECURE=False
+CSRF_COOKIE_SECURE=False
+SECURE_HSTS_SECONDS=0
+
+# Redis para Celery y Channels.
+# En servidor LAN no usar localhost si otros servicios/equipos deben resolver la misma instancia.
+REDIS_URL=redis://10.110.202.84:6379/0
+NEXHUS_DAPHNE_BIND=0.0.0.0
+NEXHUS_DAPHNE_PORT=9821
+
+# SAP
+SAP_SISTEMA=LUP
+SAP_TX_MOVEINBHU=/nZMOVEINBHU
+SAP_TX_TIJSEP=/nZMMTIJSEP
+SAP_TX_SP01=/nSP01
+SAP_CONNECTION_NAME=LUP Production [Public]
+SAP_LOGIN_USER=*
+SAP_LOGIN_PASSWORD=*
+SAP_LOGIN_LANGUAGE=EN
+SAP_LOGON_EXE=C:\Program Files (x86)\SAP\FrontEnd\SAPgui\saplogon.exe
+
+# Control local de servicios desde diagnóstico
+NEXHUS_SERVICE_CONTROL_PASSWORD=*
+NEXHUS_SERVICE_CONTROL_ENABLED=*</code></pre>
+          <h3>Preparar base de datos</h3>
+          <p>
+            Ejecutar migraciones al instalar por primera vez o después de cambios en modelos.
+            <code>makemigrations</code> genera archivos de migración y <code>migrate</code> aplica esos cambios a la base de datos.
+          </p>
+          <pre class="doc-code"><code>venv\Scripts\activate
+python manage.py makemigrations
+python manage.py migrate</code></pre>
           <h3>Configurar Redis</h3>
           <pre class="doc-code"><code>cd /d C:\Users\LOPEZHEJ\Downloads\Redis-x64-5.0.14.1
 redis-server.exe</code></pre>
           <h3>Ejecutar Daphne</h3>
           <pre class="doc-code"><code>venv\Scripts\activate
-daphne -b 0.0.0.0 -p 8000 config.asgi:application</code></pre>
+daphne -b 0.0.0.0 -p 9821 config.asgi:application</code></pre>
           <h3>Ejecutar Celery</h3>
           <pre class="doc-code"><code>venv\Scripts\activate
 celery -A config worker -l info -P solo --concurrency=1</code></pre>
@@ -187,14 +232,19 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
         <section class="doc-card doc-section" id="configuracion">
           <h2>6. Configuración</h2>
           <p>
-            La configuración principal vive en `config/settings.py` y variables de entorno.
-            En producción deben revisarse `DEBUG`, `SECRET_KEY`, `ALLOWED_HOSTS`, Redis,
+            La configuración principal vive en <code>config/settings.py</code> y variables de entorno.
+            En producción deben revisarse <code>DEBUG</code>, <code>SECRET_KEY</code>, <code>ALLOWED_HOSTS</code>, Redis,
             usuario SAP e impresora.
           </p>
+          <ul class="doc-list">
+            <li><strong>.env:</strong> define secretos, usuario SAP, Redis, host LAN y rutas locales del servidor.</li>
+            <li><strong>Base de datos:</strong> SQLite usa <code>db.sqlite3</code>; para SQL Server se deben traducir estas migraciones al motor definitivo.</li>
+            <li><strong>Migraciones:</strong> los archivos en <code>queue_app/migrations/</code> describen cómo crear o cambiar tablas Django.</li>
+          </ul>
           <div class="doc-grid">
             <div><h3>Redis</h3><p>Define broker, result backend, locks y señales runtime.</p></div>
-            <div><h3>SAP</h3><p>Usa credenciales configuradas por variable de entorno. No exponer passwords en UI o logs.</p></div>
-            <div><h3>Impresoras</h3><p>Configurar SumatraPDF, impresora predeterminada y permisos del usuario Windows.</p></div>
+            <div><h3>SAP</h3><p>Usa credenciales configuradas por variable de entorno para abrir la sesión en SAP Logon. No exponer passwords en UI o logs.</p></div>
+            <div><h3>Impresoras</h3><p>Configurar SumatraPDF, impresora predeterminada del área de Inbound y permisos del usuario Windows.</p></div>
           </div>
         </section>
 
@@ -222,9 +272,8 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
           <div class="doc-grid">
             <div><h3>Order Acknowledge</h3><p>Primer paso SAP ejecutado en ZMOVEINBHU para reconocer el HU.</p></div>
             <div><h3>Separazione</h3><p>Segundo paso SAP ejecutado en ZMMTIJSEP para completar separación.</p></div>
-            <div><h3>Putaway</h3><p>Proceso posterior/logístico relacionado con ubicación física del inventario.</p></div>
-            <div><h3>Receipts</h3><p>Documento final generado desde ZE16 y enviado a PDF/impresora.</p></div>
-            <div><h3>HUs</h3><p>Handling Units escaneadas y guardadas como `HUItem`.</p></div>
+            <div><h3>Receipts</h3><p>Documento final generado desde ZE16 e impreso con diseño optimizado vía SumatraPDF.</p></div>
+            <div><h3>HUs</h3><p>Handling Units escaneadas y guardadas como <code>HUItem</code>.</p></div>
             <div><h3>Pallets</h3><p>Agrupación operativa de HUs con reglas por origen.</p></div>
           </div>
         </section>
@@ -232,39 +281,73 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
         <section class="doc-card doc-section" id="sap">
           <h2>9. Integración SAP</h2>
           <p>
-            SAP GUI Scripting controla una sesión SAP abierta en Windows. El worker Celery debe correr
-            en una sesión interactiva y con `--pool=solo --concurrency=1` para evitar conflictos.
+            SAP GUI Scripting controla una sesión de SAP Logon abierta en Windows. El worker Celery debe correr
+            en una sesión interactiva y con <code>--pool=solo --concurrency=1</code> para evitar conflictos
+            entre tareas que compartan la misma sesión SAP.
           </p>
           <table class="doc-table">
             <thead><tr><th>Transacción</th><th>Uso</th><th>Estado</th></tr></thead>
             <tbody>
-              <tr><td>ZMOVEINBHU</td><td>F1 / Order Acknowledge por HU.</td><td>Activa</td></tr>
-              <tr><td>ZMMTIJSEP</td><td>F2 / Separazione por HU.</td><td>Activa</td></tr>
-              <tr><td>ZE16</td><td>Generación de receipt/PDF.</td><td>Activa</td></tr>
-              <tr><td>LQUA</td><td>Consulta logística de stock/ubicación cuando aplique.</td><td>Referencia</td></tr>
-              <tr><td>SP01</td><td>Spool antiguo.</td><td>Legado; no usado en el flujo actual ZE16-only.</td></tr>
+              <tr><td>ZMOVEINBHU</td><td>Order Acknowledge (F1) por HU.</td><td>Activa</td></tr>
+              <tr><td>ZMMTIJSEP</td><td>Separazione (F2) por HU.</td><td>Activa</td></tr>
+              <tr><td>ZE16</td><td>Generación del documento de recepción / receipt para impresión.</td><td>Activa</td></tr>
             </tbody>
           </table>
         </section>
 
+        <section class="doc-card doc-section" id="impresion">
+          <h2>10. Diseño Optimizado de Impresión</h2>
+          <p>
+            El documento de recepción de material que ve el área de Inbound se imprime mediante
+            <code>pdf_receipt.py</code> y SumatraPDF con un diseño pensado para reducir el consumo
+            de hojas, tóner y tiempo de impresión frente a un formato sin optimizar.
+          </p>
+          <div class="doc-grid">
+            <div>
+              <h3>Ahorro de hojas</h3>
+              <p>El layout aprovecha mejor el espacio de la página para incluir más información por hoja, reduciendo el número de páginas impresas por recibo.</p>
+            </div>
+            <div>
+              <h3>Ahorro de tóner</h3>
+              <p>Se evitan rellenos sólidos, fondos oscuros y elementos gráficos pesados, priorizando texto y líneas finas.</p>
+            </div>
+            <div>
+              <h3>Ahorro de tiempo</h3>
+              <p>SumatraPDF se invoca en modo silencioso directamente desde Celery, evitando pasos manuales o diálogos de impresión por cada HU/pallet.</p>
+            </div>
+          </div>
+          <p>
+            <em>Nota: completa aquí los valores específicos de tu diseño (tamaño de hoja, márgenes,
+            tipografía, comparación de páginas antes/después) para dejar esta sección con datos exactos.</em>
+          </p>
+        </section>
+
         <section class="doc-card doc-section" id="api">
-          <h2>10. API Interna</h2>
+          <h2>11. API Interna</h2>
           <table class="doc-table">
             <thead><tr><th>Método</th><th>URL</th><th>Uso</th><th>Parámetros</th></tr></thead>
             <tbody>
               <tr><td>GET</td><td>/</td><td>Renderiza cola principal.</td><td>-</td></tr>
               <tr><td>GET</td><td>/documentation/</td><td>Renderiza esta documentación.</td><td>-</td></tr>
-              <tr><td>POST</td><td>/scan/</td><td>Registra HU o separador.</td><td>`code`, opciones F1/F2/auto-start.</td></tr>
+              <tr><td>POST</td><td>/scan/</td><td>Registra HU o separador.</td><td><code>code</code>, opciones F1/F2/auto-start.</td></tr>
+              <tr><td>POST</td><td>/scan/batch/</td><td>Registra varias lecturas pegadas en el input.</td><td>Lista de códigos HU.</td></tr>
               <tr><td>POST</td><td>/pallet/nuevo/</td><td>Crea/cierra pallet operativo.</td><td>Opciones de ejecución.</td></tr>
               <tr><td>POST</td><td>/hu/&lt;hu_code&gt;/borrar/</td><td>Elimina HU permitido.</td><td>HU por URL.</td></tr>
               <tr><td>POST</td><td>/pallet/&lt;id&gt;/borrar/</td><td>Elimina pallet permitido.</td><td>Pallet por URL.</td></tr>
               <tr><td>POST</td><td>/cola/limpiar/</td><td>Limpia cola cuando es seguro.</td><td>-</td></tr>
-              <tr><td>POST</td><td>/cola/reprocesar/</td><td>Regresa HUs a pendiente.</td><td>`scope`: all o errors.</td></tr>
-              <tr><td>POST</td><td>/cola/iniciar/</td><td>Inicia cola continua.</td><td>Opciones F1/F2.</td></tr>
+              <tr><td>POST</td><td>/cola/reprocesar/</td><td>Regresa HUs a pendiente.</td><td><code>scope</code>: all o errors.</td></tr>
+              <tr><td>POST</td><td>/cola/iniciar/</td><td>Inicia cola continua desde flujo compatible.</td><td>Opciones F1/F2.</td></tr>
               <tr><td>POST</td><td>/cola/detener/</td><td>Solicita detención segura.</td><td>-</td></tr>
+              <tr><td>GET</td><td>/api/stats/</td><td>Consulta KPIs actuales de la cola.</td><td>-</td></tr>
               <tr><td>GET</td><td>/api/queue-snapshot/</td><td>Snapshot para resincronizar UI.</td><td>-</td></tr>
               <tr><td>GET</td><td>/api/sap-status/</td><td>Estado rápido/cacheado de SAP.</td><td>-</td></tr>
               <tr><td>GET</td><td>/api/system-status/</td><td>Diagnóstico Django, Redis, Celery, DB y cola.</td><td>-</td></tr>
+              <tr><td>POST</td><td>/api/sap/iniciar/</td><td>Inicializa sesión SAP cuando hay trabajo real.</td><td>-</td></tr>
+              <tr><td>POST</td><td>/api/procesar/</td><td>Endpoint principal usado por la UI para despachar procesamiento.</td><td>Opciones F1/F2/PDF.</td></tr>
+              <tr><td>POST</td><td>/api/service-control/login/</td><td>Autentica acceso al panel de servicios locales.</td><td><code>password</code> de soporte.</td></tr>
+              <tr><td>POST</td><td>/api/service-control/logout/</td><td>Cierra sesión del panel de servicios locales.</td><td>-</td></tr>
+              <tr><td>GET</td><td>/api/service-control/status/</td><td>Consulta estado local de Daphne, Redis y Celery.</td><td>-</td></tr>
+              <tr><td>POST</td><td>/api/service-control/&lt;service&gt;/&lt;action&gt;/</td><td>Ejecuta acción permitida sobre servicio local.</td><td><code>service</code>, <code>action</code>.</td></tr>
               <tr><td>GET</td><td>/exportar/</td><td>Descarga CSV de la cola.</td><td>-</td></tr>
             </tbody>
           </table>
@@ -278,10 +361,10 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
         </section>
 
         <section class="doc-card doc-section" id="websockets">
-          <h2>11. WebSockets</h2>
+          <h2>12. WebSockets</h2>
           <p>
             Channels conecta el navegador al grupo de actualizaciones de cola. Al conectar,
-            el cliente recibe `initial_state`; durante el proceso recibe eventos incrementales.
+            el cliente recibe <code>initial_state</code>; durante el proceso recibe eventos incrementales.
           </p>
           <div class="doc-tags">
             <span>initial_state</span><span>item_update</span><span>stats_update</span>
@@ -301,7 +384,7 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
         </section>
 
         <section class="doc-card doc-section" id="database">
-          <h2>12. Base de Datos</h2>
+          <h2>13. Base de Datos</h2>
           <table class="doc-table">
             <thead><tr><th>Modelo</th><th>Campos clave</th><th>Propósito</th></tr></thead>
             <tbody>
@@ -325,7 +408,7 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
         </section>
 
         <section class="doc-card doc-section" id="errores">
-          <h2>13. Manejo de Errores</h2>
+          <h2>14. Manejo de Errores</h2>
           <ul class="doc-list">
             <li><strong>HTTP 500:</strong> debe mostrarse en toast/diagnóstico y no perder el escaneo cuando sea recuperable.</li>
             <li><strong>Redis desconectado:</strong> bloquea dispatch de Celery y actualiza diagnóstico.</li>
@@ -336,7 +419,7 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
         </section>
 
         <section class="doc-card doc-section" id="diagnostico">
-          <h2>14. Diagnóstico del Sistema</h2>
+          <h2>15. Diagnóstico del Sistema</h2>
           <p>
             El panel de diagnóstico permite ver estado de Django/Daphne, Redis, Celery, SAP,
             WebSocket, cola, base de datos y servicios locales. Sirve para soporte cuando la UI
@@ -346,25 +429,25 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
             <div><h3>Django/Daphne</h3><p>Confirma que el backend HTTP responde.</p></div>
             <div><h3>Redis</h3><p>Confirma broker y locks runtime.</p></div>
             <div><h3>Celery</h3><p>Confirma workers activos antes de procesar.</p></div>
-            <div><h3>SAP</h3><p>Confirma sesión SAP disponible o estado no confirmado.</p></div>
+            <div><h3>SAP</h3><p>Confirma sesión SAP Logon disponible o estado no confirmado.</p></div>
             <div><h3>WebSocket</h3><p>Confirma canal de eventos en tiempo real.</p></div>
             <div><h3>Base de datos</h3><p>Confirma lectura/escritura y reporta errores readonly.</p></div>
           </div>
         </section>
 
         <section class="doc-card doc-section" id="seguridad">
-          <h2>15. Seguridad</h2>
+          <h2>16. Seguridad</h2>
           <ul class="doc-list">
             <li>Activar autenticación y permisos por rol antes de exponer el sistema fuera del entorno controlado.</li>
-            <li>No mostrar passwords SAP, `SECRET_KEY`, tokens o rutas sensibles cuando `DEBUG=False`.</li>
-            <li>Usar `ALLOWED_HOSTS` exactos para el servidor LAN.</li>
+            <li>No mostrar passwords SAP, <code>SECRET_KEY</code>, tokens o rutas sensibles cuando <code>DEBUG=False</code>.</li>
+            <li>Usar <code>ALLOWED_HOSTS</code> exactos para el servidor LAN.</li>
             <li>Revisar CSRF en endpoints críticos si se habilitan usuarios autenticados.</li>
             <li>Con HTTPS, activar cookies seguras y HSTS según política de IT.</li>
           </ul>
         </section>
 
         <section class="doc-card doc-section" id="mantenimiento">
-          <h2>16. Mantenimiento</h2>
+          <h2>17. Mantenimiento</h2>
           <ul class="doc-list">
             <li><strong>Respaldos:</strong> copiar base SQLite actual o plan SQL Server antes de cambios.</li>
             <li><strong>Logs:</strong> revisar logs de Django, Celery, diagnóstico y SAP al investigar fallas.</li>
@@ -374,36 +457,34 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
         </section>
 
         <section class="doc-card doc-section" id="troubleshooting">
-          <h2>17. Solución de Problemas</h2>
+          <h2>18. Solución de Problemas</h2>
           <table class="doc-table">
             <thead><tr><th>Problema</th><th>Causa</th><th>Solución</th></tr></thead>
             <tbody>
               <tr><td>La UI queda en procesando</td><td>Evento WebSocket perdido o worker detenido.</td><td>Usar Resincronizar UI y revisar diagnóstico Celery/WebSocket.</td></tr>
-              <tr><td>Celery no procesa</td><td>Worker apagado aunque Redis responda.</td><td>Iniciar Celery con `-P solo --concurrency=1`.</td></tr>
-              <tr><td>SAP no encuentra campo HU</td><td>SAP quedó en pantalla incorrecta, popup o sesión inválida.</td><td>Cerrar/reabrir sesión SAP y verificar login automático.</td></tr>
+              <tr><td>Celery no procesa</td><td>Worker apagado aunque Redis responda.</td><td>Iniciar Celery con <code>-P solo --concurrency=1</code>.</td></tr>
+              <tr><td>SAP no encuentra campo HU</td><td>SAP quedó en pantalla incorrecta, popup o sesión inválida.</td><td>Cerrar/reabrir sesión en SAP Logon y verificar login automático.</td></tr>
               <tr><td>attempt to write a readonly database</td><td>Permisos de archivo/carpeta SQLite o OneDrive bloqueando escritura.</td><td>Revisar permisos, ubicación de DB y mover a ruta estable/SQL Server.</td></tr>
               <tr><td>No imprime PDF</td><td>SumatraPDF o impresora no disponible.</td><td>Validar ruta de SumatraPDF, impresora predeterminada y permisos.</td></tr>
-              <tr><td>Otro equipo no abre la app</td><td>Daphne ligado a localhost o puerto bloqueado.</td><td>Ejecutar `daphne -b 0.0.0.0 -p 8000` y abrir puerto LAN.</td></tr>
+              <tr><td>Otro equipo no abre la app</td><td>Daphne ligado a localhost o puerto bloqueado.</td><td>Ejecutar <code>daphne -b 0.0.0.0 -p 9821</code> o el puerto autorizado por IT.</td></tr>
             </tbody>
           </table>
         </section>
 
         <section class="doc-card doc-section" id="versiones">
-          <h2>18. Historial de Versiones</h2>
+          <h2>19. Historial de Versiones</h2>
           <table class="doc-table">
             <thead><tr><th>Versión</th><th>Fecha</th><th>Cambios</th></tr></thead>
             <tbody>
-              <tr><td>0.1</td><td>2026-05</td><td>Cola inicial de HUs, pallets y procesamiento SAP.</td></tr>
-              <tr><td>0.2</td><td>2026-06</td><td>WebSockets, diagnóstico, cola continua y PDF ZE16-only.</td></tr>
-              <tr><td>0.3</td><td>{% now "Y-m-d" %}</td><td>Documentación integrada en la aplicación.</td></tr>
+              <tr><td>0.1</td><td>2026-05</td><td>Aplicación lista para uso.</td></tr>
             </tbody>
           </table>
         </section>
 
         <section class="doc-card doc-section" id="creditos">
-          <h2>19. Créditos</h2>
+          <h2>20. Créditos</h2>
           <p>
-            <strong>Autor del sistema:</strong> Julio López Herrera.
+            <strong>Autor del sistema:</strong> Julio López Herrera junto con Business Intelligence.
             <br>
             <strong>Tecnologías:</strong> Python, Django, Channels, Celery, Redis, SAP GUI Scripting,
             JavaScript, CSS y SumatraPDF.
@@ -431,17 +512,43 @@ celery -A config worker -l info -P solo --concurrency=1</code></pre>
         .map(link => document.querySelector(link.getAttribute('href')))
         .filter(Boolean);
 
-      const observer = new IntersectionObserver(entries => {
-        entries.forEach(entry => {
-          if (!entry.isIntersecting) return;
-          links.forEach(link => link.classList.toggle(
-            'active',
-            link.getAttribute('href') === '#' + entry.target.id
-          ));
-        });
-      }, { rootMargin: '-25% 0px -65% 0px' });
+      function setActiveLink(sectionId) {
+        links.forEach(link => link.classList.toggle(
+          'active',
+          link.getAttribute('href') === '#' + sectionId
+        ));
+      }
 
-      sections.forEach(section => observer.observe(section));
+      function updateActiveLink() {
+        const scrollPosition = window.scrollY + 140;
+        let current = sections[0];
+
+        sections.forEach((section, index) => {
+          const previous = sections[index - 1];
+          const next = sections[index + 1];
+          const start = previous ? (previous.offsetTop + section.offsetTop) / 2 : 0;
+          const end = next ? (section.offsetTop + next.offsetTop) / 2 : document.documentElement.scrollHeight;
+
+          if (scrollPosition >= start && scrollPosition < end) {
+            current = section;
+          }
+        });
+
+        if (current) setActiveLink(current.id);
+      }
+
+      const backTop = document.querySelector('.doc-backtop');
+      if (backTop) {
+        backTop.addEventListener('click', function (event) {
+          event.preventDefault();
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          setActiveLink(sections[0]?.id);
+        });
+      }
+
+      updateActiveLink();
+      window.addEventListener('scroll', updateActiveLink, { passive: true });
+      window.addEventListener('resize', updateActiveLink);
     });
   </script>
 </body>

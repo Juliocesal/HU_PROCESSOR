@@ -1415,7 +1415,7 @@ class ReprocessQueueTests(TestCase):
             self.assertEqual(item.status, HUItem.STATUS_PENDING)
 
 
-    def test_reprocess_is_blocked_without_sap_session(self):
+    def test_reprocess_dispatches_without_sap_session_for_worker_login(self):
         pallet = Pallet.objects.create(status=Pallet.STATUS_ACTIVE)
         HUItem.objects.create(hu_code='T10045916001', pallet=pallet, status=HUItem.STATUS_ERROR)
 
@@ -1423,7 +1423,11 @@ class ReprocessQueueTests(TestCase):
         with (
             patch('queue_app.views.is_queue_locked', return_value=False),
             patch('queue_app.views._celery_start_blocker_response', return_value=None),
-            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(False, '', 'SAP no disponible')),
+            patch('queue_app.views._sap_start_decision', return_value={
+                'blocked': False,
+                'force_new_sap_login': True,
+                'sap': {'status': 'disconnected', 'user': ''},
+            }),
             patch('queue_app.views.process_queue_task.delay') as delay,
         ):
             response = self.client.post(
@@ -1433,11 +1437,18 @@ class ReprocessQueueTests(TestCase):
             )
 
 
-        self.assertEqual(response.status_code, 409)
-        self.assertFalse(response.json()['ok'])
-        delay.assert_not_called()
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['ok'])
+        delay.assert_called_once_with(
+            run_f1=True,
+            run_f2=True,
+            run_pdf=True,
+            continuous=True,
+            idle_timeout=QUEUE_CONTINUOUS_IDLE_TIMEOUT_SECONDS,
+            force_new_sap_login=True,
+        )
         pallet.refresh_from_db()
-        self.assertEqual(pallet.status, Pallet.STATUS_ACTIVE)
+        self.assertEqual(pallet.status, Pallet.STATUS_READY)
 
 
     def test_reprocess_does_not_open_sap_without_target_hus(self):
@@ -2083,7 +2094,11 @@ class NewPalletTests(TestCase):
             patch('queue_app.views.is_continuous_queue_armed', return_value=True),
             patch('queue_app.views.is_queue_locked', return_value=False),
             patch('queue_app.views._celery_start_blocker', return_value=None),
-            patch('core.sap_client.SAPClient.ensure_session_ready', return_value=(True, 'TEST', 'OK')),
+            patch('queue_app.views._sap_start_decision', return_value={
+                'blocked': False,
+                'force_new_sap_login': False,
+                'sap': {'status': 'connected', 'user': 'TEST'},
+            }),
             patch('queue_app.views.process_queue_task.delay') as delay,
             patch('queue_app.views.arm_continuous_queue') as arm,
         ):

@@ -1,17 +1,16 @@
 :root {
-  --shell: #152236;
-  --shell-2: #0f1b2c;
+  --shell: #162235;
   --surface: #ffffff;
-  --page: #eef2f7;
-  --line: #d8e0ea;
+  --page: #f5f7fb;
+  --line: #dde5ef;
   --text: #0f172a;
-  --muted: #5f6f83;
-  --primary: #0b69d7;
-  --primary-soft: #e8f2ff;
+  --muted: #64748b;
+  --primary: #0b63ce;
+  --primary-soft: #edf5ff;
   --green: #168a45;
   --amber: #b7791f;
   --red: #c2413b;
-  --shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+  --shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
 }
 
 * {
@@ -54,11 +53,11 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 56px;
-  padding: 0 24px;
-  background: linear-gradient(90deg, var(--shell), var(--shell-2));
+  min-height: 52px;
+  padding: 0 22px;
+  background: var(--shell);
   color: #fff;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .doc-brand {
@@ -79,7 +78,6 @@ body {
   margin-top: 2px;
 }
 
-.doc-back,
 .doc-primary-link {
   display: inline-flex;
   align-items: center;
@@ -88,15 +86,6 @@ body {
   text-decoration: none;
 }
 
-.doc-back {
-  width: 34px;
-  height: 34px;
-  justify-content: center;
-  border-radius: 8px;
-  color: #cbd5e1;
-}
-
-.doc-back:hover,
 .doc-primary-link:hover {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -110,28 +99,28 @@ body {
 }
 
 .doc-shell {
-  width: min(1500px, calc(100% - 40px));
-  margin: 24px auto 64px;
+  width: min(1360px, calc(100% - 40px));
+  margin: 22px auto 64px;
 }
 
 .doc-hero {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 250px;
+  gap: 14px;
   align-items: stretch;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 
 .doc-hero > div,
 .doc-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
 }
 
 .doc-hero > div:first-child {
-  padding: 28px;
+  padding: 24px;
 }
 
 .doc-eyebrow {
@@ -145,7 +134,7 @@ body {
 
 .doc-hero h1 {
   margin: 0;
-  font-size: 32px;
+  font-size: 30px;
   line-height: 1.15;
 }
 
@@ -159,7 +148,7 @@ body {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  padding: 22px;
+  padding: 18px;
 }
 
 .doc-hero-card span,
@@ -174,8 +163,8 @@ body {
 
 .doc-layout {
   display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 18px;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 14px;
   align-items: start;
 }
 
@@ -184,10 +173,10 @@ body {
   top: 76px;
   max-height: calc(100vh - 96px);
   overflow: auto;
-  padding: 16px;
+  padding: 14px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 8px;
   box-shadow: var(--shadow);
 }
 
@@ -204,8 +193,8 @@ body {
 
 .doc-sidebar a {
   display: block;
-  padding: 8px 10px;
-  border-radius: 7px;
+  padding: 7px 9px;
+  border-radius: 6px;
   color: var(--muted);
   font-size: 13px;
   text-decoration: none;
@@ -219,20 +208,20 @@ body {
 
 .doc-content {
   display: grid;
-  gap: 16px;
+  gap: 14px;
   min-width: 0;
 }
 
 .doc-card {
-  padding: 24px;
+  padding: 22px;
   scroll-margin-top: 78px;
 }
 
 .doc-section h2 {
   margin: 0 0 16px;
-  padding-bottom: 12px;
+  padding-bottom: 10px;
   border-bottom: 1px solid var(--line);
-  font-size: 22px;
+  font-size: 21px;
 }
 
 .doc-section h3 {
@@ -245,17 +234,28 @@ body {
   color: var(--muted);
 }
 
+.doc-section code,
+.doc-table code {
+  padding: 2px 5px;
+  border: 1px solid #d7e2ef;
+  border-radius: 4px;
+  background: #f7fbff;
+  color: #12385f;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+}
+
 .doc-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .doc-grid > div {
-  padding: 14px;
+  padding: 13px;
   background: #f8fafc;
   border: 1px solid #e6edf5;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
 .doc-grid h3 {
@@ -276,16 +276,16 @@ body {
 
 .doc-flow span {
   position: relative;
-  padding: 8px 12px;
+  padding: 7px 11px;
   background: var(--primary-soft);
   border: 1px solid #b9d6ff;
-  border-radius: 8px;
+  border-radius: 6px;
   color: #0a4ea3;
   font-weight: 700;
 }
 
 .doc-flow span:not(:last-child)::after {
-  content: "→";
+  content: "\2192";
   margin-left: 8px;
   color: var(--muted);
 }
@@ -326,7 +326,7 @@ body {
   padding: 16px;
   background: #0f172a;
   color: #dbeafe;
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 13px;
 }
 
@@ -335,7 +335,7 @@ body {
   border-collapse: collapse;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 13px;
 }
 
@@ -349,7 +349,7 @@ body {
 }
 
 .doc-table th {
-  background: #f3f7fb;
+  background: #f6f8fb;
   color: #102033;
   font-weight: 700;
 }
@@ -421,7 +421,7 @@ svg {
 
   .doc-hero > div:first-child,
   .doc-card {
-    padding: 18px;
+    padding: 16px;
   }
 
   .doc-hero h1 {

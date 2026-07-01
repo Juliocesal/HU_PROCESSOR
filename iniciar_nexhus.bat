@@ -26,7 +26,7 @@ echo.
 echo ====================================
 echo Iniciando Daphne...
 echo ====================================
-start "Daphne Server" cmd /k "call venv\Scripts\activate.bat && daphne -b 0.0.0.0 -p 8000 config.asgi:application"
+start "Daphne Server" cmd /k "call venv\Scripts\activate.bat && daphne -b 0.0.0.0 -p 9821 config.asgi:application"
 
 echo.
 echo ====================================

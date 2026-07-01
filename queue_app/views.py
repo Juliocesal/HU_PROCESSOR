@@ -71,7 +71,6 @@ from queue_app.services.process_control_api import (
     close_sap_session_if_idle as _service_close_sap_session_if_idle,
     detener_queue_response,
     dispatch_continuous_queue as _service_dispatch_continuous_queue,
-    ensure_sap_session as _service_ensure_sap_session,
     has_potential_queue_work as _service_has_potential_queue_work,
     has_ready_queue_work as _service_has_ready_queue_work,
     procesar_pendientes_response,
@@ -80,7 +79,6 @@ from queue_app.services.process_control_api import (
     recover_orphaned_queue_runtime_data as _service_recover_orphaned_queue_runtime_data,
     recover_orphaned_queue_runtime_response,
     sap_start_blocker_response as _service_sap_start_blocker_response,
-    sap_session_error_response as _service_sap_session_error_response,
     start_processing_response,
     stop_request_is_stale,
 )
@@ -601,18 +599,6 @@ def _reset_queue_sequences():
     reset_queue_sequences()
 
 
-def _ensure_sap_session():
-    return _service_ensure_sap_session()
-
-
-def _sap_session_error_response():
-    return _service_sap_session_error_response(
-        ensure_sap_session_func=_ensure_sap_session,
-        diagnostic_error_message_func=_diagnostic_error_message,
-        logger=log,
-    )
-
-
 def _close_sap_session_if_idle() -> None:
     _service_close_sap_session_if_idle(logger=log)
 
@@ -767,7 +753,7 @@ def _auto_start_queue_after_pallet_close(run_f1=True, run_f2=True, run_pdf=True)
         is_queue_locked_func=is_queue_locked,
         has_ready_queue_work_func=_has_ready_queue_work,
         celery_start_blocker_func=_celery_start_blocker,
-        ensure_sap_session_func=_ensure_sap_session,
+        sap_start_decision_func=_sap_start_decision,
         dispatch_continuous_queue_func=_dispatch_continuous_queue,
         emit_stats_update_func=emit_stats_update,
         emit_queue_status_func=emit_queue_status,
@@ -786,7 +772,7 @@ def reprocess_queue(request):
         request,
         queue_lock_blocker_response_func=_queue_lock_blocker_response,
         celery_start_blocker_response_func=_celery_start_blocker_response,
-        sap_session_error_response_func=_sap_session_error_response,
+        sap_start_decision_func=_sap_start_decision,
         dispatch_continuous_queue_func=_dispatch_continuous_queue,
         close_sap_session_if_idle_func=_close_sap_session_if_idle,
         emit_item_update_func=emit_item_update,
@@ -808,7 +794,7 @@ def start_processing(request):
         close_active_pallet_for_processing_func=_close_active_pallet_for_processing,
         close_sap_session_if_idle_func=_close_sap_session_if_idle,
         celery_start_blocker_response_func=_celery_start_blocker_response,
-        sap_session_error_response_func=_sap_session_error_response,
+        sap_start_decision_func=_sap_start_decision,
         dispatch_continuous_queue_func=_dispatch_continuous_queue,
         emit_queue_status_func=emit_queue_status,
         pdf_queryset_func=pallets_ready_for_pdf_queryset,
@@ -1079,7 +1065,6 @@ def procesar_pendientes(request):
         celery_start_blocker_response_func=_celery_start_blocker_response,
         sap_start_blocker_response_func=_sap_start_blocker_response,
         sap_start_decision_func=_sap_start_decision,
-        sap_session_error_response_func=_sap_session_error_response,
         dispatch_continuous_queue_func=_dispatch_continuous_queue,
         emit_queue_status_func=emit_queue_status,
         logger=log,

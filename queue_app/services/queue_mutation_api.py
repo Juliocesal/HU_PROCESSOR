@@ -5,6 +5,7 @@ from django.db import connection, transaction
 from django.http import JsonResponse
 
 from queue_app.models import HUItem, Pallet
+from queue_app.services.process_control_api import sap_start_decision_error_response
 from queue_app.services.stats_service import invalidate_queue_stats_cache
 
 
@@ -258,7 +259,7 @@ def reprocess_queue_response(
     *,
     queue_lock_blocker_response_func,
     celery_start_blocker_response_func,
-    sap_session_error_response_func,
+    sap_start_decision_func,
     dispatch_continuous_queue_func,
     close_sap_session_if_idle_func,
     emit_item_update_func,
@@ -298,9 +299,11 @@ def reprocess_queue_response(
         if celery_error:
             return celery_error
 
-        sap_error = sap_session_error_response_func()
+        sap_decision = sap_start_decision_func()
+        sap_error = sap_start_decision_error_response(sap_decision, logger=logger)
         if sap_error:
             return sap_error
+        force_new_sap_login = bool(sap_decision.get('force_new_sap_login'))
 
         with transaction.atomic():
             Pallet.objects.filter(pk__in=affected_pallet_ids).update(
@@ -330,7 +333,7 @@ def reprocess_queue_response(
         count = len(items)
         emit_stats_update_func(None)
         try:
-            dispatch_continuous_queue_func()
+            dispatch_continuous_queue_func(force_new_sap_login=force_new_sap_login)
         except Exception as exc:
             close_sap_session_if_idle_func()
             logger.exception("reprocess_pdf_errors celery_dispatch_failed")
@@ -376,9 +379,11 @@ def reprocess_queue_response(
     if celery_error:
         return celery_error
 
-    sap_error = sap_session_error_response_func()
+    sap_decision = sap_start_decision_func()
+    sap_error = sap_start_decision_error_response(sap_decision, logger=logger)
     if sap_error:
         return sap_error
+    force_new_sap_login = bool(sap_decision.get('force_new_sap_login'))
 
     affected_pallet_ids = {item.pallet_id for item in items}
     for item in items:
@@ -426,7 +431,7 @@ def reprocess_queue_response(
 
     emit_stats_update_func(None)
     try:
-        dispatch_continuous_queue_func()
+        dispatch_continuous_queue_func(force_new_sap_login=force_new_sap_login)
     except Exception as exc:
         close_sap_session_if_idle_func()
         logger.exception("reprocess_queue celery_dispatch_failed")

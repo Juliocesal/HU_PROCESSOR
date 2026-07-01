@@ -1607,10 +1607,14 @@
 
   // -- Tabla ---------------------------------------------------------------------
 
+  function cssToken(value, fallback = 'UNK') {
+    return String(value || fallback).replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+
   function originBadgeHTML(origin_code) {
-    const safe = (origin_code || 'UNK').replace('/', '_');
+    const safe = cssToken(origin_code);
     const cls  = `origin-${safe}`;
-    return `<span class="origin-badge ${cls}">${origin_code || ''}</span>`;
+    return `<span class="origin-badge ${cls}">${escapeHTML(origin_code || '')}</span>`;
   }
 
   function canDeleteStatus(status) {
@@ -1619,6 +1623,8 @@
 
   function statusCellHTML(status, f1_display, f2_display, phase2_msg, col) {
     const display = col === 'f1' ? f1_display : f2_display;
+    const safeDisplay = escapeHTML(display || '');
+    const safeStatus = cssToken(status, 'unknown');
     const f1SucceededBeforeF2Error = status === 'error' && Boolean(phase2_msg);
     const labels = { pending:'Pendiente', processing:'Procesando...' };
     const statusIcon = {
@@ -1632,20 +1638,20 @@
 
     if (col === 'f1') {
       if (status === 'ok' || status === 'duplicate' || f1SucceededBeforeF2Error)
-        return `<span class="ok-cell">${iconHTML('circle-check')}${display || 'OK'}</span>`;
+        return `<span class="ok-cell">${iconHTML('circle-check')}${safeDisplay || 'OK'}</span>`;
       if (status === 'error' || status === 'hu_not_found')
-        return `<span class="error-cell">${iconHTML(statusIcon)}${display || 'Error'}</span>`;
-      return `<span class="cell-status status-${status}">${iconHTML(statusIcon)}${display || labels[status] || status}</span>`;
+        return `<span class="error-cell">${iconHTML(statusIcon)}${safeDisplay || 'Error'}</span>`;
+      return `<span class="cell-status status-${safeStatus}">${iconHTML(statusIcon)}${safeDisplay || labels[status] || escapeHTML(status)}</span>`;
     }
 
     // F2
     if (status === 'ok')
-      return `<span class="ok-cell">${iconHTML('circle-check')}${display || 'OK'}</span>`;
+      return `<span class="ok-cell">${iconHTML('circle-check')}${safeDisplay || 'OK'}</span>`;
     if (status === 'error' && !phase2_msg)
       return `<span class="muted-cell">${iconHTML('circle-minus')}omitido</span>`;
     if (status === 'error')
-      return `<span class="error-cell">${iconHTML('triangle-alert')}${display || 'Error'}</span>`;
-    return `<span class="cell-status status-${status}">${iconHTML(statusIcon)}${display || labels[status] || 'Pendiente'}</span>`;
+      return `<span class="error-cell">${iconHTML('triangle-alert')}${safeDisplay || 'Error'}</span>`;
+    return `<span class="cell-status status-${safeStatus}">${iconHTML(statusIcon)}${safeDisplay || labels[status] || 'Pendiente'}</span>`;
   }
 
   function pdfCellHTML(status, pdfStatus = '', pdfDisplay = '', pdfMsg = '') {
@@ -3366,12 +3372,11 @@
   // -- Render de filas -----------------------------------------------------------
   function buildRowHTML(item) {
     const pid  = String(item.pallet_id).padStart(2, '0');
-    const safe = (item.origin_code || 'UNK').replace('/', '_');
 
     return `
       <td>P${pid}</td>
-      <td><span class="origin-badge origin-${safe}">${item.origin_code || ''}</span></td>
-      <td style="font-family:var(--mono);font-size:8.5pt;">${item.hu_code}</td>
+      <td>${originBadgeHTML(item.origin_code)}</td>
+      <td style="font-family:var(--mono);font-size:8.5pt;">${escapeHTML(item.hu_code)}</td>
       <td>${statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f1')}</td>
       <td>${statusCellHTML(item.status, item.f1_display, item.f2_display, item.phase2_msg, 'f2')}</td>
       <td>${pdfCellHTML(item.status, item.pdf_status, item.pdf_display, item.pdf_msg)}</td>
