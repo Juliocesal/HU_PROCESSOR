@@ -101,6 +101,7 @@ class QueueConsumer(AsyncWebsocketConsumer):
             'mode': event.get('mode', 'running'),
             'footer': event.get('footer', ''),
             'active_pallet_id': event.get('active_pallet_id'),
+            'active_hu_code': event.get('active_hu_code'),
             'active_hu_count': event.get('active_hu_count', 0),
             'remaining_seconds': event.get('remaining_seconds'),
             'stats': event.get('stats', {}),

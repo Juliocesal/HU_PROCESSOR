@@ -152,6 +152,7 @@ def emit_queue_status(
     mode='running',
     footer='',
     active_pallet_id=None,
+    active_hu_code=None,
     active_hu_count=0,
     remaining_seconds=None,
     is_running=None,
@@ -171,6 +172,7 @@ def emit_queue_status(
         'mode': mode,
         'footer': footer or message,
         'active_pallet_id': active_pallet_id,
+        'active_hu_code': active_hu_code,
         'active_hu_count': active_hu_count,
         'remaining_seconds': remaining_seconds,
         'stats': stats,
@@ -207,6 +209,7 @@ def emit_current_queue_status_if_available(
         mode=payload['mode'],
         footer=payload['footer'],
         active_pallet_id=payload['active_pallet_id'],
+        active_hu_code=payload.get('active_hu_code'),
         active_hu_count=payload['active_hu_count'],
         remaining_seconds=payload['remaining_seconds'],
     )

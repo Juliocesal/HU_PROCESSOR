@@ -512,6 +512,7 @@ def run_queue_worker(
                         badge='PDF',
                         mode='running',
                         footer=f'Generando e imprimiendo recibo de P{pallet_id:02d}.',
+                        active_pallet_id=pallet_id,
                     )
                     hooks.touch_queue_worker_heartbeat(owner)
                     boundary_started_at = time.perf_counter()

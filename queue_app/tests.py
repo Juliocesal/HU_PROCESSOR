@@ -792,6 +792,47 @@ class SAPSessionValidationTests(TestCase):
         self.assertFalse(SAPClient._session_is_alive(busy))
 
 
+    def test_probe_session_uses_real_nexhus_transaction_not_blank_n(self):
+        class OkCode:
+            Text = ''
+
+
+        class Window:
+            def __init__(self):
+                self.sent_keys = []
+
+
+            def sendVKey(self, key):
+                self.sent_keys.append(key)
+
+
+        ok_code = OkCode()
+        wnd = Window()
+
+
+        class Session:
+            Busy = False
+            ActiveWindow = SimpleNamespace(Text='SAP GUI for Windows 770')
+            Info = SimpleNamespace(User='BOT1', SystemName='LUP')
+
+
+            def findById(self, element_id):
+                if element_id == 'wnd[0]/tbar[0]/okcd':
+                    return ok_code
+                if element_id == 'wnd[0]':
+                    return wnd
+                if element_id == 'wnd[0]/sbar':
+                    return SimpleNamespace(Text='')
+                raise LookupError(element_id)
+
+
+        with patch.object(SAPClient, '_wait_session_idle', return_value=True):
+            self.assertTrue(SAPClient._probe_session_for_work(Session()))
+
+        self.assertEqual(ok_code.Text, '/nZMOVEINBHU')
+        self.assertEqual(wnd.sent_keys, [0])
+
+
     def test_find_ready_session_skips_busy_and_selects_free_session(self):
         busy = self._make_sap_session(user='BOT1', busy=True)
         free = self._make_sap_session(user='BOT1', busy=False)
@@ -1193,6 +1234,34 @@ class AlreadySeparatedProcessingTests(TestCase):
         sap.process_hu_phase2.assert_called_once()
 
 
+class SAPPhaseSetupOptimizationTests(TestCase):
+    def test_setup_phase1_skips_transaction_when_field_is_ready(self):
+        client = SAPClient()
+        client._session = SimpleNamespace(Info=SimpleNamespace(Transaction='ZMOVEINBHU'))
+
+        with (
+            patch.object(client, '_close_all_popups'),
+            patch.object(client, '_find', side_effect=lambda element_id: object() if element_id == 'wnd[0]/usr/ctxtP_HU' else None),
+            patch.object(client, '_abrir_transaccion') as open_tx,
+        ):
+            client.setup_phase1()
+
+        open_tx.assert_not_called()
+
+    def test_setup_phase2_skips_transaction_when_field_is_ready(self):
+        client = SAPClient()
+        client._session = SimpleNamespace(Info=SimpleNamespace(Transaction='ZMMTIJSEP'))
+
+        with (
+            patch.object(client, '_close_all_popups'),
+            patch.object(client, '_find', side_effect=lambda element_id: object() if element_id == 'wnd[0]/usr/txtGV_HU' else None),
+            patch.object(client, '_abrir_transaccion') as open_tx,
+        ):
+            client.setup_phase2()
+
+        open_tx.assert_not_called()
+
+
 class QueueEventTests(TestCase):
     def test_queue_done_forces_running_state_off(self):
         sent_events = []
@@ -1223,6 +1292,7 @@ class QueueEventTests(TestCase):
                 mode='waiting',
                 footer='Esperando cierre de P02.',
                 active_pallet_id=2,
+                active_hu_code='TH0000268258',
                 active_hu_count=5,
                 remaining_seconds=360,
             )
@@ -1231,6 +1301,7 @@ class QueueEventTests(TestCase):
         self.assertEqual(sent_events[0]['type'], 'queue_status')
         self.assertEqual(sent_events[0]['mode'], 'waiting')
         self.assertEqual(sent_events[0]['active_pallet_id'], 2)
+        self.assertEqual(sent_events[0]['active_hu_code'], 'TH0000268258')
         self.assertEqual(sent_events[0]['stats']['is_running'], True)
 
 
@@ -2271,6 +2342,7 @@ class QueueConsumerTests(TestCase):
             'mode': 'waiting',
             'footer': 'Usa Nuevo pallet.',
             'active_pallet_id': 2,
+            'active_hu_code': 'TH0000268258',
             'active_hu_count': 5,
             'remaining_seconds': 360,
             'stats': {'is_running': True},
@@ -2279,6 +2351,7 @@ class QueueConsumerTests(TestCase):
 
         self.assertEqual(sent_payloads[0]['type'], 'queue_status')
         self.assertEqual(sent_payloads[0]['mode'], 'waiting')
+        self.assertEqual(sent_payloads[0]['active_hu_code'], 'TH0000268258')
         self.assertEqual(sent_payloads[0]['active_hu_count'], 5)
 
 

@@ -178,6 +178,15 @@ SAP_TRANSACTION_MIN_WAIT_SECONDS = config(
 SAP_TRANSACTION_READY_TIMEOUT_SECONDS = config(
     'SAP_TRANSACTION_READY_TIMEOUT_SECONDS', default=15, cast=float,
 )
+
+# Impresion de recibos PDF.
+# `submitted` confirma que Sumatra acepto el PDF y, si Windows lo expone, que
+# el job entro al spooler. `finished` espera a que el job desaparezca de la cola,
+# lo cual es mas lento y depende mucho del driver/impresora.
+PDF_PRINT_CONFIRMATION_MODE = config('PDF_PRINT_CONFIRMATION_MODE', default='submitted')
+PDF_SUMATRA_TIMEOUT_SECONDS = config('PDF_SUMATRA_TIMEOUT_SECONDS', default=12, cast=float)
+PDF_SPOOL_WAIT_TIMEOUT_SECONDS = config('PDF_SPOOL_WAIT_TIMEOUT_SECONDS', default=1, cast=float)
+PDF_SPOOL_POLL_SECONDS = config('PDF_SPOOL_POLL_SECONDS', default=0.2, cast=float)
 SAP_COM_CONNECT_TIMEOUT_SECONDS = config('SAP_COM_CONNECT_TIMEOUT_SECONDS', default=30, cast=float)
 SAP_COM_PHASE_TIMEOUT_SECONDS = config('SAP_COM_PHASE_TIMEOUT_SECONDS', default=60, cast=float)
 SAP_COM_ZE16_TIMEOUT_SECONDS = config('SAP_COM_ZE16_TIMEOUT_SECONDS', default=180, cast=float)

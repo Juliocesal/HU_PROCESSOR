@@ -449,6 +449,7 @@ def _process_hu_item(
                 mode='running',
                 footer='Capturando HU en ZMOVEINBHU.',
                 active_pallet_id=item.pallet_id,
+                active_hu_code=item.hu_code,
                 active_hu_count=1,
             )
             sap_started_at = time.perf_counter()
@@ -530,6 +531,7 @@ def _process_hu_item(
                 mode='running',
                 footer='Procesando separazione en ZMMTIJSEP.',
                 active_pallet_id=item.pallet_id,
+                active_hu_code=item.hu_code,
                 active_hu_count=1,
             )
             sap_started_at = time.perf_counter()

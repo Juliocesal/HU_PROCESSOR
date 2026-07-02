@@ -1171,7 +1171,7 @@
     font-weight: 600;
   }
 
-  .status-processing svg {
+  .status-processing .lucide-loader-circle {
     animation: spin-icon 1.1s linear infinite;
   }
 

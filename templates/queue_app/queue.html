@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NexHUs</title>
-<link rel="stylesheet" href="{% static 'queue_app/css/queue.css' %}">
+<link rel="stylesheet" href="{% static 'queue_app/css/queue.css' %}?v=20260701-loader-fix3">
 <script src="{% static 'queue_app/vendor/lucide/lucide.min.js' %}" defer></script>
 
 </head>
@@ -270,6 +270,8 @@
                   <span class="ok-cell"><i data-lucide="circle-check"></i>{{ item.f1_display }}</span>
                 {% elif item.status == 'error' or item.status == 'hu_not_found' %}
                   <span class="error-cell"><i data-lucide="triangle-alert"></i>{{ item.f1_display }}</span>
+                {% elif item.status == 'processing' %}
+                  <span class="cell-status status-processing"><i data-lucide="loader-circle"></i>Procesando F1</span>
                 {% else %}
                   <span class="cell-status status-{{ item.status }}"><i data-lucide="clock-3"></i>{{ item.status_display }}</span>
                 {% endif %}
@@ -281,6 +283,8 @@
                   <span class="muted-cell"><i data-lucide="circle-minus"></i> omitido</span>
                 {% elif item.status == 'error' %}
                   <span class="error-cell"><i data-lucide="triangle-alert"></i>{{ item.f2_display }}</span>
+                {% elif item.status == 'processing' %}
+                  <span class="cell-status status-pending"><i data-lucide="clock-3"></i>Pendiente</span>
                 {% else %}
                   <span class="cell-status status-{{ item.status }}"><i data-lucide="clock-3"></i>{{ item.f2_display|default:"Pendiente" }}</span>
                 {% endif %}
@@ -357,8 +361,8 @@
      JAVASCRIPT
       -->
 {{ stats|json_script:"initial-stats" }}
-<script src="{% static 'queue_app/js/queue_shared.js' %}"></script>
-<script src="{% static 'queue_app/js/queue.js' %}"></script>
+<script src="{% static 'queue_app/js/queue_shared.js' %}?v=20260701-loader-fix2"></script>
+<script src="{% static 'queue_app/js/queue.js' %}?v=20260701-loader-fix3"></script>
 
 
 <div id="ctx-menu">

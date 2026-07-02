@@ -27,6 +27,27 @@ SUMATRA_BUNDLED = str(settings.BASE_DIR / "core" / "vendors" / "SumatraPDF.exe")
 _print_lock = threading.Lock()
 
 
+def _float_setting(name: str, default: float) -> float:
+    try:
+        return float(getattr(settings, name, default))
+    except (TypeError, ValueError):
+        log.warning(
+            "invalid_float_setting name=%s value=%r default=%s",
+            name,
+            getattr(settings, name, None),
+            default,
+        )
+        return default
+
+
+def _print_confirmation_mode() -> str:
+    mode = str(getattr(settings, "PDF_PRINT_CONFIRMATION_MODE", "submitted")).strip().lower()
+    if mode in {"submitted", "finished", "disabled"}:
+        return mode
+    log.warning("invalid_pdf_print_confirmation_mode mode=%s using=submitted", mode)
+    return "submitted"
+
+
 # ── Colores ───────────────────────────────────────────────────────────────────
 class PDF_C:
     SHELL       = "#1B2537"
@@ -661,9 +682,22 @@ class PalletReceiptPDF:
                         return False
 
                     if printer_name:
-                        cmd = [sumatra_exe, "-print-to", printer_name, "-silent", pdf_path]
+                        cmd = [
+                            sumatra_exe,
+                            "-print-to",
+                            printer_name,
+                            "-silent",
+                            "-exit-on-print",
+                            pdf_path,
+                        ]
                     else:
-                        cmd = [sumatra_exe, "-print-to-default", "-silent", pdf_path]
+                        cmd = [
+                            sumatra_exe,
+                            "-print-to-default",
+                            "-silent",
+                            "-exit-on-print",
+                            pdf_path,
+                        ]
 
                     log.info("sumatra_cmd=%s", cmd)
 
@@ -675,7 +709,8 @@ class PalletReceiptPDF:
                     )
 
                     try:
-                        _, stderr_bytes = proc.communicate(timeout=15)
+                        sumatra_timeout = _float_setting("PDF_SUMATRA_TIMEOUT_SECONDS", 12)
+                        _, stderr_bytes = proc.communicate(timeout=sumatra_timeout)
                         sumatra_ms = int((time.perf_counter() - sumatra_started_at) * 1000)
                         stderr_text = stderr_bytes.decode("utf-8", errors="replace").strip()
 
@@ -697,16 +732,20 @@ class PalletReceiptPDF:
                             return False
 
                         spool_started_at = time.perf_counter()
+                        confirmation_mode = _print_confirmation_mode()
                         spool_ok = cls._wait_for_print_job_to_finish(
                             pdf_path,
                             printer_name=printer_name,
-                            timeout=60,
+                            timeout=_float_setting("PDF_SPOOL_WAIT_TIMEOUT_SECONDS", 1),
+                            mode=confirmation_mode,
+                            poll_interval=_float_setting("PDF_SPOOL_POLL_SECONDS", 0.2),
                         )
                         spool_ms = int((time.perf_counter() - spool_started_at) * 1000)
                         total_ms = int((time.perf_counter() - print_started_at) * 1000)
                         log.info(
-                            "pdf_print_done ok=%s total_ms=%d sumatra_ms=%d spool_ms=%d",
+                            "pdf_print_done ok=%s mode=%s total_ms=%d sumatra_ms=%d spool_ms=%d",
                             spool_ok,
+                            confirmation_mode,
                             total_ms,
                             sumatra_ms,
                             spool_ms,
@@ -743,13 +782,22 @@ class PalletReceiptPDF:
         pdf_path: str,
         printer_name: str | None = None,
         timeout: float = 60,
+        mode: str = "finished",
+        poll_interval: float = 0.5,
     ) -> bool:
         """
-        Espera hasta que el spooler de Windows ya no tenga este PDF en cola.
-        If the job disappears too quickly to observe, Sumatra's successful exit is
-        treated as confirmation that the job was handed to the spooler.
+        Confirma la entrega al spooler de Windows.
+
+        mode='submitted': retorna al ver el job en cola. Si desaparece demasiado
+        rapido para observarlo, el cierre exitoso de Sumatra se toma como OK.
+        mode='finished': espera hasta que el job desaparezca de la cola.
         """
         if sys.platform != "win32":
+            return True
+
+        mode = (mode or "finished").strip().lower()
+        if mode == "disabled":
+            log.info("print_spool_wait_disabled pdf=%s", pdf_path)
             return True
 
         started_at = time.perf_counter()
@@ -762,10 +810,11 @@ class PalletReceiptPDF:
         try:
             resolved_printer = printer_name or win32print.GetDefaultPrinter()
             document_name = os.path.basename(pdf_path).lower()
-            deadline = datetime.now().timestamp() + timeout
+            deadline = time.perf_counter() + max(0.1, timeout)
+            poll_interval = max(0.05, poll_interval)
             seen_job = False
 
-            while datetime.now().timestamp() < deadline:
+            while time.perf_counter() < deadline:
                 handle = win32print.OpenPrinter(resolved_printer)
                 try:
                     jobs = win32print.EnumJobs(handle, 0, 99, 1)
@@ -780,7 +829,17 @@ class PalletReceiptPDF:
 
                 if matching:
                     seen_job = True
-                    time.sleep(0.5)
+                    if mode == "submitted":
+                        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+                        log.info(
+                            "print_spool_job_submitted printer=%s pdf=%s duration_ms=%d",
+                            resolved_printer,
+                            pdf_path,
+                            elapsed_ms,
+                        )
+                        return True
+
+                    time.sleep(poll_interval)
                     continue
 
                 if seen_job:
@@ -793,27 +852,44 @@ class PalletReceiptPDF:
                     )
                     return True
 
-                remaining = deadline - datetime.now().timestamp()
+                if mode == "submitted":
+                    if (time.perf_counter() - started_at) < max(0.1, timeout):
+                        time.sleep(poll_interval)
+                        continue
 
-                if remaining > 57:
-                    time.sleep(0.5)
-                    continue
+                if mode == "finished":
+                    observe_window = min(3, max(0.1, timeout))
+                    if (time.perf_counter() - started_at) < observe_window:
+                        time.sleep(poll_interval)
+                        continue
 
                 elapsed_ms = int((time.perf_counter() - started_at) * 1000)
                 log.info(
-                    "print_spool_job_not_observed printer=%s pdf=%s duration_ms=%d",
+                    "print_spool_job_not_observed printer=%s pdf=%s duration_ms=%d mode=%s",
                     resolved_printer,
                     pdf_path,
                     elapsed_ms,
+                    mode,
                 )
                 return True
 
             elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            if not seen_job:
+                log.info(
+                    "print_spool_job_not_observed printer=%s pdf=%s duration_ms=%d mode=%s",
+                    resolved_printer,
+                    pdf_path,
+                    elapsed_ms,
+                    mode,
+                )
+                return True
+
             log.error(
-                "print_spool_timeout printer=%s pdf=%s duration_ms=%d",
+                "print_spool_timeout printer=%s pdf=%s duration_ms=%d mode=%s",
                 resolved_printer,
                 pdf_path,
                 elapsed_ms,
+                mode,
             )
             return False
         except Exception as e:

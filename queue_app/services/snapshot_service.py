@@ -9,6 +9,7 @@ from queue_app.services.stats_service import (
     calculate_queue_stats,
 )
 from queue_app.services.performance_service import log_performance
+from queue_app.services.queue_runtime import get_queue_last_status
 
 log = logging.getLogger(__name__)
 
@@ -45,17 +46,16 @@ def build_queue_snapshot_payload() -> dict:
     )
     stats = calculate_queue_stats()
     pallet_cache = {}
+    queue_status = None
+    if stats.get('is_running'):
+        queue_status = get_queue_last_status() or calculate_queue_operational_status()
     payload = {
         'items': [
             serialize_queue_snapshot_item(item, pallet_cache=pallet_cache)
             for item in items.iterator(chunk_size=500)
         ],
         'stats': stats,
-        'queue_status': (
-            calculate_queue_operational_status()
-            if stats.get('is_running')
-            else None
-        ),
+        'queue_status': queue_status,
         'snapshot_at': timezone.now().isoformat(),
     }
     log_performance(

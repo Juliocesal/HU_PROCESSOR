@@ -743,12 +743,11 @@ class SAPClient:
     @classmethod
     def _probe_session_for_work(cls, session) -> bool:
         """
-        Ejecuta una navegacion inocua a SAP Easy Access.
-
+        Ejecuta una navegacion real pero segura a la transaccion inicial.
 
         Leer propiedades COM no siempre dispara el popup de desconexion. Enviar
-        `/n` obliga a SAP GUI a confirmar que la sesion sigue utilizable antes
-        de que Celery capture un HU.
+        una transaccion de NEXHUS obliga a SAP GUI a confirmar que la sesion
+        sigue utilizable antes de que Celery capture un HU.
         """
         try:
             if cls._session_busy(session):
@@ -763,7 +762,7 @@ class SAPClient:
                 return False
 
 
-            ok_code.Text = "/n"
+            ok_code.Text = TX_MOVEINBHU
             wnd.sendVKey(0)
             cls._wait_session_idle(session, timeout=5.0)
             time.sleep(0.3)
@@ -1499,6 +1498,13 @@ class SAPClient:
             return ''
 
 
+    def _is_current_transaction(self, tx_code: str) -> bool:
+        return (
+            self._normalized_transaction_code(self._current_transaction_code())
+            == self._normalized_transaction_code(tx_code)
+        )
+
+
     def _wait_for_transaction_ready(
         self,
         tx_code: str,
@@ -1816,6 +1822,10 @@ class SAPClient:
         except Exception:
             pass
 
+        if self._is_current_transaction(TX_MOVEINBHU) and self._find(FIELD_F1_HU) is not None:
+            log.info("phase1_ready_cached - ctxtP_HU confirmed")
+            return
+
 
         field_ready = self._abrir_transaccion(
             TX_MOVEINBHU,
@@ -1837,6 +1847,10 @@ class SAPClient:
     def setup_phase2(self, origin: Origin | None = None) -> None:
         log.info("setup_phase2_start")
         self._close_all_popups()
+
+        if self._is_current_transaction(TX_TIJSEP) and self._find(FIELD_F2_HU) is not None:
+            log.info("phase2_ready_cached - txtGV_HU confirmed")
+            return
 
 
         field_ready = self._abrir_transaccion(

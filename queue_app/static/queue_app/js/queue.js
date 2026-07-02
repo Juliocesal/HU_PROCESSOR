@@ -1349,6 +1349,9 @@
   function handleItemUpdate(msg) {
     clearSessionCloseCountdown();
     updateOrCreateRow(msg);
+    if (msg.status === 'processing') {
+      showInitialProcessingLoader(msg.hu_code);
+    }
     updateProgress();
     refreshIcons();
 
@@ -1541,6 +1544,7 @@
       clearSessionCloseCountdown();
       bar.classList.add('animated');
     }
+    applyOperationalColumnLoaders(msg);
     updateButtons();
   }
 
@@ -1626,15 +1630,21 @@
     const safeDisplay = escapeHTML(display || '');
     const safeStatus = cssToken(status, 'unknown');
     const f1SucceededBeforeF2Error = status === 'error' && Boolean(phase2_msg);
-    const labels = { pending:'Pendiente', processing:'Procesando...' };
+    const labels = { pending:'Pendiente' };
     const statusIcon = {
       pending: 'clock-3',
-      processing: 'loader-circle',
+      processing: 'clock-3',
       ok: 'circle-check',
       duplicate: 'badge-check',
       error: 'triangle-alert',
       hu_not_found: 'circle-help',
     }[status] || 'circle';
+
+    if (status === 'processing') {
+      return col === 'f1'
+        ? loadingCellHTML('Procesando F1')
+        : pendingCellHTML('Pendiente');
+    }
 
     if (col === 'f1') {
       if (status === 'ok' || status === 'duplicate' || f1SucceededBeforeF2Error)
@@ -1668,6 +1678,85 @@
     }
 
     return `<span class="cell-status status-pending">${iconHTML('clock-3')}Pendiente</span>`;
+  }
+
+  function loadingCellHTML(label) {
+    return `<span class="cell-status status-processing">${iconHTML('loader-circle')}${escapeHTML(label)}</span>`;
+  }
+
+  function pendingCellHTML(label = 'Pendiente') {
+    return `<span class="cell-status status-pending">${iconHTML('clock-3')}${escapeHTML(label)}</span>`;
+  }
+
+  function transientOkCellHTML(label) {
+    return `<span class="ok-cell">${iconHTML('circle-check')}${escapeHTML(label)}</span>`;
+  }
+
+  function resetProcessingCells(huCode) {
+    const row = document.getElementById(`row-${huCode}`);
+    if (!row) return;
+    if (row.cells[3]) row.cells[3].innerHTML = pendingCellHTML('Esperando F1');
+    if (row.cells[4]) row.cells[4].innerHTML = pendingCellHTML('Esperando F2');
+  }
+
+  function showInitialProcessingLoader(huCode) {
+    const row = document.getElementById(`row-${huCode}`);
+    if (!row) return;
+    const f1Enabled = document.getElementById('chk-f1')?.checked !== false;
+    clearTransientPhaseLoaders(row);
+
+    if (f1Enabled) {
+      if (row.cells[3]) row.cells[3].innerHTML = loadingCellHTML('Procesando F1');
+      if (row.cells[4]) row.cells[4].innerHTML = pendingCellHTML('Pendiente');
+      return;
+    }
+
+    if (row.cells[3]) row.cells[3].innerHTML = pendingCellHTML('F1 omitido');
+    if (row.cells[4]) row.cells[4].innerHTML = loadingCellHTML('Procesando F2');
+  }
+
+  function clearTransientPhaseLoaders(skipRow = null) {
+    document.querySelectorAll('#queue-tbody tr[data-hu]').forEach(row => {
+      if (skipRow && row === skipRow) return;
+      const hasPhaseLoader =
+        row.cells[3]?.querySelector('.lucide-loader-circle') ||
+        row.cells[4]?.querySelector('.lucide-loader-circle');
+      if (hasPhaseLoader) resetProcessingCells(row.dataset.hu || '');
+    });
+  }
+
+  function applyOperationalColumnLoaders(msg) {
+    const badge = String(msg.badge || '').toUpperCase();
+    const huCode = msg.active_hu_code || '';
+    const palletId = msg.active_pallet_id;
+
+    if ((badge === 'F1' || badge === 'F2') && huCode) {
+      const row = document.getElementById(`row-${huCode}`);
+      if (!row) return;
+      clearTransientPhaseLoaders(row);
+      if (badge === 'F1') {
+        if (row.cells[3]) row.cells[3].innerHTML = loadingCellHTML('Procesando F1');
+        if (row.cells[4]) row.cells[4].innerHTML = pendingCellHTML();
+      } else {
+        if (row.cells[3]) row.cells[3].innerHTML = transientOkCellHTML('F1 listo');
+        if (row.cells[4]) row.cells[4].innerHTML = loadingCellHTML('Procesando F2');
+      }
+      refreshIcons();
+      return;
+    }
+
+    if (['ZE16', 'PDF', 'PRINT'].includes(badge) && palletId) {
+      clearTransientPhaseLoaders();
+      const label = badge === 'PRINT'
+        ? 'Imprimiendo'
+        : (badge === 'ZE16' ? 'Consultando ZE16' : 'Generando PDF');
+      document.querySelectorAll(`tr[data-pallet="${palletId}"]`).forEach(row => {
+        if (row.cells[5] && !['error', 'hu_not_found'].includes(row.dataset.status || '')) {
+          row.cells[5].innerHTML = loadingCellHTML(label);
+        }
+      });
+      refreshIcons();
+    }
   }
 
   function placeRowUnderPallet(row, palletId) {
